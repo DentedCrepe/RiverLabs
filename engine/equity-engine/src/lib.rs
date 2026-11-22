@@ -86,8 +86,43 @@ fn prepare(ranges: &[Range], board: &Board, dead: CardSet) -> Result<Prepared, E
         combos.push(v);
     }
     let deck: Vec<u8> = (0..52u8).filter(|&i| blocked.bits() & (1 << i) == 0).collect();
-    Ok(Prepared { combos, board: board.card_set().bits(), deck, need: 5 - board.cards().len() })
+    let need = 5 - board.cards().len();
+    if deck.len() < 2 * ranges.len() + need {
+        return Err(EquityError::NoValidDeal);
+    }
+    Ok(Prepared { combos, board: board.card_set().bits(), deck, need })
 }
+
+/// Bounded search for one tuple of mutually disjoint combos. `Some(false)` = proven
+/// impossible, `None` = undecided within `max_nodes` (callers then rely on sampling limits).
+fn deal_exists(combos: &[Vec<(u64, f64)>], max_nodes: u64) -> Option<bool> {
+    fn rec(combos: &[Vec<(u64, f64)>], pi: usize, used: u64, nodes: &mut u64, max: u64) -> Option<bool> {
+        if pi == combos.len() {
+            return Some(true);
+        }
+        let mut undecided = false;
+        for &(m, _) in &combos[pi] {
+            *nodes += 1;
+            if *nodes > max {
+                return None;
+            }
+            if m & used == 0 {
+                match rec(combos, pi + 1, used | m, nodes, max) {
+                    Some(true) => return Some(true),
+                    None => undecided = true,
+                    Some(false) => {}
+                }
+            }
+        }
+        if undecided { None } else { Some(false) }
+    }
+    rec(combos, 0, 0, &mut 0, max_nodes)
+}
+
+/// Maximum rejected Monte Carlo draws per call, independent of the iteration count.
+pub const MAX_REJECTIONS: u64 = 2_000_000;
+/// After this many draws, abort if fewer than 1 in 1,000 were accepted.
+const ACCEPTANCE_CHECK_AFTER: u64 = 20_000;
 
 fn n_choose_k(n: u64, k: u64) -> u64 {
     if k > n {
@@ -237,6 +272,9 @@ pub fn monte_carlo(
         return Err(EquityError::NoIterations);
     }
     let p = prepare(ranges, board, dead)?;
+    if deal_exists(&p.combos, 1_000_000) == Some(false) {
+        return Err(EquityError::NoValidDeal);
+    }
     let n = ranges.len();
     let cumulative: Vec<Vec<f64>> = p
         .combos
@@ -258,7 +296,7 @@ pub fn monte_carlo(
     let mut shares = vec![0.0; n];
     let mut hands = vec![0u64; n];
     let mut rejections = 0u64;
-    let max_rejections = iterations.saturating_mul(1000);
+    let max_rejections = iterations.saturating_mul(1000).min(MAX_REJECTIONS);
     let mut deck = p.deck.clone();
     let mut accepted = 0u64;
     while accepted < iterations {
@@ -278,7 +316,9 @@ pub fn monte_carlo(
         }
         if !ok {
             rejections += 1;
-            if rejections > max_rejections {
+            let attempts = rejections + accepted;
+            let hopeless = attempts >= ACCEPTANCE_CHECK_AFTER && accepted * 1000 < attempts;
+            if rejections > max_rejections || hopeless {
                 return Err(EquityError::TooManyRejections);
             }
             continue;
@@ -437,6 +477,42 @@ mod tests {
             exact(&[hand("AsAh"), hand("KsKh")], &Board::empty(), dead, DEFAULT_EXACT_BUDGET).unwrap_err(),
             EquityError::EmptyRange(1)
         );
+    }
+
+    #[test]
+    fn monte_carlo_fails_fast_on_impossible_or_nearly_impossible_ranges() {
+        use std::time::Instant;
+        let t = Instant::now();
+        assert_eq!(
+            monte_carlo(&[hand("AsAh"), hand("AsAh")], &Board::empty(), CardSet::EMPTY, 2_000_000, 1).unwrap_err(),
+            EquityError::NoValidDeal
+        );
+        // Six players all holding aces: only two disjoint AA combos exist.
+        let aa = Range::parse("AA").unwrap();
+        let six = vec![aa; 6];
+        assert_eq!(
+            monte_carlo(&six, &Board::empty(), CardSet::EMPTY, 2_000_000, 1).unwrap_err(),
+            EquityError::NoValidDeal
+        );
+        // Undecidable within the search bound but hopeless: every range needs an ace.
+        let any_ace = Range::parse("A2+").unwrap();
+        let five = vec![any_ace; 5];
+        assert_eq!(
+            monte_carlo(&five, &Board::empty(), CardSet::EMPTY, 2_000_000, 1).unwrap_err(),
+            EquityError::TooManyRejections
+        );
+        assert!(t.elapsed().as_secs_f64() < 2.0, "took {:?}", t.elapsed());
+    }
+
+    #[test]
+    fn too_few_cards_left_is_an_error_not_a_panic() {
+        let dead = CardSet::from_cards(
+            Card::parse_many("2c2d2h2s3c3d3h3s4c4d4h4s5c5d5h5s6c6d6h6s7c7d7h7s8c8d8h8s9c9d9h9sTcTdThTsJcJdJhJsQcQdKc")
+                .unwrap(),
+        );
+        let r = [hand("AsAh"), hand("KsKh"), hand("QsQh")];
+        assert_eq!(monte_carlo(&r, &Board::empty(), dead, 10, 1).unwrap_err(), EquityError::NoValidDeal);
+        assert_eq!(exact(&r, &Board::empty(), dead, DEFAULT_EXACT_BUDGET).unwrap_err(), EquityError::NoValidDeal);
     }
 
     #[test]

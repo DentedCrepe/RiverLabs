@@ -9,6 +9,7 @@ import uuid
 from typing import Any
 
 from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import false as sa_false
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -76,6 +77,8 @@ class GameConfig(UUIDPk, Timestamps, Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Shipped by migrations; read-only through the API. Never inferred from the name.
+    is_builtin: Mapped[bool] = mapped_column(nullable=False, default=False, server_default=sa_false())
     players: Mapped[int] = mapped_column(Integer, nullable=False)
     small_blind_mbb: Mapped[int] = mapped_column(Integer, nullable=False)
     ante_mbb: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -101,6 +104,7 @@ class GameConfig(UUIDPk, Timestamps, Base):
         CheckConstraint(
             "(stake_currency IS NULL) = (stake_big_blind_minor_units IS NULL)", name="stake_complete"
         ),
+        CheckConstraint("NOT is_builtin OR owner_id IS NULL", name="builtin_has_no_owner"),
         UniqueConstraint("owner_id", "name", postgresql_nulls_not_distinct=True),
         Index("ix_game_configs_stack_rake", "stack_config_id", "rake_config_id"),
     )

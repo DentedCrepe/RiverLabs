@@ -20,6 +20,12 @@ missing board cards are drawn uniformly from the remaining deck. The seed is sup
 caller, so results are reproducible. The reported standard error is `sqrt(var(share) / n)` per
 player.
 
+Sampling fails fast instead of burning CPU:
+- Range sets that can never be held at once are detected up front by a bounded search
+  (`NoValidDeal`). So is a deck with too few cards left to complete the board.
+- A run aborts with `TooManyRejections` after 2,000,000 rejected draws, or earlier once
+  20,000 draws show an acceptance rate below 0.1%.
+
 ## Validation
 - Exact results equal hand-counted outs (turn spots), symmetric spots give exactly 50%, and
   weighted ranges mix linearly (unit tests).

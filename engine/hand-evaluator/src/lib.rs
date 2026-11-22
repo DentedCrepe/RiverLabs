@@ -58,7 +58,9 @@ const QUADS: u32 = 7;
 const STRAIGHT_FLUSH: u32 = 8;
 const CATEGORY_SHIFT: u32 = 20;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+/// Serialize-only: a strength can only be produced by the evaluator, so its rank nibbles are
+/// always valid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct HandStrength(u32);
 

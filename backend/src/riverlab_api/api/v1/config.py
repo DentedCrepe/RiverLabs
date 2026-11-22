@@ -25,7 +25,7 @@ def _out(row: GameConfig) -> GameConfigOut:
     return GameConfigOut(
         id=row.id,
         name=row.name,
-        builtin=row.owner_id is None and row.name.endswith("(default)"),
+        builtin=row.is_builtin,
         stack_preset=row.stack_config.preset,
         config=GameConfigDoc.model_validate(row.config),
     )

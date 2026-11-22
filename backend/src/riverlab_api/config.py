@@ -3,8 +3,10 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PostgresDsn
+from pydantic import Field, PostgresDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+PLACEHOLDER_PASSWORD = "change-me-local-only"  # noqa: S105 - the value we refuse
 
 
 class Settings(BaseSettings):
@@ -18,6 +20,12 @@ class Settings(BaseSettings):
     # Upper bound on exact-equity work per request (tuple x runout evaluations).
     equity_exact_budget: int = Field(default=50_000_000, ge=1)
     equity_max_iterations: int = Field(default=2_000_000, ge=1)
+
+    @model_validator(mode="after")
+    def _no_placeholder_credentials_in_production(self) -> "Settings":
+        if self.env == "production" and PLACEHOLDER_PASSWORD in str(self.database_url):
+            raise ValueError("RIVERLAB_DATABASE_URL still uses the .env.example placeholder password")
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:

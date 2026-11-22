@@ -7,6 +7,31 @@ function errorResponse(status: number, code: string, message: string): Response 
   return Response.json({ error: { code, message } }, { status });
 }
 
+/** Reads the body as a stream, aborting as soon as it exceeds `limit` bytes. */
+async function readCapped(request: Request, limit: number): Promise<Uint8Array<ArrayBuffer> | null> {
+  if (!request.body) return new Uint8Array();
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.byteLength;
+  }
+  return out;
+}
+
 export function isAllowedPath(path: string[]): boolean {
   if (path.length === 0 || path.some((s) => !SEGMENT.test(s) || s === "." || s === "..")) return false;
   return ALLOWED_PREFIXES.some((prefix) => prefix.every((p, i) => path[i] === p));
@@ -28,12 +53,15 @@ export async function forwardToBackend(
   const target = new URL(`${baseUrl.replace(/\/+$/, "")}/${path.join("/")}`);
   target.search = incoming.search;
 
-  let body: string | undefined;
+  let body: Uint8Array<ArrayBuffer> | undefined;
   if (request.method !== "GET" && request.method !== "HEAD") {
-    body = await request.text();
-    if (new TextEncoder().encode(body).length > MAX_BODY_BYTES) {
+    const declared = Number(request.headers.get("content-length") ?? "0");
+    if (declared > MAX_BODY_BYTES) {
       return errorResponse(413, "payload_too_large", "Request body is too large");
     }
+    const read = await readCapped(request, MAX_BODY_BYTES);
+    if (read === null) return errorResponse(413, "payload_too_large", "Request body is too large");
+    body = read;
   }
   const headers: Record<string, string> = {};
   const contentType = request.headers.get("content-type");

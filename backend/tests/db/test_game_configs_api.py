@@ -76,3 +76,34 @@ def test_builtin_default_cannot_be_deleted(db_client: TestClient) -> None:
 
 def test_readiness_reports_database(db_client: TestClient) -> None:
     assert db_client.get("/health/ready").json()["database"] == "ok"
+
+
+def test_builtin_flag_cannot_be_spoofed_by_name(db_client: TestClient) -> None:
+    r = db_client.post("/api/v1/game-configs", json={"name": "mine (default)", "config": _config(db_client)})
+    assert r.status_code == 201
+    assert r.json()["builtin"] is False
+    assert db_client.delete(f"/api/v1/game-configs/{r.json()['id']}").status_code == 204
+
+
+def test_find_or_create_survives_a_lost_race(db: Session) -> None:
+    """Simulates a concurrent request inserting the same stack row between our SELECT and INSERT."""
+    from riverlab_api.services import game_configs as svc
+
+    stack = {"effective_stack": 33_000}
+    db.add(
+        StackConfig(
+            owner_id=None,
+            name="33bb",
+            effective_stack_mbb=33_000,
+            preset=None,
+            schema_version=1,
+            config=stack,
+        )
+    )
+    db.flush()
+    loser = StackConfig(
+        owner_id=None, name="33bb", effective_stack_mbb=33_000, preset=None, schema_version=1, config=stack
+    )
+    assert svc._insert_or_lose_race(db, loser) is False
+    row = svc._find_or_create_stack(db, None, stack)
+    assert row.effective_stack_mbb == 33_000

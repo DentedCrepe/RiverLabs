@@ -25,7 +25,7 @@ describe("backend proxy", () => {
     const [url, init] = fetchImpl.mock.calls[0];
     expect(String(url)).toBe("http://backend:8000/api/v1/equity?x=1");
     expect(init.method).toBe("POST");
-    expect(init.body).toBe('{"a":1}');
+    expect(new TextDecoder().decode(init.body)).toBe('{"a":1}');
     expect(init.headers).toEqual({ "content-type": "application/json" });
   });
 
@@ -41,8 +41,34 @@ describe("backend proxy", () => {
     });
   });
 
-  it("rejects oversized bodies", async () => {
-    const req = new Request("http://f/api/backend/api/v1/x", { method: "POST", body: "x".repeat(300 * 1024) });
-    expect((await forwardToBackend(req, ["api", "v1", "x"], "http://b", vi.fn())).status).toBe(413);
+  it("rejects oversized bodies by declared length without reading them", async () => {
+    const req = new Request("http://f/api/backend/api/v1/x", {
+      method: "POST",
+      body: "x",
+      headers: { "content-length": String(10 * 1024 * 1024) },
+    });
+    const fetchImpl = vi.fn();
+    expect((await forwardToBackend(req, ["api", "v1", "x"], "http://b", fetchImpl)).status).toBe(413);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("stops reading a streamed body without Content-Length once it exceeds the limit", async () => {
+    let pulled = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(new Uint8Array(64 * 1024));
+        if (pulled > 1000) controller.close();
+      },
+    });
+    const req = new Request("http://f/api/backend/api/v1/x", {
+      method: "POST",
+      body: stream,
+      duplex: "half",
+    } as RequestInit);
+    const fetchImpl = vi.fn();
+    expect((await forwardToBackend(req, ["api", "v1", "x"], "http://b", fetchImpl)).status).toBe(413);
+    expect(pulled).toBeLessThan(10);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

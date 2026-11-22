@@ -153,6 +153,7 @@ def upgrade() -> None:
         "game_configs",
         sa.Column("owner_id", sa.UUID(), nullable=True),
         sa.Column("name", sa.String(length=100), nullable=False),
+        sa.Column("is_builtin", sa.Boolean(), server_default=sa.false(), nullable=False),
         sa.Column("players", sa.Integer(), nullable=False),
         sa.Column("small_blind_mbb", sa.Integer(), nullable=False),
         sa.Column("ante_mbb", sa.Integer(), nullable=False),
@@ -168,6 +169,9 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "(stake_currency IS NULL) = (stake_big_blind_minor_units IS NULL)",
             name=op.f("ck_game_configs_stake_complete"),
+        ),
+        sa.CheckConstraint(
+            "NOT is_builtin OR owner_id IS NULL", name=op.f("ck_game_configs_builtin_has_no_owner")
         ),
         sa.CheckConstraint("ante_mbb BETWEEN 0 AND 1000", name=op.f("ck_game_configs_ante_range")),
         sa.CheckConstraint("players BETWEEN 3 AND 6", name=op.f("ck_game_configs_players_range")),
@@ -577,6 +581,7 @@ def _seed_reference_data() -> None:
         "game_configs",
         sa.column("id", sa.Uuid),
         sa.column("name", sa.String),
+        sa.column("is_builtin", sa.Boolean),
         sa.column("players", sa.Integer),
         sa.column("small_blind_mbb", sa.Integer),
         sa.column("ante_mbb", sa.Integer),
@@ -591,6 +596,7 @@ def _seed_reference_data() -> None:
             {
                 "id": DEFAULT_GAME_ID,
                 "name": "6-max 100bb (default)",
+                "is_builtin": True,
                 "players": 6,
                 "small_blind_mbb": 500,
                 "ante_mbb": 0,

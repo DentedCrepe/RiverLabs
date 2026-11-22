@@ -22,3 +22,13 @@ def test_default_registry_has_no_backends() -> None:
 
     assert registry.backends == []
     assert BackendRegistry().select({}) is None
+
+
+def test_production_refuses_placeholder_password() -> None:
+    import pytest
+
+    from riverlab_api.config import Settings
+
+    with pytest.raises(ValueError, match="placeholder"):
+        Settings(env="production", database_url="postgresql+psycopg://u:change-me-local-only@h/db")
+    Settings(env="development", database_url="postgresql+psycopg://u:change-me-local-only@h/db")

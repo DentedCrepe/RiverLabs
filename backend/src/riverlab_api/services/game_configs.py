@@ -40,6 +40,25 @@ def _rake_name(rake: dict[str, Any]) -> str:
     return f"{' '.join(parts)} [{digest}]"
 
 
+def _insert_or_lose_race(db: Session, row: StackConfig | RakeConfig) -> bool:
+    """Inserts inside a savepoint. Returns False if a concurrent request inserted the same
+    unique row first (the caller then re-reads it)."""
+    try:
+        with db.begin_nested():
+            db.add(row)
+            db.flush()
+    except IntegrityError:
+        if row in db:
+            db.expunge(row)
+        return False
+    return True
+
+
+def _constraint_name(exc: IntegrityError) -> str:
+    diag = getattr(exc.orig, "diag", None)
+    return str(getattr(diag, "constraint_name", "") or "")
+
+
 def _find_or_create_stack(db: Session, owner_id: uuid.UUID | None, stack: dict[str, Any]) -> StackConfig:
     mbb = int(stack["effective_stack"])
     row = db.scalar(
@@ -49,7 +68,7 @@ def _find_or_create_stack(db: Session, owner_id: uuid.UUID | None, stack: dict[s
         )
     )
     if row is None:
-        row = StackConfig(
+        candidate = StackConfig(
             owner_id=owner_id,
             name=_preset_label(mbb) or f"{mbb / 1000:g}bb",
             effective_stack_mbb=mbb,
@@ -57,8 +76,9 @@ def _find_or_create_stack(db: Session, owner_id: uuid.UUID | None, stack: dict[s
             schema_version=1,
             config=stack,
         )
-        db.add(row)
-        db.flush()
+        if _insert_or_lose_race(db, candidate):
+            return candidate
+        return _find_or_create_stack(db, owner_id, stack)
     return row
 
 
@@ -66,7 +86,7 @@ def _find_or_create_rake(db: Session, owner_id: uuid.UUID | None, rake: dict[str
     owner_clause = RakeConfig.owner_id.is_(None) if owner_id is None else RakeConfig.owner_id == owner_id
     row = db.scalar(select(RakeConfig).where(owner_clause, RakeConfig.config == rake))
     if row is None:
-        row = RakeConfig(
+        candidate = RakeConfig(
             owner_id=owner_id,
             name=_rake_name(rake),
             percentage_bps=rake["percentage_bps"],
@@ -74,8 +94,9 @@ def _find_or_create_rake(db: Session, owner_id: uuid.UUID | None, rake: dict[str
             schema_version=1,
             config=rake,
         )
-        db.add(row)
-        db.flush()
+        if _insert_or_lose_race(db, candidate):
+            return candidate
+        return _find_or_create_rake(db, owner_id, rake)
     return row
 
 
@@ -104,13 +125,17 @@ def create_game_config(
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise ConflictError(f"A game configuration named '{name}' already exists") from exc
+        if _constraint_name(exc) == "uq_game_configs_owner_id_name":
+            raise ConflictError(f"A game configuration named '{name}' already exists") from exc
+        raise ConflictError(
+            f"The configuration violates a database constraint ({_constraint_name(exc)})"
+        ) from exc
     db.refresh(row)
     return row
 
 
 def list_game_configs(db: Session) -> list[GameConfig]:
-    return list(db.scalars(select(GameConfig).order_by(GameConfig.owner_id.is_not(None), GameConfig.name)))
+    return list(db.scalars(select(GameConfig).order_by(GameConfig.is_builtin.desc(), GameConfig.name)))
 
 
 def get_game_config(db: Session, config_id: uuid.UUID) -> GameConfig:
@@ -122,7 +147,7 @@ def get_game_config(db: Session, config_id: uuid.UUID) -> GameConfig:
 
 def delete_game_config(db: Session, config_id: uuid.UUID) -> None:
     row = get_game_config(db, config_id)
-    if row.owner_id is None and row.name.endswith("(default)"):
+    if row.is_builtin:
         raise ConflictError("The built-in default configuration cannot be deleted")
     db.delete(row)
     try:
