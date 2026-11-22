@@ -1,0 +1,19 @@
+[package]
+name = "solver-interface"
+description = "RiverLab solver contract: traits and validated configuration. Contains no solver."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+poker-core.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

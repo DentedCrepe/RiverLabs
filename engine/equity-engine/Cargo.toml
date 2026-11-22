@@ -1,0 +1,23 @@
+[package]
+name = "equity-engine"
+description = "RiverLab equity calculation by exact enumeration and seeded Monte Carlo."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+poker-core.workspace = true
+hand-evaluator.workspace = true
+range-engine.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

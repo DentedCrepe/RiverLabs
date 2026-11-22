@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1.16,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "riverlab-engine"
+version = "0.1.0"
+description = "Python bindings for the RiverLab Rust poker engine"
+requires-python = ">=3.12"
+
+[tool.maturin]
+module-name = "riverlab_engine"
+features = ["pyo3/extension-module"]
+python-source = "python"
