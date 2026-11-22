@@ -33,9 +33,11 @@ declares 3.10–3.14), `pokerkit` 0.7.8 (MIT, maintained), `treys` 0.1.8 (MIT, u
 ## Decisions (judgement)
 - **AGPL projects (b-inary, TexasSolver): reference for published algorithms only; no code.**
   AGPL would force release of the whole hosted service.
-- **ucsandman/postflop: strongest MIT candidate, reference only for now.** Single author, very
-  new, heads-up postflop only. Re-evaluate in Milestone 2/3; any reuse must keep the MIT notice
-  and pass our own validation harness.
+- **ucsandman/postflop: strongest MIT candidate.** Deep static audit in
+  [`solver-audit-ucsandman-postflop.md`](solver-audit-ucsandman-postflop.md): a sound DCFR core,
+  but it misreports exploitability under rake. Conditionally suitable as the first heads-up
+  postflop backend once its tests run, that defect is fixed, and it passes our validation
+  harness.
 - **Pokeria: reject as a source** (derivative; use upstream if anything).
 - **cRITlamb/poker_solver: reference only** (provenance risk).
 - **noambrown/poker_solver: reference only** — useful to cross-check CFR-variant results on
