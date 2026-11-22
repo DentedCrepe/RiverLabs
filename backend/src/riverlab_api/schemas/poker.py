@@ -1,4 +1,4 @@
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
@@ -77,7 +77,9 @@ class EquityResponse(StrictModel):
 
 class ReplayRequest(StrictModel):
     config: GameConfigDoc | None = None
-    stacks_mbb: list[int] | None = Field(default=None, min_length=3, max_length=6)
+    stacks_mbb: list[Annotated[int, Field(ge=1, le=1_000_000)]] | None = Field(
+        default=None, min_length=3, max_length=6, description="Per-seat stacks in mbb (at most 1000bb)"
+    )
     events: list[dict[str, Any]] = Field(max_length=500)
 
 

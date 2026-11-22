@@ -108,6 +108,12 @@ impl GameState {
                 _ if i == n - 2 => config.small_blind,
                 _ => Chips::ZERO,
             };
+            if stack > crate::stack::MAX_EFFECTIVE_STACK {
+                return Err(PokerError::InvalidConfig(format!(
+                    "{position} stack {stack} exceeds the maximum of {}",
+                    crate::stack::MAX_EFFECTIVE_STACK
+                )));
+            }
             if stack <= config.ante + blind {
                 return Err(PokerError::InvalidConfig(format!(
                     "{position} stack {stack} cannot cover ante and blind with chips behind"

@@ -110,9 +110,9 @@ riverlab_api/
 
 ## 6. Data model (PostgreSQL)
 
-Tables (Alembic migration `0001`): users, user_settings, game_configs (embeds stack + rake
-configuration columns as versioned JSONB documents validated by the engine), positions
-(reference data), ranges, range_combos, solver_configs, solver_jobs, solver_results,
+Tables (Alembic migration `0001`): users, user_settings, positions (reference data),
+stack_configs, rake_configs, game_configs (each holding an engine-validated JSONB document
+plus indexed scalar columns), ranges, range_combos, solver_configs, solver_jobs, solver_results,
 strategy_nodes, training_sessions, training_decisions, hand_histories, performance_stats,
 saved_solutions.
 

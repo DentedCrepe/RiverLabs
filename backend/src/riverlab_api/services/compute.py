@@ -85,7 +85,8 @@ class JobService:
         return job
 
     def list(self, limit: int = 50) -> list[SolverJob]:
-        return list(self.db.scalars(select(SolverJob).order_by(SolverJob.created_at.desc(), SolverJob.id).limit(limit)))
+        query = select(SolverJob).order_by(SolverJob.created_at.desc(), SolverJob.id).limit(limit)
+        return list(self.db.scalars(query))
 
     def cancel(self, job_id: uuid.UUID) -> SolverJob:
         job = self.get(job_id)

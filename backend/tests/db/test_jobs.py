@@ -68,7 +68,8 @@ def test_full_lifecycle(db: Session, spec: dict[str, Any]) -> None:
     assert svc.get(job.id).cancel_requested
     assert backend.cancelled == [job.id]
     done = svc.mark_finished(job.id, JobStatus.CANCELLED)
-    assert done.finished_at is not None and done.started_at is not None
+    assert done.finished_at is not None
+    assert done.started_at is not None
     with pytest.raises(ConflictError):
         svc.mark_running(job.id)
     with pytest.raises(ConflictError, match="already"):

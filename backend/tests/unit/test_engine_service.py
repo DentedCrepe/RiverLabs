@@ -64,7 +64,10 @@ def game_configs(draw: st.DrawFn) -> dict[str, object]:
             "percentage_bps": draw(st.integers(0, 12_000)),
             "cap": draw(st.none() | rake_amount),
             "min_pot": draw(st.none() | rake_amount),
-            "rounding": {"increment": draw(rake_amount), "mode": draw(st.sampled_from(["down", "nearest", "up"]))},
+            "rounding": {
+                "increment": draw(rake_amount),
+                "mode": draw(st.sampled_from(["down", "nearest", "up"])),
+            },
             "no_flop_no_drop": draw(st.booleans()),
             "allocation": draw(st.sampled_from(["proportional", "main_pot_first"])),
         },
@@ -89,7 +92,11 @@ def test_config_validation_is_idempotent_and_rake_is_bounded(
     try:
         canonical = engine.validate_game_config(cfg)
     except EngineValidationError as exc:
-        assert exc.message
+        message = exc.message
+    else:
+        message = None
+    if message is not None:
+        assert message, "rejections must explain themselves"
         return
     assert engine.validate_game_config(canonical) == canonical
     GameConfigDoc.model_validate(canonical)

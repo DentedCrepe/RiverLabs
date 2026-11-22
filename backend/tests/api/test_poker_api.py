@@ -58,7 +58,9 @@ def test_equity_refuses_unbounded_work(client: TestClient) -> None:
     r = client.post("/api/v1/equity", json={"ranges": ["22+,A2+,K2+", "22+,A2+,K2+"]})
     assert r.status_code == 422
     assert "Monte Carlo" in r.json()["error"]["message"]
-    r = client.post("/api/v1/equity", json={"ranges": ["AA", "KK"], "method": "monte_carlo", "iterations": 10**9})
+    r = client.post(
+        "/api/v1/equity", json={"ranges": ["AA", "KK"], "method": "monte_carlo", "iterations": 10**9}
+    )
     assert r.status_code == 422
 
 
@@ -114,7 +116,34 @@ def test_replay_full_hand_to_showdown(client: TestClient) -> None:
         ([{"type": "action", "action": {"type": "raise", "to": 1500}}], "raise to"),
     ],
 )
-def test_replay_rejects_illegal_events(client: TestClient, events: list[dict[str, object]], fragment: str) -> None:
+def test_replay_rejects_illegal_events(
+    client: TestClient, events: list[dict[str, object]], fragment: str
+) -> None:
     r = client.post("/api/v1/hands/replay", json={"events": events})
     assert r.status_code == 422
     assert fragment in r.json()["error"]["message"]
+
+
+def test_out_of_range_numbers_are_rejected_not_500(client: TestClient) -> None:
+    r = client.post("/api/v1/rake/calculate", json={"pot_mbb": 10**30, "saw_flop": True})
+    assert r.status_code == 422
+    r = client.post("/api/v1/hands/replay", json={"events": [], "stacks_mbb": [2**63] * 6})
+    assert r.status_code == 422
+    big_bet = [{"type": "action", "action": {"type": "raise", "to": 2**70}}]
+    r = client.post("/api/v1/hands/replay", json={"events": big_bet})
+    assert r.status_code == 422
+
+
+def test_engine_panics_become_structured_500(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    from riverlab_api.services import engine
+
+    class PanicException(BaseException):
+        pass
+
+    def boom(*_: object) -> str:
+        raise PanicException("index out of bounds")
+
+    monkeypatch.setattr(engine._engine, "evaluate_hand", boom)
+    r = client.post("/api/v1/hands/evaluate", json={"cards": "AsKsQsJsTs"})
+    assert r.status_code == 500
+    assert r.json()["error"]["code"] == "engine_internal_error"

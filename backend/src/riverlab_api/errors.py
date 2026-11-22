@@ -24,6 +24,13 @@ class EngineValidationError(ApiError):
     code = "engine_validation_error"
 
 
+class EngineInternalError(ApiError):
+    """The engine panicked: an engine bug, never a user error."""
+
+    status_code = 500
+    code = "engine_internal_error"
+
+
 class NotFoundError(ApiError):
     status_code = 404
     code = "not_found"

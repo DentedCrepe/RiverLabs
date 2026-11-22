@@ -5,12 +5,15 @@ EngineValidationError (HTTP 422) with the engine's message.
 """
 
 import json
+import logging
 from collections.abc import Callable
 from typing import Any, Literal, TypeVar
 
 import riverlab_engine as _engine
 
-from riverlab_api.errors import EngineValidationError
+from riverlab_api.errors import EngineInternalError, EngineValidationError
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
@@ -20,6 +23,15 @@ def _call(fn: Callable[..., str], *args: Any, **kwargs: Any) -> Any:
         raw = fn(*args, **kwargs)
     except ValueError as exc:
         raise EngineValidationError(str(exc)) from exc
+    except OverflowError as exc:
+        raise EngineValidationError(f"Number out of range: {exc}") from exc
+    except BaseException as exc:
+        # A Rust panic arrives as pyo3's PanicException (a BaseException). It indicates an
+        # engine bug: report it explicitly instead of letting it escape as an opaque failure.
+        if type(exc).__name__ == "PanicException":
+            logger.exception("Engine panic in %s", getattr(fn, "__name__", fn))
+            raise EngineInternalError("The poker engine failed unexpectedly; this is a bug") from exc
+        raise
     return json.loads(raw)
 
 

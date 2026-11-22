@@ -292,6 +292,14 @@ fn hole_and_board_cards_cannot_collide() {
 }
 
 #[test]
+fn per_seat_stacks_are_bounded() {
+    let cfg = GameConfig { players: 3, ..no_rake() };
+    assert!(GameState::with_stacks(cfg.clone(), &[bb(1000.0), bb(50.0), bb(50.0)]).is_ok());
+    assert!(GameState::with_stacks(cfg.clone(), &[Chips(1_000_001), bb(50.0), bb(50.0)]).is_err());
+    assert!(GameState::with_stacks(cfg, &[bb(50.0), bb(50.0)]).is_err());
+}
+
+#[test]
 fn settlement_requires_values_for_live_players() {
     let cfg = GameConfig { players: 3, ..no_rake() };
     let mut g = GameState::new(cfg).unwrap();

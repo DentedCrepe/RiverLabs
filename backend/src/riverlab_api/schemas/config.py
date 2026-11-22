@@ -8,7 +8,9 @@ from pydantic import Field
 
 from riverlab_api.schemas.common import StrictModel
 
-Mbb = Annotated[int, Field(ge=0, description="Milli-big-blinds (1bb = 1000)")]
+# Upper bound keeps every amount far inside the engine's u64 arithmetic (10^12 mbb = 10^9 bb).
+MAX_MBB = 10**12
+Mbb = Annotated[int, Field(ge=0, le=MAX_MBB, description="Milli-big-blinds (1bb = 1000)")]
 
 
 class RakeAmountBigBlinds(StrictModel):
@@ -18,7 +20,7 @@ class RakeAmountBigBlinds(StrictModel):
 
 class RakeAmountCurrency(StrictModel):
     unit: Literal["currency"]
-    minor_units: int = Field(ge=0, description="Currency minor units, e.g. cents")
+    minor_units: int = Field(ge=0, le=MAX_MBB, description="Currency minor units, e.g. cents")
 
 
 RakeAmount = Annotated[RakeAmountBigBlinds | RakeAmountCurrency, Field(discriminator="unit")]
@@ -44,7 +46,7 @@ class StackConfigDoc(StrictModel):
 
 class StakeDoc(StrictModel):
     currency: str = Field(min_length=3, max_length=3)
-    big_blind_minor_units: int = Field(gt=0)
+    big_blind_minor_units: int = Field(gt=0, le=MAX_MBB)
 
 
 class GameConfigDoc(StrictModel):

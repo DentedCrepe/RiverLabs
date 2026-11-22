@@ -36,7 +36,9 @@ def test_seeded_default_config_is_the_engine_default(db: Session) -> None:
     row = db.scalars(select(GameConfig).where(GameConfig.name == "6-max 100bb (default)")).one()
     assert row.config == engine.default_game_config()
     assert row.rake_config.config == engine.default_game_config()["rake"]
-    presets = sorted(db.scalars(select(StackConfig.effective_stack_mbb).where(StackConfig.preset.is_not(None))))
+    presets = sorted(
+        db.scalars(select(StackConfig.effective_stack_mbb).where(StackConfig.preset.is_not(None)))
+    )
     assert presets == [p["mbb"] for p in engine.stack_presets()["presets"]]
 
 
@@ -47,6 +49,8 @@ def test_destructive_downgrade_requires_confirmation(db_engine: Engine) -> None:
     from alembic.config import Config
 
     cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
-    cfg.cmd_opts = type("Opts", (), {"x": [f"db_url={db_engine.url.render_as_string(hide_password=False)}"]})()  # type: ignore[assignment]
+    cfg.cmd_opts = type(
+        "Opts", (), {"x": [f"db_url={db_engine.url.render_as_string(hide_password=False)}"]}
+    )()  # type: ignore[assignment]
     with pytest.raises(RuntimeError, match="Refusing to drop"):
         command.downgrade(cfg, "base")
