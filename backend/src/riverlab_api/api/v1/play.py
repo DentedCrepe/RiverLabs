@@ -85,6 +85,14 @@ def hands(session_id: uuid.UUID, db: DbSession) -> list[dict[str, Any]]:
     return play.require().records(db, session_id)
 
 
+@router.get("/sessions/{session_id}/hands/{hand_no}/spot")
+def spot(
+    session_id: uuid.UUID, hand_no: int, db: DbSession, decision: Annotated[int, Query(ge=0, le=100)]
+) -> dict[str, Any]:
+    """A postflop solve spec for one of your heads-up decisions after the flop (SpotExport)."""
+    return play.require().spot(db, session_id, hand_no, decision)
+
+
 @router.delete("/sessions/{session_id}", status_code=204)
 def delete_session(session_id: uuid.UUID, db: DbSession) -> Response:
     play.require().delete(db, session_id)

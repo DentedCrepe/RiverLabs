@@ -54,6 +54,8 @@ struct Hand {
     /// When you are to act: your equity against the live bots' tracked ranges, and the equity
     /// the price requires (if facing a bet).
     hero_odds: Option<HeroOdds>,
+    /// Your range at the flop in the bots' preflop model (for "solve this spot").
+    hero_range: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -290,6 +292,7 @@ impl Session {
             record,
             decisions: 0,
             hero_odds: None,
+            hero_range: None,
         });
         self.hand_no += 1;
         self.run()
@@ -358,6 +361,9 @@ impl Session {
                             street: street_name(hand.state.street()).into(),
                             board: hand.state.board().cards().iter().map(|c| c.to_string()).collect(),
                         });
+                    }
+                    if street == Street::Flop {
+                        hand.hero_range = hero_model_range(hand);
                     }
                     let k = if street == Street::Flop { 3 } else { 1 };
                     let cards: Vec<Card> = (0..k).map(|_| hand.deck.pop().expect("deck")).collect();
@@ -703,7 +709,17 @@ fn hero_decision(hand: &mut Hand, seat: usize, action: Action) -> HeroDecision {
         model: model_check,
         all_in_call: legal.and_then(|l| l.call).is_some_and(|c| c == state.players()[seat].stack),
         feedback: None,
+        spot: crate::spot::capture(state, seat, action, |k| hand.ranges[k].clone(), hand.hero_range.clone()),
     }
+}
+
+/// Your range when the flop is dealt, from the preflop model's node (`None` off the model tree).
+fn hero_model_range(hand: &Hand) -> Option<String> {
+    let node = hand.model.as_ref()?.node(hand.model_path.as_ref()?)?;
+    let hero = hand.seat_player.iter().position(|&p| p == 0)?;
+    let pos = hand.state.players()[hero].position.short_name();
+    let seat = node.ranges.iter().find(|r| r.position == pos)?;
+    crate::spot::class_notation(seat.classes.iter().map(|c| (c.label.as_str(), c.frequencies[0])))
 }
 
 /// Your equity against every live opponent's tracked range (Monte Carlo, seeded).

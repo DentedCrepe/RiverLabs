@@ -257,6 +257,7 @@ mod tests {
             }),
             all_in_call: false,
             feedback: None,
+            spot: None,
         }
     }
 

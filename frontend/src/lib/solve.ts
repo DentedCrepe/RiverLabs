@@ -3,7 +3,7 @@
  * check (board, ranges, tree, rake) happens in the engine.
  */
 import type { GameConfig } from "./types";
-import { bbToMbb, parseScaled } from "./units";
+import { bbToMbb, formatBb, parseScaled } from "./units";
 
 export const STREETS = ["flop", "turn", "river"] as const;
 export type Street = (typeof STREETS)[number];
@@ -139,3 +139,79 @@ export const DEFAULT_FORM: SolveForm = {
   iterations: "300",
   targetPct: "0.5",
 };
+
+/** The engine's SolveSpec, as far as the form needs it (e.g. a spot exported from a hand). */
+export interface SolveSpecIn {
+  game: GameConfig;
+  ranges: string[];
+  board: string[];
+  starting_pot_mbb: number;
+  effective_stack_mbb: number;
+  tree: {
+    oop: { bet_pct_pot: number[][]; raise_pct_pot: number[][] };
+    ip: { bet_pct_pot: number[][]; raise_pct_pot: number[][] };
+    max_raises_per_street: number;
+    all_in_threshold_pct_stack: number;
+    add_all_in: boolean;
+  };
+  solver: { stopping: { max_iterations: number; target_exploitability_pct_pot: number | null } };
+}
+
+/** Fills the form from a spec (the inverse of buildSolveSpec for the fields it uses). */
+export function formFromSpec(spec: SolveSpecIn): SolveForm {
+  const sizing = (p: SolveSpecIn["tree"]["oop"]): PlayerSizingForm => {
+    const join = (v: number[][], i: number) => (v[i] ?? []).join(", ");
+    return {
+      bet: { flop: join(p.bet_pct_pot, 0), turn: join(p.bet_pct_pot, 1), river: join(p.bet_pct_pot, 2) },
+      raise: { flop: join(p.raise_pct_pot, 0), turn: join(p.raise_pct_pot, 1), river: join(p.raise_pct_pot, 2) },
+    };
+  };
+  const target = spec.solver.stopping.target_exploitability_pct_pot;
+  return {
+    board: spec.board.join(" "),
+    oopRange: spec.ranges[0],
+    ipRange: spec.ranges[1],
+    potBb: formatBb(spec.starting_pot_mbb),
+    stackBb: formatBb(spec.effective_stack_mbb),
+    oop: sizing(spec.tree.oop),
+    ip: sizing(spec.tree.ip),
+    maxRaises: String(spec.tree.max_raises_per_street),
+    allInThresholdPct: String(spec.tree.all_in_threshold_pct_stack),
+    addAllIn: spec.tree.add_all_in,
+    iterations: String(spec.solver.stopping.max_iterations),
+    targetPct: target === null ? "" : String(target),
+  };
+}
+
+/** One step of a line to follow in a solved tree (engine play_engine::spot::ExportStep). */
+export interface LineStep {
+  player: number;
+  kind: string;
+  to_mbb: number;
+  all_in: boolean;
+}
+
+/**
+ * The solver action at a node that matches a step of a real line: the same kind of action
+ * ("fold", "check", "call", "bet", "raise"), and among those the nearest amount. Labels are the
+ * engine's ("bet 6.6bb", "raise to 20bb"). `null` if no action of that kind exists.
+ */
+export function matchAction(labels: string[], step: LineStep): number | null {
+  const kind = (l: string) => (l.startsWith("raise") ? "raise" : l.split(" ")[0]);
+  const amount = (l: string) => {
+    const m = /([\d.]+)bb$/.exec(l);
+    return m ? Number(m[1]) * 1000 : null;
+  };
+  let best: number | null = null;
+  let bestDist = Infinity;
+  labels.forEach((l, i) => {
+    if (kind(l) !== step.kind) return;
+    const a = amount(l);
+    const d = a === null ? 0 : Math.abs(a - step.to_mbb);
+    if (d < bestDist) {
+      best = i;
+      bestDist = d;
+    }
+  });
+  return best;
+}

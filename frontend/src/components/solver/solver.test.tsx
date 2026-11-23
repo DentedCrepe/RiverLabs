@@ -140,3 +140,47 @@ describe("NodeBrowser", () => {
     expect(await screen.findByText(/OOP to act/)).toBeInTheDocument();
   });
 });
+
+describe("NodeBrowser following a real line", () => {
+  it("walks to your decision and shows the solver mix for your hand", async () => {
+    const { NodeBrowser } = await import("./NodeBrowser");
+    const base = {
+      kind: "decision",
+      street: "flop",
+      board: ["Ks", "7d", "2c"],
+      put_mbb: [2500, 2500],
+      cards: [],
+      reach_fraction: [1, 1],
+    };
+    const nodes: Record<string, object> = {
+      "": { ...base, player: 0, actions: ["check", "bet 1.6bb", "bet 3.8bb"], by_class: [] },
+      // The bot bet 3.75bb (75%): the nearest bet in the tree is 3.8bb.
+      a2: {
+        ...base,
+        player: 1,
+        actions: ["fold", "call 3.8bb", "raise to 12.5bb"],
+        by_class: [{ label: "AKo", row: 0, col: 1, weight: 12, frequencies: [0.1, 0.6, 0.3] }],
+      },
+    };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const path = new URL(String(input), "http://x").searchParams.get("path") ?? "";
+      return Response.json({ ...nodes[path], path });
+    });
+    render(
+      <NodeBrowser
+        jobId="j2"
+        follow={{
+          line: [{ player: 0, kind: "bet", to_mbb: 3750, all_in: false }],
+          heroPlayer: 1,
+          heroAction: { player: 1, kind: "call", to_mbb: 3750, all_in: false },
+          heroClass: "AKo",
+          heroCards: ["As", "Kd"],
+        }}
+      />,
+    );
+    expect(await screen.findByText(/Your decision in the hand/)).toBeInTheDocument();
+    expect(screen.getByText(/solver mix for AKo/)).toBeInTheDocument();
+    expect(screen.getByText("call 3.8bb ← you").parentElement).toHaveTextContent("60.0%");
+    expect(screen.getByRole("button", { name: "bet 3.8bb" })).toBeInTheDocument();
+  });
+});

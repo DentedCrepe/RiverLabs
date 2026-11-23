@@ -4,7 +4,7 @@ import { Play } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import { DEFAULT_FORM, STREETS, type SolveForm as Form, type Street, buildSolveSpec } from "@/lib/solve";
-import type { SavedGameConfig, SolverJob } from "@/lib/types";
+import type { GameConfig, SavedGameConfig, SolverJob } from "@/lib/types";
 import { useApi } from "@/lib/useApi";
 import { formatBb, formatBps } from "@/lib/units";
 import { Button } from "@/components/ui/Button";
@@ -55,16 +55,29 @@ function SizeGrid({
   );
 }
 
-export function SolveForm({ onSubmitted }: { onSubmitted: (job: SolverJob) => void }) {
+/**
+ * `initial` pre-fills the form (e.g. a spot from a hand you played); `game` then fixes the game
+ * configuration (that table's rake) instead of offering the saved ones.
+ */
+export function SolveForm({
+  onSubmitted,
+  initial,
+  game,
+}: {
+  onSubmitted: (job: SolverJob) => void;
+  initial?: Form;
+  game?: GameConfig;
+}) {
   const configs = useApi<SavedGameConfig[]>("/api/v1/game-configs");
-  const [form, setForm] = useState<Form>(DEFAULT_FORM);
+  const [form, setForm] = useState<Form>(initial ?? DEFAULT_FORM);
   const [configId, setConfigId] = useState<string>("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [apiError, setApiError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const selected =
+  const saved =
     configs.data?.find((c) => c.id === configId) ?? configs.data?.find((c) => c.builtin) ?? configs.data?.[0];
+  const selected = game ? { id: "table", name: "your table", config: game } : saved;
 
   const set = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));
   const setSize = (who: "oop" | "ip") => (kind: "bet" | "raise", street: Street, value: string) =>
@@ -111,17 +124,23 @@ export function SolveForm({ onSubmitted }: { onSubmitted: (job: SolverJob) => vo
   return (
     <form onSubmit={submit} className="flex flex-col gap-5" aria-label="New postflop solve">
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Game configuration (rake)">
-          {(id) => (
-            <Select id={id} value={selected?.id ?? ""} onChange={(e) => setConfigId(e.target.value)}>
-              {configs.data?.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} — {formatBps(c.config.rake.percentage_bps)}% rake
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
+        {game ? (
+          <Field label="Game configuration (rake)">
+            {(id) => <TextInput id={id} readOnly value={`Your table — ${formatBps(game.rake.percentage_bps)}% rake`} />}
+          </Field>
+        ) : (
+          <Field label="Game configuration (rake)">
+            {(id) => (
+              <Select id={id} value={selected?.id ?? ""} onChange={(e) => setConfigId(e.target.value)}>
+                {configs.data?.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} — {formatBps(c.config.rake.percentage_bps)}% rake
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        )}
         {text("Board (flop, turn or river)", "board")}
         {text("OOP range", "oopRange", undefined, true)}
         {text("IP range", "ipRange", undefined, true)}

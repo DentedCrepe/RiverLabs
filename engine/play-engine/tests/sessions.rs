@@ -152,3 +152,73 @@ fn every_decision_gets_feedback_and_reveal_is_flagged() {
     let report = play_engine::report::build(s.records(), false);
     assert!(report.caveats.iter().any(|c| c.contains("revealed")));
 }
+
+/// Index of the solver action matching `step` (same kind, nearest amount).
+fn matching_action(labels: &[String], step: &play_engine::spot::ExportStep) -> Option<usize> {
+    let amount = |l: &str| l.rsplit(' ').next().and_then(|a| a.strip_suffix("bb")).and_then(|a| a.parse::<f64>().ok());
+    fn kind(l: &str) -> &str {
+        if l.starts_with("raise") { "raise" } else { l.split(' ').next().unwrap_or("") }
+    }
+    labels
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| kind(l) == step.kind)
+        .min_by(|(_, a), (_, b)| {
+            let d = |l: &str| amount(l).map_or(0.0, |x| (x * 1000.0 - step.to_mbb as f64).abs());
+            d(a).total_cmp(&d(b))
+        })
+        .map(|(i, _)| i)
+}
+
+#[test]
+fn heads_up_river_spot_exports_a_solvable_tree_containing_the_line() {
+    let cfg = TableConfig {
+        format: Format::Cash { game: GameConfig { players: 2, ..GameConfig::default() }, auto_rebuy: true },
+        opponents: vec![Difficulty::Medium],
+        seed: 11,
+    };
+    let models = cache();
+    let mut s = Session::new(cfg.clone()).unwrap();
+    // A calling station reaches the river often; bet the river sometimes so lines vary.
+    let mut found = None;
+    for _ in 0..200 {
+        s.start_hand(&models).unwrap();
+        while s.status() == SessionStatus::AwaitingHero {
+            let v = s.view();
+            let l = v.legal.clone().unwrap();
+            let a = match (v.board.len(), l.bet) {
+                (5, Some((min, _))) => Action::Bet { to: poker_core::Chips(min.max(v.pot / 2)) },
+                _ if l.check => Action::Check,
+                _ => Action::Call,
+            };
+            s.act(a).unwrap();
+        }
+        let r = s.records().last().unwrap();
+        if let Some(i) = r.hero_decisions.iter().position(|d| d.spot.as_ref().is_some_and(|p| p.street == "river")) {
+            found = Some((r.clone(), i));
+            break;
+        }
+    }
+    let (record, i) = found.expect("a heads-up river decision within 200 hands");
+    let spot = record.hero_decisions[i].spot.clone().unwrap();
+    assert!(spot.hero_range.is_some(), "the hand stayed in the preflop model");
+    let mut ex = play_engine::spot::export(&record, i, &cfg, 2 << 30).unwrap();
+    assert_eq!(ex.spec.board.cards().len(), 5);
+    assert_eq!(ex.line.len(), spot.line.len());
+    assert!(ex.notes.iter().any(|n| n.contains("preflop model")));
+    // Every decision before ours was taken, so the line's sizes are in the tree.
+    ex.spec.solver.stopping.max_iterations = 20;
+    let solved = solver_gtopen::solve(&ex.spec, &std::sync::atomic::AtomicBool::new(false), |_| {}).unwrap();
+    let mut path = Vec::new();
+    for step in &ex.line {
+        let node = solved.node_view(&path).unwrap();
+        assert_eq!(node.player, Some(step.player as usize));
+        let a = matching_action(&node.actions, step).unwrap_or_else(|| panic!("{step:?} in {:?}", node.actions));
+        path.push(solver_gtopen::PathStep::Action(a));
+    }
+    let node = solved.node_view(&path).unwrap();
+    assert_eq!(node.kind, "decision");
+    assert_eq!(node.player, Some(ex.hero_player as usize));
+    assert!(matching_action(&node.actions, &ex.hero_action).is_some(), "{:?}", node.actions);
+    assert!(node.by_class.iter().any(|c| c.label == ex.hero_class), "your hand is in the solved range");
+}

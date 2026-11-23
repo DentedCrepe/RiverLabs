@@ -8,7 +8,7 @@ import { formatBb } from "@/lib/units";
 import { InfoTip } from "@/components/ui/InfoTip";
 import { ErrorState, LoadingState } from "@/components/ui/States";
 import { CardRow } from "@/components/poker/CardText";
-import { NodeBrowser } from "./NodeBrowser";
+import { type Follow, NodeBrowser } from "./NodeBrowser";
 import { StrategyMatrix } from "./StrategyMatrix";
 
 const bb = (mbb: number) => `${mbb >= 0 ? "+" : "−"}${formatBb(Math.round(Math.abs(mbb)))}bb`;
@@ -26,7 +26,7 @@ export function Metric({ label, value, sub, info }: { label: string; value: stri
   );
 }
 
-export function ResultView({ jobId }: { jobId: string }) {
+export function ResultView({ jobId, follow }: { jobId: string; follow?: Follow }) {
   const { data: r, error, loading } = useApi<SolverResult>(`/api/v1/solver/jobs/${jobId}/result`);
   if (error) return <ErrorState message={error.message} />;
   if (loading || !r) return <LoadingState label="Loading result…" />;
@@ -81,7 +81,7 @@ export function ResultView({ jobId }: { jobId: string }) {
       {r.tree_available ? (
         <div className="flex flex-col gap-2">
           <h3 className="text-sm font-semibold text-fg">Strategy tree</h3>
-          <NodeBrowser jobId={jobId} />
+          <NodeBrowser jobId={jobId} follow={follow} />
         </div>
       ) : (
         r.root && (

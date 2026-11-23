@@ -299,6 +299,14 @@ pub fn solve(
     solve_with_limits(spec, Limits::default(), cancel, on_progress)
 }
 
+/// The memory a solve of `spec` needs (the tree is built, no solver memory is allocated).
+pub fn memory_needed(spec: &SolveSpec, max_nodes: usize) -> Result<u64, AdapterError> {
+    let prepared = prepare(spec)?;
+    let spot = Spot::new_with_limit(prepared.config, Some(max_nodes)).map_err(AdapterError::Backend)?;
+    let ds = spot.tree.data_size;
+    Ok(8 * (ds[0] + ds[1]) + spot.tree_bytes())
+}
+
 /// Like [`solve`], refusing spots that exceed `limits` before allocating solver memory.
 pub fn solve_with_limits(
     spec: &SolveSpec,

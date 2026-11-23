@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_FORM, buildSolveSpec, parseSizes } from "./solve";
+import { DEFAULT_FORM, type SolveSpecIn, buildSolveSpec, formFromSpec, matchAction, parseSizes } from "./solve";
 import type { GameConfig } from "./types";
 
 const GAME = { schema_version: 1, players: 6 } as unknown as GameConfig;
@@ -45,5 +45,29 @@ describe("solve spec builder", () => {
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(Object.keys(r.errors).sort()).toEqual(["board", "oop.bet.flop", "potBb"]);
+  });
+});
+
+describe("spots from played hands", () => {
+  it("fills the form from a spec and rebuilds the same tree", () => {
+    const r = buildSolveSpec({ ...DEFAULT_FORM, board: "Ks7d2c8h" }, GAME);
+    if (!r.ok) throw new Error("default form is valid");
+    const spec = r.spec as unknown as SolveSpecIn;
+    const form = formFromSpec(spec);
+    expect(form.board).toBe("Ks 7d 2c 8h");
+    expect(form.potBb).toBe("6.5");
+    expect(form.ip.bet.turn).toBe("75");
+    expect(form.ip.bet.flop).toBe("");
+    const again = buildSolveSpec(form, GAME);
+    expect(again.ok && again.spec.tree).toEqual(r.spec.tree);
+    expect(again.ok && again.spec.starting_pot_mbb).toBe(6500);
+  });
+
+  it("matches a real action to the nearest solver action of the same kind", () => {
+    const labels = ["fold", "call 3.8bb", "raise to 9bb", "raise to 20bb"];
+    expect(matchAction(labels, { player: 0, kind: "raise", to_mbb: 11_000, all_in: false })).toBe(2);
+    expect(matchAction(labels, { player: 0, kind: "raise", to_mbb: 18_000, all_in: false })).toBe(3);
+    expect(matchAction(labels, { player: 0, kind: "call", to_mbb: 3750, all_in: false })).toBe(1);
+    expect(matchAction(labels, { player: 0, kind: "check", to_mbb: 0, all_in: false })).toBeNull();
   });
 });
