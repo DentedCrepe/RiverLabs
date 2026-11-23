@@ -95,7 +95,9 @@ give 551.6077 / 551.6079 / 551.6078.
   aggressor uses `donk` sizes, which default to empty. A 2026-09 fix stopped this applying after
   check-through streets, but it still applies after bet/call. The adapter must set donk sizes.
 - **`unsafe` code:** about 90 sites outside GPU code (cfr.rs 24, multiway 20, preflop 16,
-  store 10, …), the same shared-arena pattern as the other two. Not yet run under Miri.
+  store 10, …), the same shared-arena pattern as the other two. **Miri found undefined
+  behaviour in `ArenaBuf`, which every solve uses.** There is a one-line fix; with it, the
+  postflop paths pass. See `solver-validation.md` ("Miri").
 - **Preflop is a model, not a full solve.** In its own words
   (`crates/solver/src/preflop/mod.rs`): it solves the preflop tree "with modeled continuation
   payoffs, not a full postflop game". Heads-up leaves use an equity table with optional learned

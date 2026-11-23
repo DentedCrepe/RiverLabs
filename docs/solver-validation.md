@@ -99,11 +99,46 @@ Every solve in the app is now re-checked automatically. The check is skipped, wi
 note, only when the exported tree (about the size of GTOpen's own arenas) would not fit in the
 memory limit alongside the solve.
 
+## Miri (undefined-behaviour check) on GTOpen
+Run on 2026-11-23 with nightly Miri; reproduce with `tools/solver-audit/miri/run-miri.sh`.
+The test (`tools/solver-audit/miri/miri_smoke.rs`) covers the GTOpen paths RiverLab uses, on
+games small enough for Miri:
+- a raked river solve with DCFR;
+- a turn solve with chance nodes and CFR+;
+- exploitability, and save and load.
+
+GTOpen's mimalloc allocator is switched off under Miri only, because Miri cannot run C code.
+
+| Run | Result |
+|---|---|
+| As pinned, Stacked Borrows | ❌ Undefined behaviour in `ArenaBuf` (`crates/solver/src/store.rs`) |
+| As pinned, Tree Borrows | ❌ The same `ArenaBuf` report |
+| `ArenaBuf` fixed, Tree Borrows, river + turn | ✅ No undefined behaviour |
+| `ArenaBuf` fixed, Stacked Borrows, river | ✅ No undefined behaviour |
+| `ArenaBuf` fixed, Stacked Borrows, turn | Stops in `crossbeam-epoch` 0.9.18 (rayon's dependency), not in GTOpen |
+| Preflop (heads-up push/fold, blocker model) | **Not completed.** Stopped after the 2-hour limit with no error reported up to then |
+
+**The finding.** `ArenaBuf::new` takes a raw pointer into a `Box<[T]>` and then moves the `Box`
+into the struct. Moving a `Box` asserts unique ownership, which invalidates the earlier pointer
+under both of Rust's proposed aliasing models. Every later write through that pointer (all of
+CFR's regret and strategy storage) is therefore undefined behaviour. The fix,
+`tools/solver-audit/miri/arenabuf-provenance.patch`, keeps only the pointer from
+`Box::into_raw` and frees it in `Drop`; GTOpen's own `store` tests pass with it.
+
+**Practical risk.** Today's compiler produced correct results in every check on this page, so
+the bug has not shown up as wrong output. It could start to on a future compiler. Options: send
+the patch upstream, or build from a patched fork pinned the same way.
+
+One of GTOpen's storage unit tests (`i16_roundtrip_accuracy`) also fails under Miri. Miri
+deliberately perturbs the results of functions such as `sin`, and the test's tolerance is
+tighter than one float step. That is a test tolerance issue, not a memory-safety one.
+
 ## What is not validated yet
 - GTOpen's preflop leaves that continue postflop (modelled values; see `solver-comparison.md`).
   Push/fold (all-in) is validated above.
 - Kuhn/Leduc-style toy games for future in-house CFR variants.
-- Miri on GTOpen's `unsafe` code.
+- Miri on GTOpen's preflop solver (the run did not finish; see "Miri" above), and on its
+  multithreaded paths beyond the `crossbeam-epoch` report.
 
 The app labels results accordingly: postflop results show their exploitability (re-checked
 independently), and preflop results beyond heads-up push/fold carry an "Approximate model"

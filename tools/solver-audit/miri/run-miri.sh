@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs GTOpen's solver paths that RiverLab uses under Miri (Rust's undefined-behaviour checker).
 # See docs/solver-validation.md ("Miri"). Needs: rustup toolchain install nightly --component miri,rust-src
-# Takes ~1 h on 4 cores. Works on a scratch copy of the pinned commit; nothing here ships.
+# Postflop steps take ~1 h on 4 cores; the preflop test takes several hours more. Works on a scratch copy of the pinned commit; nothing here ships.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 [[ -d vendor/gtopen ]] || git clone -q https://github.com/MatthewPDingle/GTOpen.git vendor/gtopen
@@ -15,11 +15,11 @@ F="-Zmiri-disable-isolation -Zmiri-ignore-leaks" # rayon's global pool is never 
 
 echo "== 1. As pinned, Stacked Borrows, river (RiverLab saw: UB report in ArenaBuf::new/slice)"
 MIRIFLAGS="$F" cargo +nightly miri test --test miri_smoke river || true
-echo "== 2. As pinned, Tree Borrows, river"
+echo "== 2. As pinned, Tree Borrows, river (RiverLab saw: the same ArenaBuf report)"
 MIRIFLAGS="$F -Zmiri-tree-borrows" cargo +nightly miri test --test miri_smoke river || true
 
 git -C ../.. apply ../../miri/arenabuf-provenance.patch
-echo "== 3. ArenaBuf fixed, Tree Borrows, all tests (RiverLab saw: all pass)"
+echo "== 3. ArenaBuf fixed, Tree Borrows (river and turn pass; the preflop test runs for hours: it did not finish in 2 h)"
 MIRIFLAGS="$F -Zmiri-tree-borrows" cargo +nightly miri test --test miri_smoke
 echo "== 4. ArenaBuf fixed, Stacked Borrows, river (passes; the parallel turn test trips a"
 echo "      Stacked Borrows report inside crossbeam-epoch, rayon's dependency, not GTOpen)"
