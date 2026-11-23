@@ -28,3 +28,11 @@ After running both candidates and checking them independently (`docs/solver-comp
 - **ucsandman/postflop** (MIT) is kept as an independent cross-check in the validation harness.
 - The original rule stands: no solver output is shown in the app until our Milestone 2
   validation (independent best response, toy games, exploitability) passes.
+
+## Amendment (2026-11-23, later): GTOpen audited
+GTOpen (Apache-2.0) was audited and checked with the same harness. It matches both other
+solvers and the hand-derived equilibrium, including under rake, and is the only candidate with
+a (modelled) six-max preflop solver. **Recommendation: GTOpen as the primary backend**, with
+b-inary/postflop-solver and ucsandman/postflop as independent cross-checks in validation
+tooling. This removes the need to license RiverLabs under AGPL. GTOpen's preflop output must
+be labelled an approximate model until validated. See `docs/solver-comparison.md`.
