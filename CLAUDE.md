@@ -15,6 +15,9 @@ RiverLab is a six-max no-limit hold'em theory, solving and training platform. Re
   every preflop result must say so (`ValidatedScope` in `engine/solver-gtopen/src/preflop.rs`).
   Only heads-up push/fold without ante or rake is validated; never widen that label without
   new validation in `docs/solver-validation.md`.
+- **Bots are practice opponents, not solvers.** Their rules and every grading threshold are
+  documented in `docs/play.md`; keep that file in sync, and never grade the user against
+  invented "typical player" numbers.
 - **Changing the GTOpen commit** requires re-running `tools/solver-audit/run.sh` and the
   validation examples (`docs/solver-validation.md`) before updating the pin.
 - **Poker mathematics lives only in `engine/` (Rust).** The backend calls it through
@@ -33,7 +36,8 @@ RiverLab is a six-max no-limit hold'em theory, solving and training platform. Re
 ```
 engine/    Rust workspace: poker-core, hand-evaluator, range-engine, equity-engine,
            solver-interface (traits/config), solver-validation (independent best response,
-           exact push/fold), solver-gtopen (GTOpen adapter), riverlab-py (PyO3 riverlab_engine)
+           exact push/fold), solver-gtopen (GTOpen adapter), play-engine (games against bots,
+           docs/play.md), riverlab-py (PyO3 riverlab_engine)
 backend/   FastAPI (package riverlab_api), SQLAlchemy models, Alembic migrations, pytest
 frontend/  Next.js 16 App Router, React 19, Tailwind 4, Vitest
 tests/validation/  differential tests vs independent evaluators (phevaluator, pokerkit)

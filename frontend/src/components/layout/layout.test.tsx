@@ -9,7 +9,7 @@ describe("NavList", () => {
   it("renders all sections and marks the current page", () => {
     vi.mocked(usePathname).mockReturnValue("/solver");
     render(<NavList />);
-    expect(screen.getAllByRole("link")).toHaveLength(9);
+    expect(screen.getAllByRole("link")).toHaveLength(10);
     expect(screen.getByRole("link", { name: /solver/i })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: /dashboard/i })).not.toHaveAttribute("aria-current");
   });

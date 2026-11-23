@@ -10,7 +10,7 @@ from riverlab_api.api import health
 from riverlab_api.api.v1 import router as v1_router
 from riverlab_api.config import get_settings
 from riverlab_api.errors import install_error_handlers
-from riverlab_api.services import compute
+from riverlab_api.services import compute, play
 from riverlab_api.services.local_solver import BACKEND_NAME, LocalSolverBackend, fail_interrupted_jobs
 
 logger = logging.getLogger(__name__)
@@ -35,12 +35,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             factory, settings.solver_max_memory_mb, settings.solver_threads, settings.result_storage_dir
         )
         compute.registry.register(backend)
+        try:
+            with factory() as session:
+                n = play.fail_interrupted_games(session)
+            if n:
+                logger.warning("marked %d unfinished game(s) as interrupted", n)
+        except Exception:
+            logger.exception("could not check for interrupted games (database unavailable?)")
+        play.manager = play.PlayManager(
+            factory, settings.result_storage_dir, settings.solver_max_memory_mb, settings.solver_threads
+        )
     try:
         yield
     finally:
         if backend is not None:
             compute.registry.backends.remove(backend)
             backend.shutdown()
+        if play.manager is not None:
+            play.manager.shutdown()
+            play.manager = None
 
 
 def create_app() -> FastAPI:
@@ -49,7 +62,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="RiverLab API",
         version=__version__,
-        description="Poker theory and training platform API. Solver endpoints are interface-only.",
+        description="Poker theory, solving and training platform API.",
         docs_url=None if settings.env == "production" else "/docs",
         lifespan=lifespan,
     )

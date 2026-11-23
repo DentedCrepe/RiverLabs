@@ -1,9 +1,9 @@
 //! Six-max table positions.
 //!
 //! Positions are listed in preflop action order: UTG, HJ, CO, BTN, SB, BB. Short-handed
-//! tables (3–5 players) drop positions from the front (5-handed starts at HJ, 3-handed is
-//! BTN/SB/BB). Heads-up is not supported yet because its blind/action order differs
-//! (the button posts the small blind and acts first preflop, last postflop).
+//! tables drop positions from the front (5-handed starts at HJ, 3-handed is BTN/SB/BB).
+//! Heads-up is SB/BB: the small blind is also the button, so it acts first preflop and last
+//! on every later street.
 
 use crate::error::{PokerError, Result};
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,7 @@ pub enum Position {
     Bb,
 }
 
-pub const MIN_PLAYERS: usize = 3;
+pub const MIN_PLAYERS: usize = 2;
 pub const MAX_PLAYERS: usize = 6;
 
 impl Position {
@@ -40,8 +40,11 @@ impl Position {
     }
 
     /// Seat indices (into `for_players(n)`) in postflop action order: SB, BB, then the rest
-    /// in preflop order, ending with the button.
+    /// in preflop order, ending with the button. Heads-up, the big blind acts first.
     pub fn postflop_order(n: usize) -> Vec<usize> {
+        if n == 2 {
+            return vec![1, 0];
+        }
         let mut v = vec![n - 2, n - 1];
         v.extend(0..n - 2);
         v
@@ -106,7 +109,9 @@ mod tests {
     fn short_handed_tables_drop_early_positions() {
         assert_eq!(Position::for_players(3).unwrap(), &[Position::Btn, Position::Sb, Position::Bb]);
         assert_eq!(Position::for_players(5).unwrap()[0], Position::Hj);
-        assert!(Position::for_players(2).is_err());
+        assert_eq!(Position::for_players(2).unwrap(), &[Position::Sb, Position::Bb]);
+        assert_eq!(Position::postflop_order(2), vec![1, 0]);
+        assert!(Position::for_players(1).is_err());
         assert!(Position::for_players(7).is_err());
     }
 

@@ -17,6 +17,7 @@ hand-evaluator.workspace = true
 range-engine.workspace = true
 equity-engine.workspace = true
 solver-interface.workspace = true
+play-engine = { path = "../play-engine" }
 solver-gtopen = { path = "../solver-gtopen" }
 serde.workspace = true
 serde_json.workspace = true

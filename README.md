@@ -17,7 +17,7 @@ configurable.
 
 | Area | Status | Notes |
 |---|---|---|
-| Cards, deck, positions, game configuration | ✅ | 3–6 players, stack presets 20–200bb and custom depths (2–1000bb) |
+| Cards, deck, positions, game configuration | ✅ | 2–6 players, stack presets 20–200bb and custom depths (2–1000bb) |
 | Rake | ✅ | %, cap (bb or currency), minimum pot, rounding, no-flop-no-drop, side-pot allocation |
 | Betting engine | ✅ | Min-raise rules, short all-ins, uncalled bets, side pots, odd chips, settlement |
 | Seven-card evaluator | ✅ | Checked against all 133,784,560 seven-card hands plus two independent evaluators |
@@ -26,6 +26,7 @@ configurable.
 | Postflop solver | ✅ Heads-up | GTOpen (Apache-2.0, pinned) behind RiverLab's solver interface; local worker with queue, progress and cancel; results stored with provenance |
 | Preflop solver | ⚠️ Approximate model | GTOpen's preflop model for 2–6 players with RiverLab's blinds, ante, stack, rake and sizes; browsable tree. Heads-up push/fold is validated; everything else is labelled approximate |
 | Independent validation | ✅ | Best response and exploitability for river/turn/flop trees; exact heads-up push/fold (see `docs/solver-validation.md`) |
+| Play against bots | ⚠️ Approximate bots | Cash, fast-fold and sit & go tables of 2–6 seats; easy/medium/hard bots (preflop: GTOpen's model; postflop: documented rules); session report with stats and weaknesses, each measured against a stated reference (`docs/play.md`) |
 | Trainer, hand-history import, analytics, solution library | ⏳ Planned | See `docs/roadmap.md` |
 
 ## Architecture in one paragraph
@@ -112,12 +113,14 @@ defaults, and `docker compose` refuses to start without `POSTGRES_PASSWORD`.
 | `GET /solver/jobs/{id}/node?path=a0.a1.cAh` | Browse a saved tree: `a<action index>` / `c<dealt card>` steps |
 | `POST /solver/preflop/jobs`, `GET /solver/jobs/{id}/preflop`, `GET /solver/jobs/{id}/preflop/node?path=0.2` | Queue, read and browse preflop solves (approximate model); `GET /solver/jobs?kind=preflop` lists them |
 
+| `POST /play/sessions`, `GET /play/sessions[/{id}]`, `POST /play/sessions/{id}/next`, `POST /play/sessions/{id}/act`, `POST /play/sessions/{id}/leave`, `GET /play/sessions/{id}/report`, `GET /play/sessions/{id}/hands`, `DELETE /play/sessions/{id}` | Games against bots: create a table, deal, act, leave, report |
+
 Errors always use `{"error": {"code", "message", "details?"}}`.
 
 ## Repository layout
 ```
 engine/            Rust workspace (poker-core, hand-evaluator, range-engine, equity-engine,
-                   solver-interface, riverlab-py)
+                   solver-interface, solver-validation, solver-gtopen, play-engine, riverlab-py)
 backend/           FastAPI app, models, Alembic migrations, tests
 frontend/          Next.js app
 tests/validation/  Cross-implementation validation
@@ -129,7 +132,7 @@ docs/              Architecture, ADRs, rules, rake, evaluator, equity, roadmap, 
 ## Documentation
 - [Architecture](docs/architecture.md) · [Roadmap & risks](docs/roadmap.md) · [ADRs](docs/adr)
 - [Poker rules](docs/poker-rules.md) · [Rake](docs/rake.md) · [Hand evaluator](docs/hand-evaluator.md) · [Equity](docs/equity.md)
-- [Third-party solver audit](docs/solver-research.md)
+- [Third-party solver audit](docs/solver-research.md) · [Solver validation](docs/solver-validation.md) · [Play against bots](docs/play.md)
 
 ## Known limitations
 - Postflop solving is heads-up only. Preflop solving is an approximate model (see above), and
@@ -138,7 +141,6 @@ docs/              Architecture, ADRs, rules, rake, evaluator, equity, roadmap, 
   restart (they are marked failed).
 - The independent check is skipped (and says so) when it would not fit in the memory limit
   alongside the solve.
-- Heads-up tables are not supported by the betting engine yet.
 - There is no authentication. The API is for local, single-user use and must not be exposed
   publicly.
 - Rake caps that depend on the number of players are not modelled.

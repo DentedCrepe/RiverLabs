@@ -95,3 +95,8 @@ def test_preflop_jobs_validate_then_need_a_backend(client: TestClient) -> None:
     # A postflop spec is not a preflop spec.
     assert client.post("/api/v1/solver/preflop/jobs", json={"spec": {"bogus": 1}}).status_code == 422
     assert client.get("/api/v1/solver/jobs", params={"kind": "river"}).status_code == 422
+
+
+def test_play_needs_the_solver_backend(client: TestClient) -> None:
+    r = client.post("/api/v1/play/sessions", json={"config": {}})
+    assert r.status_code == 503

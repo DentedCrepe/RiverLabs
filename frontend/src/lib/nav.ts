@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   Layers,
   Settings,
+  Swords,
 } from "lucide-react";
 
 /** Implementation status shown next to navigation items and on pages. */
@@ -50,6 +51,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: Cpu,
     status: "partial",
     description: "Heads-up postflop solving (GTOpen); multiway planned",
+  },
+  {
+    href: "/play",
+    label: "Play",
+    icon: Swords,
+    status: "approximate",
+    description: "Games against bots with a session report (bots use an approximate preflop model)",
   },
   {
     href: "/trainer",

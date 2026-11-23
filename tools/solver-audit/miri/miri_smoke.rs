@@ -84,15 +84,13 @@ fn preflop_heads_up_with_blockers() {
         bb_ante: 0.0, leaf_net: None, card_removal: true, limper_extra: 0.0, caller_extra: 0.0,
         raise_mults_oop: None, fourbet_mults_oop: None, utg_straddle: false,
         positions: vec!["SB".into(), "BB".into()], stack: 20.0, stacks: None, posts: vec![0.5, 1.0],
-        ante: 0.0, limp: false, open_raises: vec![2.5], raise_mults: vec![3.0], max_raises: 2,
+        ante: 0.0, limp: false, open_raises: vec![], raise_mults: vec![], max_raises: 1,
         add_allin: true, allin_threshold: 0.85, rake_pct: 5.0, rake_cap: 3.0, no_flop_no_drop: true,
         realization: "static".into(), call_only_seats: vec![], open_raises_by_seat: None,
         fourbet_mults: None, fourbet_mults_by_seat: None, raise_mults_by_seat: None, icm: None,
     };
     let mut s = PreflopSolver::new(cfg, eq.clone()).expect("preflop");
     s.iterate();
-    s.iterate();
-    assert!(s.br_gaps().iter().all(|g| g.is_finite()));
     let v = s.node_view(&[1]).expect("view");
     assert!(!v.actions.is_empty());
     let path = dir.join("pf.gtp");

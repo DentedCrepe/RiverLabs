@@ -32,7 +32,7 @@ def _out(row: GameConfig) -> GameConfigOut:
 
 
 @router.get("/positions", response_model=list[PositionOut])
-def positions(players: Annotated[int, Query(ge=3, le=6)] = 6) -> list[dict[str, Any]]:
+def positions(players: Annotated[int, Query(ge=2, le=6)] = 6) -> list[dict[str, Any]]:
     return engine.positions(players)
 
 

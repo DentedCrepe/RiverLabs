@@ -79,6 +79,8 @@ pub struct GameState {
     last_raise_size: Chips,
     history: Vec<ActionRecord>,
     saw_flop: bool,
+    /// 1bb (1000 mbb) except in tournament hands, where chips are tournament chips.
+    big_blind: Chips,
 }
 
 impl GameState {
@@ -91,6 +93,32 @@ impl GameState {
     /// Starts a hand with explicit per-seat stacks (seat order = preflop action order).
     pub fn with_stacks(config: GameConfig, stacks: &[Chips]) -> Result<GameState> {
         config.validate()?;
+        Self::start(config, stacks, GameConfig::BIG_BLIND)
+    }
+
+    /// Starts a tournament hand. Amounts are whole tournament chips (not mbb) and blinds are
+    /// the current level's; there is no rake. Seat order = preflop action order.
+    pub fn tournament(small_blind: Chips, big_blind: Chips, ante: Chips, stacks: &[Chips]) -> Result<GameState> {
+        if big_blind.is_zero() || small_blind.is_zero() || small_blind > big_blind || ante > big_blind {
+            return Err(PokerError::InvalidConfig(format!(
+                "tournament blinds must satisfy 0 < small blind <= big blind and ante <= big blind \
+                 (got {small_blind}/{big_blind}, ante {ante})"
+            )));
+        }
+        let players = u8::try_from(stacks.len())
+            .map_err(|_| PokerError::InvalidConfig(format!("{} players is too many", stacks.len())))?;
+        let config = GameConfig {
+            players,
+            small_blind,
+            ante,
+            rake: crate::rake::RakeConfig::none(),
+            stake: None,
+            ..GameConfig::default()
+        };
+        Self::start(config, stacks, big_blind)
+    }
+
+    fn start(config: GameConfig, stacks: &[Chips], bb: Chips) -> Result<GameState> {
         let positions = Position::for_players(config.players as usize)?;
         if stacks.len() != positions.len() {
             return Err(PokerError::InvalidConfig(format!(
@@ -99,7 +127,6 @@ impl GameState {
                 stacks.len()
             )));
         }
-        let bb = GameConfig::BIG_BLIND;
         let n = positions.len();
         let mut players = Vec::with_capacity(n);
         for (i, (&position, &stack)) in positions.iter().zip(stacks).enumerate() {
@@ -108,25 +135,26 @@ impl GameState {
                 _ if i == n - 2 => config.small_blind,
                 _ => Chips::ZERO,
             };
-            if stack > crate::stack::MAX_EFFECTIVE_STACK {
+            if bb == GameConfig::BIG_BLIND && stack > crate::stack::MAX_EFFECTIVE_STACK {
                 return Err(PokerError::InvalidConfig(format!(
                     "{position} stack {stack} exceeds the maximum of {}",
                     crate::stack::MAX_EFFECTIVE_STACK
                 )));
             }
-            if stack <= config.ante + blind {
-                return Err(PokerError::InvalidConfig(format!(
-                    "{position} stack {stack} cannot cover ante and blind with chips behind"
-                )));
+            if stack.is_zero() {
+                return Err(PokerError::InvalidConfig(format!("{position} has no chips")));
             }
+            // A short stack posts what it can: the ante first, then the blind, and is all-in.
+            let ante = config.ante.min(stack);
+            let blind = blind.min(stack - ante);
             players.push(PlayerState {
                 position,
                 starting_stack: stack,
-                stack: stack - config.ante - blind,
+                stack: stack - ante - blind,
                 street_commit: blind,
-                total_commit: config.ante + blind,
+                total_commit: ante + blind,
                 folded: false,
-                all_in: false,
+                all_in: stack == ante + blind,
                 acted: false,
                 reraise_threshold: None,
             });
@@ -142,13 +170,24 @@ impl GameState {
             history: Vec::new(),
             saw_flop: false,
             config,
+            big_blind: bb,
         };
-        s.phase = Phase::Betting { to_act: s.next_to_act(n - 1).expect("preflop always has an actor") };
+        s.phase = match s.next_to_act(n - 1) {
+            Some(to_act) => Phase::Betting { to_act },
+            // Everyone (or all but one) is all-in from the blinds and antes.
+            None => {
+                s.return_uncalled();
+                s.after_street_phase()
+            }
+        };
         Ok(s)
     }
 
     // ---------- accessors ----------
 
+    pub fn big_blind(&self) -> Chips {
+        self.big_blind
+    }
     pub fn config(&self) -> &GameConfig {
         &self.config
     }
@@ -283,7 +322,7 @@ impl GameState {
             p.reraise_threshold = None;
         }
         self.current_bet = Chips::ZERO;
-        self.last_raise_size = GameConfig::BIG_BLIND;
+        self.last_raise_size = self.big_blind;
         let first = Position::postflop_order(self.players.len()).into_iter().find(|&s| self.needs_to_act(s));
         self.phase = match first {
             Some(s) => Phase::Betting { to_act: s },
@@ -312,7 +351,7 @@ impl GameState {
         if to_call.is_zero() {
             la.check = true;
             if self.current_bet.is_zero() && opponent_can_respond {
-                let min_to = GameConfig::BIG_BLIND.min(max_to);
+                let min_to = self.big_blind.min(max_to);
                 la.bet = Some((min_to, max_to));
             } else if opponent_can_respond && self.reraise_allowed(p) && max_to > self.current_bet {
                 // e.g. the big blind's option preflop
@@ -364,7 +403,7 @@ impl GameState {
                 if to > max || (to < min && to != max) || to.is_zero() {
                     return illegal(format!("bet to {to} must be between {min} and {max} (or all-in)"));
                 }
-                let full = to >= GameConfig::BIG_BLIND;
+                let full = to >= self.big_blind;
                 if full {
                     self.last_raise_size = to;
                 }

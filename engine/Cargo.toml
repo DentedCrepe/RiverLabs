@@ -8,6 +8,7 @@ members = [
     "solver-interface",
     "solver-validation",
     "solver-gtopen",
+    "play-engine",
     "riverlab-py",
 ]
 

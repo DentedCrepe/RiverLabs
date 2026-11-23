@@ -120,7 +120,7 @@ mod tests {
     fn rejects_bad_values() {
         let base = GameConfig::default();
         for bad in [
-            GameConfig { players: 2, ..base.clone() },
+            GameConfig { players: 1, ..base.clone() },
             GameConfig { players: 7, ..base.clone() },
             GameConfig { small_blind: Chips::ZERO, ..base.clone() },
             GameConfig { small_blind: Chips(1_001), ..base.clone() },

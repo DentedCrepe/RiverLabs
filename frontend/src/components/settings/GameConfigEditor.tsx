@@ -179,7 +179,7 @@ function Editor({ initial }: { initial: GameConfig }) {
         />
         <CardBody className="flex flex-col gap-6">
           <Section title="Table">
-            <Field label="Players" error={fieldErrors.players} hint="3–6 (heads-up is not supported yet)">
+            <Field label="Players" error={fieldErrors.players} hint="2–6 (2 = heads-up)">
               {(id, d) => (
                 <TextInput
                   id={id}

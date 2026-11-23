@@ -5,18 +5,21 @@ Source: `engine/poker-core/src/game/`. Tests: `engine/poker-core/tests/game_rule
 chip conservation and termination). Units: integer milli-big-blinds (ADR-0002).
 
 ## Table and positions
-- 3 to 6 players. Positions in preflop action order: UTG, HJ, CO, BTN, SB, BB. Short-handed
+- 2 to 6 players. Positions in preflop action order: UTG, HJ, CO, BTN, SB, BB. Short-handed
   tables drop positions from the front (5-handed starts at HJ; 3-handed is BTN/SB/BB).
-- **Heads-up is not supported yet** (its blind/action order differs).
 - Preflop action starts with the first seat after the BB; postflop action starts with the SB
   (first live seat left of the button) and ends with the button.
+- **Heads-up** (SB, BB): the small blind is the button. It acts first preflop and last on the
+  flop, turn and river. The odd chip of a split pot goes to the big blind.
 
 ## Forced bets
 - Every player posts the ante (default 0) as dead money: it counts toward the pot and side
   pots but is not part of the current bet.
 - SB posts the configured small blind (default 0.5bb), BB posts 1bb. The current bet
   preflop is 1bb and the minimum raise increment is 1bb.
-- Every stack must exceed ante + blind owed; posting all-in is rejected, not modelled.
+- A stack that cannot cover the ante and blind posts what it has (ante first, then blind) and
+  is all-in. The bet to call is still the full big blind. If no one is left who can act,
+  the uncalled part is returned and the board is dealt out. A stack of zero is rejected.
 
 ## Actions
 Bet and raise amounts are *raise-to* amounts (total committed on the street).

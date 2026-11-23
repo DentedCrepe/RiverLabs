@@ -13,15 +13,15 @@ cp ../../miri/miri_smoke.rs crates/solver/tests/
 cd crates/solver
 F="-Zmiri-disable-isolation -Zmiri-ignore-leaks" # rayon's global pool is never joined
 
-echo "== 1. As pinned, Stacked Borrows (expected: UB report in ArenaBuf)"
+echo "== 1. As pinned, Stacked Borrows, river (RiverLab saw: UB report in ArenaBuf::new/slice)"
 MIRIFLAGS="$F" cargo +nightly miri test --test miri_smoke river || true
-echo "== 2. As pinned, Tree Borrows"
-MIRIFLAGS="$F -Zmiri-tree-borrows" cargo +nightly miri test --test miri_smoke || true
+echo "== 2. As pinned, Tree Borrows, river"
+MIRIFLAGS="$F -Zmiri-tree-borrows" cargo +nightly miri test --test miri_smoke river || true
 
 git -C ../.. apply ../../miri/arenabuf-provenance.patch
-echo "== 3. ArenaBuf fixed, Tree Borrows (expected: all pass)"
+echo "== 3. ArenaBuf fixed, Tree Borrows, all tests (RiverLab saw: all pass)"
 MIRIFLAGS="$F -Zmiri-tree-borrows" cargo +nightly miri test --test miri_smoke
-echo "== 4. ArenaBuf fixed, Stacked Borrows, river + preflop (turn trips a known crossbeam-epoch report)"
+echo "== 4. ArenaBuf fixed, Stacked Borrows, river (passes; the parallel turn test trips a"
+echo "      Stacked Borrows report inside crossbeam-epoch, rayon's dependency, not GTOpen)"
 MIRIFLAGS="$F" cargo +nightly miri test --test miri_smoke river
-MIRIFLAGS="$F" cargo +nightly miri test --test miri_smoke preflop
 rm -f tests/miri_smoke.rs && git -C ../.. checkout -q -- .

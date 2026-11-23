@@ -51,7 +51,7 @@ class StakeDoc(StrictModel):
 
 class GameConfigDoc(StrictModel):
     schema_version: int = 1
-    players: int = Field(ge=3, le=6)
+    players: int = Field(ge=2, le=6)
     small_blind: Mbb
     ante: Mbb
     stack: StackConfigDoc

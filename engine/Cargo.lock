@@ -293,6 +293,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
+name = "play-engine"
+version = "0.1.0"
+dependencies = [
+ "equity-engine",
+ "hand-evaluator",
+ "poker-core",
+ "rand",
+ "rand_chacha",
+ "range-engine",
+ "serde",
+ "serde_json",
+ "solver-gtopen",
+ "solver-interface",
+ "thiserror",
+]
+
+[[package]]
 name = "poker-core"
 version = "0.1.0"
 dependencies = [
@@ -513,6 +530,7 @@ version = "0.1.0"
 dependencies = [
  "equity-engine",
  "hand-evaluator",
+ "play-engine",
  "poker-core",
  "pyo3",
  "range-engine",

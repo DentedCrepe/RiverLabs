@@ -296,7 +296,7 @@ fn per_seat_stacks_are_bounded() {
     let cfg = GameConfig { players: 3, ..no_rake() };
     assert!(GameState::with_stacks(cfg.clone(), &[bb(1000.0), bb(50.0), bb(50.0)]).is_ok());
     assert!(GameState::with_stacks(cfg.clone(), &[Chips(1_000_001), bb(50.0), bb(50.0)]).is_err());
-    assert!(GameState::with_stacks(cfg, &[bb(50.0), bb(50.0)]).is_err());
+    assert!(GameState::with_stacks(cfg, &[bb(50.0), bb(50.0), bb(50.0), bb(50.0)]).is_err());
 }
 
 #[test]
@@ -313,6 +313,56 @@ fn settlement_requires_values_for_live_players() {
     assert!(g.settle_uncontested().is_err());
 }
 
+#[test]
+fn heads_up_button_posts_small_blind_acts_first_preflop_and_last_after() {
+    let mut g = GameState::new(GameConfig { players: 2, ..no_rake() }).unwrap();
+    assert_eq!(g.players()[0].position, Position::Sb);
+    assert_eq!(g.pot_total(), bb(1.5));
+    assert_eq!(g.to_act(), Some(0), "small blind (button) acts first preflop");
+    g.apply(Action::Call).unwrap();
+    assert_eq!(g.to_act(), Some(1), "big blind has the option");
+    let la = g.legal_actions().unwrap();
+    assert!(la.check && la.raise.is_some());
+    g.apply(Action::Check).unwrap();
+    g.deal_board(&cards("Ks7d2c")).unwrap();
+    assert_eq!(g.to_act(), Some(1), "big blind acts first after the flop");
+    g.apply(Action::Check).unwrap();
+    assert_eq!(g.to_act(), Some(0));
+}
+
+#[test]
+fn short_stacks_post_blinds_all_in() {
+    // The big blind has 0.4bb: it posts it all and is all-in; the small blind still owes 1bb to call.
+    let cfg = GameConfig { players: 3, ..no_rake() };
+    let mut g = GameState::with_stacks(cfg.clone(), &[bb(50.0), bb(50.0), bb(0.4)]).unwrap();
+    assert!(g.players()[2].all_in);
+    assert_eq!(g.players()[2].total_commit, bb(0.4));
+    assert_eq!(g.legal_actions().unwrap().call, Some(bb(1.0)));
+    g.apply(Action::Fold).unwrap();
+    g.apply(Action::Call).unwrap(); // SB completes to 1bb
+    // Only the big blind could respond and it is all-in: betting is over, extra chips come back.
+    assert!(matches!(g.phase(), Phase::AwaitingBoard { .. }), "{:?}", g.phase());
+    assert_eq!(g.pot_total(), bb(0.8));
+    // Everyone all-in from the blinds: straight to the board.
+    let g = GameState::with_stacks(GameConfig { players: 2, ..no_rake() }, &[bb(0.5), bb(1.0)]).unwrap();
+    assert!(matches!(g.phase(), Phase::AwaitingBoard { .. }), "{:?}", g.phase());
+    assert!(GameState::with_stacks(cfg, &[bb(50.0), Chips::ZERO, bb(50.0)]).is_err());
+}
+
+#[test]
+fn tournament_hands_use_the_levels_blinds_in_chips() {
+    let mut g =
+        GameState::tournament(Chips(50), Chips(100), Chips(10), &[Chips(3000), Chips(1500), Chips(80)]).unwrap();
+    assert_eq!(g.big_blind(), Chips(100));
+    assert_eq!(g.pot_total(), Chips(30 + 50 + 70), "antes plus blinds; the BB is all-in for 70 after its ante");
+    let la = g.legal_actions().unwrap();
+    assert_eq!(la.call, Some(Chips(100)));
+    assert_eq!(la.raise, Some((Chips(200), Chips(3000 - 10))));
+    g.apply(Action::Raise { to: Chips(250) }).unwrap();
+    assert_eq!(g.legal_actions().unwrap().raise.unwrap().0, Chips(400), "min-raise is by 150");
+    assert!(GameState::tournament(Chips(60), Chips(50), Chips::ZERO, &[Chips(1000), Chips(1000)]).is_err());
+}
+
 // ---------- property test: random legal hands ----------
 
 #[derive(Debug, Clone)]
@@ -325,10 +375,11 @@ struct Script {
 }
 
 fn script() -> impl Strategy<Value = Script> {
-    (3u8..=6).prop_flat_map(|n| {
+    (2u8..=6).prop_flat_map(|n| {
         (
             Just(n),
-            proptest::collection::vec(1_100u64..300_000, n as usize),
+            // Some stacks are shorter than the blinds: they post all-in.
+            proptest::collection::vec(prop_oneof![1u64..1_100, 1_100u64..300_000], n as usize),
             proptest::collection::vec((any::<u8>(), any::<u16>()), 200),
             proptest::collection::vec(0u8..4, n as usize),
             prop_oneof![Just(0u32), Just(500u32), Just(10_000u32)],

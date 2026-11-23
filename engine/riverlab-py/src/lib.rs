@@ -493,6 +493,120 @@ fn load_preflop(
     Ok(PreflopGame { inner })
 }
 
+fn play_err(e: play_engine::PlayError) -> PyErr {
+    match e {
+        play_engine::PlayError::Engine(m) => pyo3::exceptions::PyRuntimeError::new_err(m),
+        other => pyo3::exceptions::PyValueError::new_err(other.to_string()),
+    }
+}
+
+fn model_cache(dir: Option<String>, max_bytes: u64, threads: u16) -> std::sync::Arc<play_engine::ModelCache> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    static CACHES: OnceLock<Mutex<HashMap<Option<String>, Arc<play_engine::ModelCache>>>> = OnceLock::new();
+    let mut caches = CACHES.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
+    caches
+        .entry(dir.clone())
+        .or_insert_with(|| Arc::new(play_engine::ModelCache::new(dir.map(Into::into), max_bytes, threads)))
+        .clone()
+}
+
+/// Validates a play `TableConfig` (JSON) and returns it in canonical form.
+#[pyfunction]
+fn validate_table_config(config_json: &str) -> PyResult<String> {
+    let cfg: play_engine::TableConfig = serde_json::from_str(config_json).map_err(err)?;
+    cfg.validate().map_err(play_err)?;
+    to_json(&cfg)
+}
+
+/// A game against bots. Methods release the GIL; the first hand at a new table shape can take
+/// tens of seconds while the bots' preflop model is solved (call `prepare` first).
+#[pyclass(frozen)]
+struct PlaySession {
+    inner: std::sync::Mutex<play_engine::Session>,
+    models: std::sync::Arc<play_engine::ModelCache>,
+}
+
+#[pymethods]
+impl PlaySession {
+    #[new]
+    #[pyo3(signature = (config_json, model_cache_dir = None, max_bytes = 1u64 << 30, threads = 2))]
+    fn new(config_json: &str, model_cache_dir: Option<String>, max_bytes: u64, threads: u16) -> PyResult<Self> {
+        let cfg: play_engine::TableConfig = serde_json::from_str(config_json).map_err(err)?;
+        let session = play_engine::Session::new(cfg).map_err(play_err)?;
+        Ok(PlaySession {
+            inner: std::sync::Mutex::new(session),
+            models: model_cache(model_cache_dir, max_bytes, threads),
+        })
+    }
+
+    fn prepare(&self, py: Python<'_>) -> PyResult<()> {
+        py.detach(|| self.lock().prepare(&self.models)).map_err(play_err)
+    }
+
+    /// Deals the next hand; returns the table view (JSON).
+    fn next_hand(&self, py: Python<'_>) -> PyResult<String> {
+        py.detach(|| {
+            let mut s = self.lock();
+            s.start_hand(&self.models)?;
+            Ok(s.view())
+        })
+        .map_err(play_err)
+        .and_then(|v| to_json(&v))
+    }
+
+    /// Your action (JSON, e.g. {"type": "raise", "to": 2500}); returns the table view.
+    fn act(&self, py: Python<'_>, action_json: &str) -> PyResult<String> {
+        let action: poker_core::game::Action = serde_json::from_str(action_json).map_err(err)?;
+        py.detach(|| {
+            let mut s = self.lock();
+            s.act(action)?;
+            Ok(s.view())
+        })
+        .map_err(play_err)
+        .and_then(|v| to_json(&v))
+    }
+
+    fn view(&self) -> PyResult<String> {
+        to_json(&self.lock().view())
+    }
+
+    fn leave(&self) -> PyResult<String> {
+        let mut s = self.lock();
+        s.leave();
+        to_json(&s.view())
+    }
+
+    /// Hand records from `start` (0-based) on, as a JSON list.
+    #[pyo3(signature = (start = 0))]
+    fn records(&self, start: usize) -> PyResult<String> {
+        let s = self.lock();
+        to_json(&s.records().get(start..).unwrap_or(&[]))
+    }
+
+    fn hands_played(&self) -> u64 {
+        self.lock().hands_played()
+    }
+
+    fn status(&self) -> PyResult<String> {
+        to_json(&self.lock().status())
+    }
+}
+
+impl PlaySession {
+    fn lock(&self) -> std::sync::MutexGuard<'_, play_engine::Session> {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+/// Builds a session report from stored hand records (JSON list).
+#[pyfunction]
+fn play_report(py: Python<'_>, records_json: &str, tournament: bool) -> PyResult<String> {
+    let records: Vec<play_engine::HandRecord> = serde_json::from_str(records_json).map_err(err)?;
+    let report = py.detach(|| play_engine::report::build(&records, tournament));
+    to_json(&report)
+}
+
 #[pymodule]
 fn riverlab_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(engine_version, m)?)?;
@@ -517,5 +631,8 @@ fn riverlab_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_preflop, m)?)?;
     m.add_function(wrap_pyfunction!(load_preflop, m)?)?;
     m.add_class::<PreflopGame>()?;
+    m.add_class::<PlaySession>()?;
+    m.add_function(wrap_pyfunction!(validate_table_config, m)?)?;
+    m.add_function(wrap_pyfunction!(play_report, m)?)?;
     Ok(())
 }

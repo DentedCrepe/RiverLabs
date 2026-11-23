@@ -1,0 +1,24 @@
+[package]
+name = "play-engine"
+description = "Play against bots: table sessions (cash, fast-fold, sit & go), bots, hand records and session reports."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+poker-core.workspace = true
+hand-evaluator.workspace = true
+range-engine.workspace = true
+equity-engine.workspace = true
+solver-interface.workspace = true
+solver-gtopen = { path = "../solver-gtopen" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
+
+[lints]
+workspace = true

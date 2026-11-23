@@ -221,3 +221,30 @@ def load_preflop(spec: dict[str, Any], path: str, equity_cache_dir: str | None =
 def preflop_node(game: Any, path: list[int]) -> dict[str, Any]:
     result: dict[str, Any] = _call(game.node, path)
     return result
+
+
+# ---- play against bots ----
+
+
+def validate_table_config(config: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = _call(_engine.validate_table_config, json.dumps(config))
+    return result
+
+
+def new_play_session(
+    config: dict[str, Any], model_cache_dir: str | None, max_bytes: int, threads: int
+) -> Any:
+    try:
+        return _engine.PlaySession(json.dumps(config), model_cache_dir, max_bytes, threads)
+    except ValueError as exc:
+        raise EngineValidationError(str(exc)) from exc
+
+
+def play_call(fn: Callable[..., str], *args: Any) -> Any:
+    """Calls a PlaySession method that returns JSON. Illegal actions become 422s."""
+    return _call(fn, *args)
+
+
+def play_report(records: list[dict[str, Any]], tournament: bool) -> dict[str, Any]:
+    result: dict[str, Any] = _call(_engine.play_report, json.dumps(records), tournament)
+    return result
