@@ -18,8 +18,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           {children}
         </main>
         <footer className="border-t border-line px-4 py-3 text-xs text-subtle lg:px-8">
-          RiverLab · Milestone 1 foundation. Values shown come from the validated engine or are labelled as planned. No
-          GTO results exist yet.
+          RiverLab · Values come from the validated engine or the solver with its exploitability shown; unfinished areas
+          are labelled as planned.
         </footer>
       </div>
     </div>

@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     # Upper bound on exact-equity work per request (tuple x runout evaluations).
     equity_exact_budget: int = Field(default=50_000_000, ge=1)
     equity_max_iterations: int = Field(default=2_000_000, ge=1)
+    # In-process GTOpen solver (one solve at a time; others queue).
+    solver_enabled: bool = True
+    solver_max_memory_mb: int = Field(default=2048, ge=16)
+    # 0 = use every CPU core.
+    solver_threads: int = Field(default=0, ge=0, le=256)
 
     @model_validator(mode="after")
     def _no_placeholder_credentials_in_production(self) -> "Settings":

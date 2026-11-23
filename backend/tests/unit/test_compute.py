@@ -17,7 +17,7 @@ def test_every_state_is_reachable_from_queued() -> None:
     assert seen == set(JobStatus)
 
 
-def test_default_registry_has_no_backends() -> None:
+def test_registry_starts_empty_until_the_app_registers_a_backend() -> None:
     from riverlab_api.services.compute import registry
 
     assert registry.backends == []

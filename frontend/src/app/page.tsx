@@ -1,7 +1,8 @@
-import { BarChart3, Cpu, GraduationCap, Spade } from "lucide-react";
+import { BarChart3, GraduationCap, Spade } from "lucide-react";
 import type { Metadata } from "next";
 import { CapabilitiesCard } from "@/components/dashboard/CapabilitiesCard";
 import { DefaultConfigCard } from "@/components/dashboard/DefaultConfigCard";
+import { RecentSolves } from "@/components/dashboard/RecentSolves";
 import { RoadmapCard } from "@/components/dashboard/RoadmapCard";
 import { SystemStatusCard } from "@/components/dashboard/SystemStatusCard";
 import { ShowdownTool } from "@/components/poker/ShowdownTool";
@@ -13,11 +14,6 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 export const metadata: Metadata = { title: "Dashboard" };
 
 const PLANNED = [
-  {
-    title: "Recent solves",
-    icon: <Cpu aria-hidden className="size-6" />,
-    text: "Solver jobs and their exploitability will appear here once the solver exists and has been validated (Milestones 2–4).",
-  },
   {
     title: "Training progress",
     icon: <GraduationCap aria-hidden className="size-6" />,
@@ -50,6 +46,7 @@ export default function DashboardPage() {
             <ShowdownTool compact />
           </CardBody>
         </Card>
+        <RecentSolves />
         {PLANNED.map((p) => (
           <Card key={p.title}>
             <CardHeader title={p.title} actions={<StatusBadge status="planned" />} />

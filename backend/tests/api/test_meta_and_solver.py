@@ -33,16 +33,17 @@ def _spec(client: TestClient) -> dict[str, Any]:
     }
 
 
-def test_meta_never_claims_a_solver(client: TestClient) -> None:
+def test_meta_does_not_claim_a_solver_without_a_backend(client: TestClient) -> None:
     caps = {c["key"]: c["status"] for c in client.get("/api/v1/meta").json()["capabilities"]}
     assert caps["hand_evaluator"] == "available"
     assert caps["solver"] == "interface_only"
 
 
-def test_solver_capabilities_report_not_implemented(client: TestClient) -> None:
+def test_solver_capabilities_without_a_backend(client: TestClient) -> None:
     body = client.get("/api/v1/solver/capabilities").json()
-    assert body["status"] == "not_implemented"
+    assert body["status"] == "unavailable"
     assert body["available_backends"] == []
+    assert body["engines"] == []
 
 
 def test_valid_spec_is_rejected_with_503_not_queued(client: TestClient) -> None:

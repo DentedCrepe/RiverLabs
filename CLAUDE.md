@@ -7,8 +7,13 @@ RiverLab is a six-max no-limit hold'em theory, solving and training platform. Re
 - **Never fabricate poker data.** No invented strategies, frequencies, EVs, statistics or
   "example" solver output — not in the UI, fixtures, seeds or docs. Unfinished features show a
   labelled empty state ("Planned", "Interface only").
-- **No solver exists yet.** Do not describe anything as GTO, solved or equilibrium until a
-  solver passes the validation harness in `docs/roadmap.md` (Milestone 2).
+- **Solver output is always shown with its exploitability** and its approximations. Postflop
+  solves come from GTOpen (pinned commit, `engine/solver-gtopen`); river and turn results are
+  re-checked by `engine/solver-validation`. Never call a result "GTO" without qualification:
+  it is an approximate equilibrium for the configured bet sizes. GTOpen's preflop beyond
+  push/fold is a modelled approximation and is not exposed in the app.
+- **Changing the GTOpen commit** requires re-running `tools/solver-audit/run.sh` and the
+  validation examples (`docs/solver-validation.md`) before updating the pin.
 - **Poker mathematics lives only in `engine/` (Rust).** The backend calls it through
   `backend/src/riverlab_api/services/engine.py`; the frontend calls the backend. Do not
   re-implement rules, evaluation, combinatorics or rake in Python or TypeScript.
@@ -24,7 +29,8 @@ RiverLab is a six-max no-limit hold'em theory, solving and training platform. Re
 ## Layout
 ```
 engine/    Rust workspace: poker-core, hand-evaluator, range-engine, equity-engine,
-           solver-interface (traits/config only), riverlab-py (PyO3 module riverlab_engine)
+           solver-interface (traits/config), solver-validation (independent best response,
+           exact push/fold), solver-gtopen (GTOpen adapter), riverlab-py (PyO3 riverlab_engine)
 backend/   FastAPI (package riverlab_api), SQLAlchemy models, Alembic migrations, pytest
 frontend/  Next.js 16 App Router, React 19, Tailwind 4, Vitest
 tests/validation/  differential tests vs independent evaluators (phevaluator, pokerkit)

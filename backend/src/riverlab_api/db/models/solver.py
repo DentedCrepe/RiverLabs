@@ -19,6 +19,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -102,7 +103,8 @@ class SolverResult(UUIDPk, CreatedAt, Base):
     )
     engine_version: Mapped[str] = mapped_column(String(32), nullable=False)
     solver_backend: Mapped[str] = mapped_column(String(32), nullable=False)
-    solver_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    # e.g. a 40-character git commit hash for pinned third-party backends.
+    solver_version: Mapped[str] = mapped_column(String(64), nullable=False)
     config_schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
     # Everything needed to interpret the result: spec, solver config, abstractions, units.
     assumptions: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
@@ -136,8 +138,11 @@ class StrategyNode(Base):
     node_path: Mapped[str] = mapped_column(Text, nullable=False)
     street: Mapped[str] = mapped_column(String(8), nullable=False)
     board: Mapped[str] = mapped_column(String(10), nullable=False)
-    player_position: Mapped[str] = mapped_column(
-        String(3), ForeignKey("positions.code", ondelete="RESTRICT"), nullable=False
+    # 0 = out of position, 1 = in position (heads-up postflop subgames).
+    player: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="0")
+    # Table position when the subgame comes from a known table context (optional).
+    player_position: Mapped[str | None] = mapped_column(
+        String(3), ForeignKey("positions.code", ondelete="RESTRICT"), nullable=True
     )
     actions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     # Per-combo action frequencies (combo index -> list aligned with `actions`).
@@ -147,6 +152,7 @@ class StrategyNode(Base):
     __table_args__ = (
         UniqueConstraint("result_id", "node_path"),
         CheckConstraint("street IN ('preflop', 'flop', 'turn', 'river')", name="street_kind"),
+        CheckConstraint("player IN (0, 1)", name="player_index"),
     )
 
 

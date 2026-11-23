@@ -249,3 +249,49 @@ fn flop_spot_with_turn_and_river_runouts_is_validated_independently() {
     }
     assert!((ours.exploitability - solved.outcome.progress.exploitability_mbb).abs() < 0.5);
 }
+
+#[test]
+fn memory_estimate_is_exact_and_limits_refuse_before_allocating() {
+    let s = solve(&turn_spec("Ks7d2c8h", RakeConfig::none(), 10), &AtomicBool::new(false), |_| {}).unwrap();
+    let actual = s.solver().arena_bytes() + s.solver().spot.tree_bytes();
+    assert_eq!(s.outcome.memory_bytes, actual);
+    let tight = solver_gtopen::Limits { max_nodes: 50_000_000, max_bytes: actual - 1 };
+    let r = solver_gtopen::solve_with_limits(
+        &turn_spec("Ks7d2c8h", RakeConfig::none(), 10),
+        tight,
+        &AtomicBool::new(false),
+        |_| {},
+    );
+    assert!(matches!(r, Err(AdapterError::TooLarge { .. })), "{r:?}");
+    let few_nodes = solver_gtopen::Limits { max_nodes: 100, max_bytes: u64::MAX };
+    let r = solver_gtopen::solve_with_limits(
+        &turn_spec("Ks7d2c8h", RakeConfig::none(), 10),
+        few_nodes,
+        &AtomicBool::new(false),
+        |_| {},
+    );
+    assert!(matches!(&r, Err(AdapterError::Backend(m)) if m.contains("tree too large")), "{r:?}");
+}
+
+#[test]
+fn class_strategies_are_distributions_and_checks_run_where_supported() {
+    let s = solve(&toy(RakeConfig::none()), &AtomicBool::new(false), |_| {}).unwrap();
+    assert!(s.outcome.independent_check.performed);
+    assert!(s.outcome.independent_check.exploitability_mbb.unwrap() < 1.0);
+    let t = solve(&turn_spec("Ks7d2c8h", RakeConfig::none(), 200), &AtomicBool::new(false), |_| {}).unwrap();
+    assert!(t.outcome.independent_check.performed);
+    let total: f64 = t.outcome.root_by_class.iter().map(|c| c.weight).sum();
+    assert!((total - t.postflop_game().unwrap().ranges[0].iter().map(|(_, w)| w).sum::<f64>()).abs() < 1e-9);
+    for c in &t.outcome.root_by_class {
+        assert!((c.frequencies.iter().sum::<f64>() - 1.0).abs() < 1e-4, "{c:?}");
+        assert_eq!(range_engine::HandClass::at(c.row, c.col).to_string(), c.label);
+    }
+    let sz = |b: u32| PlayerSizing { bet_pct_pot: [vec![b], vec![], vec![]], raise_pct_pot: [vec![], vec![], vec![]] };
+    let mut f = spec("Ks7d2c", ["AA,KK", "QQ,JJ"], 100, 1000, &[], &[], RakeConfig::none());
+    f.tree.oop = sz(50);
+    f.tree.ip = sz(50);
+    f.solver.stopping.max_iterations = 10;
+    let flop = solve(&f, &AtomicBool::new(false), |_| {}).unwrap();
+    assert!(!flop.outcome.independent_check.performed);
+    assert!(flop.outcome.independent_check.note.contains("Flop"));
+}

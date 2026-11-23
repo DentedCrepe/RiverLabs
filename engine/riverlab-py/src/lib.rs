@@ -286,6 +286,79 @@ fn replay_hand(config_json: &str, events_json: &str, stacks_mbb: Option<Vec<u64>
     }))
 }
 
+/// Cooperative cancellation for a running solve. Thread-safe.
+#[pyclass(frozen)]
+struct CancelToken {
+    flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+#[pymethods]
+impl CancelToken {
+    #[new]
+    fn new() -> Self {
+        CancelToken { flag: Default::default() }
+    }
+    fn cancel(&self) {
+        self.flag.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+    fn is_cancelled(&self) -> bool {
+        self.flag.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+/// Description of the available solver backend(s).
+#[pyfunction]
+fn solver_backends() -> PyResult<String> {
+    to_json(&json!([{
+        "name": solver_gtopen::BACKEND,
+        "repository": solver_gtopen::GTOPEN_REPOSITORY,
+        "commit": solver_gtopen::GTOPEN_COMMIT,
+        "scope": "heads-up postflop (flop, turn or river root)",
+    }]))
+}
+
+/// Solves a postflop `SolveSpec` (JSON) with GTOpen. Releases the GIL while solving.
+/// `progress(json)` is called at each exploitability check. Raises `ValueError` for specs the
+/// backend rejects (invalid, unsupported or too large) and `RuntimeError` for solver failures.
+#[pyfunction]
+#[pyo3(signature = (spec_json, cancel, progress = None, max_bytes = 2u64 << 30, threads = None))]
+fn solve_postflop(
+    py: Python<'_>,
+    spec_json: &str,
+    cancel: &CancelToken,
+    progress: Option<Py<PyAny>>,
+    max_bytes: u64,
+    threads: Option<u16>,
+) -> PyResult<String> {
+    use solver_gtopen::AdapterError;
+    let mut spec: SolveSpec = serde_json::from_str(spec_json).map_err(err)?;
+    if let Some(t) = threads {
+        spec.solver.threads = t;
+    }
+    let flag = cancel.flag.clone();
+    let limits = solver_gtopen::Limits { max_bytes, ..Default::default() };
+    let result = py.detach(|| {
+        solver_gtopen::solve_with_limits(&spec, limits, &flag, |p| {
+            if let Some(cb) = &progress {
+                let payload = serde_json::to_string(p).expect("progress serializes");
+                Python::attach(|py| {
+                    if let Err(e) = cb.call1(py, (payload,)) {
+                        // Never swallow: surface the callback's error and keep solving.
+                        e.print(py);
+                    }
+                });
+            }
+        })
+    });
+    match result {
+        Ok(solved) => to_json(&solved.outcome),
+        Err(e @ (AdapterError::InvalidSpec(_) | AdapterError::Unsupported(_) | AdapterError::TooLarge { .. })) => {
+            Err(err(e))
+        }
+        Err(e @ AdapterError::Backend(_)) => Err(pyo3::exceptions::PyRuntimeError::new_err(e.to_string())),
+    }
+}
+
 #[pymodule]
 fn riverlab_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(engine_version, m)?)?;
@@ -301,5 +374,8 @@ fn riverlab_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(validate_solver_config, m)?)?;
     m.add_function(wrap_pyfunction!(validate_solve_spec, m)?)?;
     m.add_function(wrap_pyfunction!(replay_hand, m)?)?;
+    m.add_function(wrap_pyfunction!(solver_backends, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_postflop, m)?)?;
+    m.add_class::<CancelToken>()?;
     Ok(())
 }

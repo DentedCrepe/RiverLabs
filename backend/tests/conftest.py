@@ -19,6 +19,9 @@ TEST_DB_URL = os.environ.get("RIVERLAB_TEST_DATABASE_URL", "")
 # The app requires a database URL at import time; point it at the test database.
 os.environ["RIVERLAB_DATABASE_URL"] = TEST_DB_URL or "postgresql+psycopg://unset:unset@localhost:1/unset_test"
 os.environ.setdefault("RIVERLAB_ENV", "test")
+# The app's own solver backend is off in tests; tests/db/test_local_solver.py registers one
+# explicitly against the test database.
+os.environ["RIVERLAB_SOLVER_ENABLED"] = "false"
 
 from fastapi.testclient import TestClient  # noqa: E402
 

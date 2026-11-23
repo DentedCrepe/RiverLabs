@@ -117,3 +117,43 @@ def replay_hand(
 ) -> dict[str, Any]:
     result: dict[str, Any] = _call(_engine.replay_hand, json.dumps(config), json.dumps(events), stacks_mbb)
     return result
+
+
+CancelToken = _engine.CancelToken
+
+
+def solver_backends() -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = _call(_engine.solver_backends)
+    return result
+
+
+class SolveRejectedError(Exception):
+    """The backend refused the spec (invalid, unsupported or too large)."""
+
+
+class SolveFailedError(Exception):
+    """The solver failed while running."""
+
+
+def solve_postflop(
+    spec: dict[str, Any],
+    cancel: Any,
+    progress: Callable[[dict[str, Any]], None],
+    max_bytes: int,
+    threads: int,
+) -> dict[str, Any]:
+    """Runs a GTOpen solve (blocking; the GIL is released while solving)."""
+    try:
+        raw = _engine.solve_postflop(
+            json.dumps(spec),
+            cancel,
+            lambda payload: progress(json.loads(payload)),
+            max_bytes=max_bytes,
+            threads=threads,
+        )
+    except ValueError as exc:
+        raise SolveRejectedError(str(exc)) from exc
+    except RuntimeError as exc:
+        raise SolveFailedError(str(exc)) from exc
+    result: dict[str, Any] = json.loads(raw)
+    return result

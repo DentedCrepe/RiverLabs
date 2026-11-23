@@ -518,6 +518,7 @@ dependencies = [
  "range-engine",
  "serde",
  "serde_json",
+ "solver-gtopen",
  "solver-interface",
 ]
 

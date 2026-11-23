@@ -36,6 +36,36 @@ pub enum AdapterError {
     Unsupported(String),
     #[error("GTOpen error: {0}")]
     Backend(String),
+    #[error(
+        "spot too large: needs {} of memory, the limit is {}; use fewer bet sizes or narrower ranges",
+        human_bytes(*needed_bytes),
+        human_bytes(*limit_bytes)
+    )]
+    TooLarge { needed_bytes: u64, limit_bytes: u64 },
+}
+
+fn human_bytes(b: u64) -> String {
+    match b {
+        b if b >= 1 << 30 => format!("{:.2} GB", b as f64 / (1u64 << 30) as f64),
+        b if b >= 1 << 20 => format!("{:.1} MB", b as f64 / (1u64 << 20) as f64),
+        b if b >= 1 << 10 => format!("{:.1} KB", b as f64 / 1024.0),
+        b => format!("{b} bytes"),
+    }
+}
+
+/// Resource limits applied before any solver memory is allocated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Limits {
+    /// Tree construction aborts past this many nodes.
+    pub max_nodes: usize,
+    /// Tree plus solver arenas.
+    pub max_bytes: u64,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Limits { max_nodes: 50_000_000, max_bytes: 2 << 30 }
+    }
 }
 
 /// A GTOpen spot configuration derived from a [`SolveSpec`].
@@ -180,6 +210,27 @@ pub struct NodeStrategy {
     pub frequencies: Vec<f64>,
 }
 
+/// The root decision aggregated per hand class, weighted by range weight over live combos.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ClassStrategy {
+    pub label: String,
+    pub row: usize,
+    pub col: usize,
+    /// Sum of range weights of the class's live combos.
+    pub weight: f64,
+    /// Weighted average frequency of each root action (aligned with `NodeStrategy::actions`).
+    pub frequencies: Vec<f64>,
+}
+
+/// RiverLab's own recomputation of the result (see `solver-validation`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IndependentCheck {
+    pub performed: bool,
+    pub values_mbb: Option<[f64; 2]>,
+    pub exploitability_mbb: Option<f64>,
+    pub note: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SolveOutcome {
     pub backend: String,
@@ -192,6 +243,10 @@ pub struct SolveOutcome {
     pub values_mbb: [f64; 2],
     pub approximations: Vec<String>,
     pub root: NodeStrategy,
+    pub root_by_class: Vec<ClassStrategy>,
+    /// Tree plus solver arenas, in bytes.
+    pub memory_bytes: u64,
+    pub independent_check: IndependentCheck,
 }
 
 /// A solved game, kept for inspection and export.
@@ -236,10 +291,31 @@ fn our_card(c: gtopen::cards::Card) -> Result<Card, AdapterError> {
 pub fn solve(
     spec: &SolveSpec,
     cancel: &AtomicBool,
+    on_progress: impl FnMut(&Progress),
+) -> Result<Solved, AdapterError> {
+    solve_with_limits(spec, Limits::default(), cancel, on_progress)
+}
+
+/// Like [`solve`], refusing spots that exceed `limits` before allocating solver memory.
+pub fn solve_with_limits(
+    spec: &SolveSpec,
+    limits: Limits,
+    cancel: &AtomicBool,
     mut on_progress: impl FnMut(&Progress),
 ) -> Result<Solved, AdapterError> {
     let prepared = prepare(spec)?;
-    let spot = Spot::new(prepared.config.clone()).map_err(AdapterError::Backend)?;
+    let spot = Spot::new_with_limit(prepared.config.clone(), Some(limits.max_nodes)).map_err(|e| {
+        if e.starts_with("tree too large") {
+            AdapterError::Backend(format!("{e} (limit {} nodes)", limits.max_nodes))
+        } else {
+            AdapterError::Backend(e)
+        }
+    })?;
+    let ds = spot.tree.data_size;
+    let memory_bytes = 8 * (ds[0] + ds[1]) + spot.tree_bytes();
+    if memory_bytes > limits.max_bytes {
+        return Err(AdapterError::TooLarge { needed_bytes: memory_bytes, limit_bytes: limits.max_bytes });
+    }
     check_hands(&spot, &prepared.ranges)?;
     let mut solver = Solver::new(Arc::new(spot));
     solver.algo = prepared.algorithm;
@@ -286,6 +362,7 @@ pub fn solve(
     }
     solver.ensure_symmetric();
     let root = node_strategy(&solver, 0)?;
+    let root_by_class = by_class(&root, &prepared.ranges)?;
     let outcome = SolveOutcome {
         backend: BACKEND.into(),
         backend_repository: GTOPEN_REPOSITORY.into(),
@@ -296,8 +373,49 @@ pub fn solve(
         values_mbb: values(&solver),
         approximations: prepared.approximations.clone(),
         root,
+        root_by_class,
+        memory_bytes,
+        independent_check: IndependentCheck {
+            performed: false,
+            values_mbb: None,
+            exploitability_mbb: None,
+            note: "not run".into(),
+        },
     };
-    Ok(Solved { solver, prepared, outcome })
+    let mut solved = Solved { solver, prepared, outcome };
+    solved.outcome.independent_check = solved.independent_check();
+    Ok(solved)
+}
+
+fn by_class(root: &NodeStrategy, ranges: &[Vec<(Combo, f64)>; 2]) -> Result<Vec<ClassStrategy>, AdapterError> {
+    use range_engine::HandClass;
+    let weight: std::collections::HashMap<Combo, f64> = ranges[root.player].iter().copied().collect();
+    let n = root.combos.len();
+    let k = root.actions.len();
+    let mut acc: std::collections::BTreeMap<(usize, usize), (String, f64, Vec<f64>)> = Default::default();
+    for (i, label) in root.combos.iter().enumerate() {
+        let hc: poker_core::HoleCards =
+            label.parse().map_err(|e: poker_core::PokerError| AdapterError::Backend(e.to_string()))?;
+        let combo = Combo::from(hc);
+        let w = *weight.get(&combo).unwrap_or(&0.0);
+        let class = HandClass::of(combo);
+        let e = acc.entry(class.grid_position()).or_insert_with(|| (class.to_string(), 0.0, vec![0.0; k]));
+        e.1 += w;
+        for a in 0..k {
+            e.2[a] += w * root.frequencies[a * n + i];
+        }
+    }
+    Ok(acc
+        .into_iter()
+        .filter(|(_, (_, w, _))| *w > 0.0)
+        .map(|((row, col), (label, w, f))| ClassStrategy {
+            label,
+            row,
+            col,
+            weight: w,
+            frequencies: f.into_iter().map(|x| x / w).collect(),
+        })
+        .collect())
 }
 
 /// GTOpen must see exactly the combos and weights RiverLab parsed.
@@ -344,9 +462,44 @@ fn node_strategy(solver: &Solver, idx: u32) -> Result<NodeStrategy, AdapterError
     Ok(NodeStrategy { player: p, actions, combos, frequencies })
 }
 
+/// River and turn spots are re-checked automatically; flop spots are too slow for the simple
+/// validator with wide ranges (see docs/solver-validation.md).
+const INDEPENDENT_CHECK_MAX_STREET: u8 = 1;
+
 impl Solved {
     pub fn solver(&self) -> &Solver {
         &self.solver
+    }
+
+    /// Recomputes values and exploitability with RiverLab's own validator.
+    pub fn independent_check(&self) -> IndependentCheck {
+        if self.solver.spot.tree.root_street < INDEPENDENT_CHECK_MAX_STREET {
+            return IndependentCheck {
+                performed: false,
+                values_mbb: None,
+                exploitability_mbb: None,
+                note: "Flop spots are not independently re-checked yet; GTOpen's own exploitability is reported."
+                    .into(),
+            };
+        }
+        match self
+            .postflop_game()
+            .map_err(|e| e.to_string())
+            .and_then(|g| solver_validation::evaluate(&g).map_err(|e| e.to_string()))
+        {
+            Ok(e) => IndependentCheck {
+                performed: true,
+                values_mbb: Some(e.ev),
+                exploitability_mbb: Some(e.exploitability),
+                note: "Recomputed by RiverLab's independent validator.".into(),
+            },
+            Err(err) => IndependentCheck {
+                performed: false,
+                values_mbb: None,
+                exploitability_mbb: None,
+                note: format!("Independent check failed: {err}"),
+            },
+        }
     }
 
     /// Exports the solved game (river, turn or flop root) for independent checking with

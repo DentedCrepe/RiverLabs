@@ -3,9 +3,9 @@
 Callers submit work to `JobService`; a `ComputeBackend` (local worker, cloud queue, ...)
 executes it. The frontend never learns which backend ran a job.
 
-Milestone 1 registers **no** backend, because no solver exists (ADR-0005). Submitting a
-solve therefore raises `SolverUnavailableError` (HTTP 503) instead of creating a job that
-would never run. The lifecycle below is exercised by tests with a test-only backend.
+The app registers the `local` GTOpen backend at startup when `RIVERLAB_SOLVER_ENABLED` is true
+(see `services/local_solver.py`). With no backend registered, submitting a solve raises
+`SolverUnavailableError` (HTTP 503) instead of creating a job that would never run.
 """
 
 import uuid
@@ -16,7 +16,7 @@ from typing import Any, Protocol
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from riverlab_api.db.models import JobStatus, SolverJob
+from riverlab_api.db.models import JobStatus, SolverJob, SolverResult, StrategyNode
 from riverlab_api.errors import ConflictError, NotFoundError, SolverUnavailableError
 from riverlab_api.services import engine
 
@@ -51,7 +51,7 @@ class BackendRegistry:
         return next((b for b in self.backends if b.can_run(spec)), None)
 
 
-# Empty in Milestone 1.
+# Populated at app startup (main.py).
 registry = BackendRegistry()
 
 
@@ -83,6 +83,16 @@ class JobService:
         if job is None:
             raise NotFoundError(f"Solver job {job_id} not found")
         return job
+
+    def result(self, job_id: uuid.UUID) -> tuple[SolverJob, SolverResult, StrategyNode | None]:
+        job = self.get(job_id)
+        result = self.db.scalar(select(SolverResult).where(SolverResult.job_id == job_id))
+        if result is None:
+            raise NotFoundError(f"Job {job_id} has no result (status: {job.status.value})")
+        root = self.db.scalar(
+            select(StrategyNode).where(StrategyNode.result_id == result.id, StrategyNode.node_path == "root")
+        )
+        return job, result, root
 
     def list(self, limit: int = 50) -> list[SolverJob]:
         query = select(SolverJob).order_by(SolverJob.created_at.desc(), SolverJob.id).limit(limit)

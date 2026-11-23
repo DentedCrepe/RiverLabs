@@ -48,8 +48,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     href: "/solver",
     label: "Solver",
     icon: Cpu,
-    status: "interface_only",
-    description: "Solver interface and configuration; no solver yet",
+    status: "partial",
+    description: "Heads-up postflop solving (GTOpen); preflop and multiway planned",
   },
   {
     href: "/trainer",

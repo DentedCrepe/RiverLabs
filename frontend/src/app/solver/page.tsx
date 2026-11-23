@@ -1,56 +1,37 @@
 import type { Metadata } from "next";
 import { SolverStatus } from "@/components/solver/SolverStatus";
+import { SolverWorkbench } from "@/components/solver/SolverWorkbench";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 
 export const metadata: Metadata = { title: "Solver" };
-
-const ALGORITHMS = [
-  ["CFR", "Counterfactual regret minimisation (Zinkevich et al., 2007). Baseline for validation."],
-  ["CFR+", "Regret floor at zero, alternating updates, linear averaging (Tammelin, 2014)."],
-  ["Discounted CFR", "Discounts regrets and averages; defaults α = 1.5, β = 0, γ = 2 (Brown & Sandholm, 2019)."],
-  [
-    "Monte Carlo CFR",
-    "Sampled traversal (external / outcome sampling) for very large trees; seeded for reproducibility.",
-  ],
-] as const;
 
 export default function SolverPage() {
   return (
     <>
       <PageHeader
         title="Solver"
-        status="interface_only"
-        description="The solver contract, configuration model and job lifecycle are defined. No solving algorithm is implemented, so no solution can be produced yet."
+        status="partial"
+        description="Heads-up postflop solving with GTOpen (Discounted CFR), pinned to an audited commit. Every result reports its exploitability; river and turn results are re-checked by RiverLab's own best-response calculation. Preflop and multiway solving are not available here yet."
       />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <SolverStatus />
-        <Card>
-          <CardHeader title="Planned algorithms" subtitle="All share one Solver interface in engine/solver-interface" />
-          <CardBody>
-            <dl className="flex flex-col gap-3">
-              {ALGORITHMS.map(([name, text]) => (
-                <div key={name}>
-                  <dt className="text-sm font-medium text-fg">{name}</dt>
-                  <dd className="text-sm text-muted">{text}</dd>
-                </div>
-              ))}
-            </dl>
-          </CardBody>
-        </Card>
-        <Card className="lg:col-span-2">
-          <CardHeader title="Validation before trust" />
-          <CardBody className="text-sm text-muted">
-            <ol className="list-decimal space-y-1.5 pl-5">
-              <li>Implement CFR variants against small games with known equilibria (Kuhn, Leduc).</li>
-              <li>Measure exploitability with an independent best-response computation; require convergence.</li>
-              <li>
-                Only then build hold&apos;em trees, starting with river spots checked by brute-force best response.
-              </li>
-              <li>Every stored result records engine version, solver version, configuration and exploitability.</li>
-            </ol>
-          </CardBody>
-        </Card>
+      <div className="grid gap-6">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <SolverStatus />
+          <Card>
+            <CardHeader title="How to read results" />
+            <CardBody className="text-sm text-muted">
+              <ul className="list-disc space-y-1.5 pl-5">
+                <li>A solve is an equilibrium for the bet sizes you allow, not for every possible bet.</li>
+                <li>
+                  Exploitability is the most a perfect opponent could win against the strategy (% of the starting pot).
+                </li>
+                <li>Values are per hand, net of each player&apos;s half of the starting pot.</li>
+                <li>Any approximation (e.g. rake rounding) is listed with the result.</li>
+              </ul>
+            </CardBody>
+          </Card>
+        </div>
+        <SolverWorkbench />
       </div>
     </>
   );

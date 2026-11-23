@@ -19,7 +19,8 @@ configurable.
 | Seven-card evaluator | ✅ | Checked against all 133,784,560 seven-card hands plus two independent evaluators |
 | Range engine | ✅ | 169 classes, 1,326 combos, weights, notation, card removal, blockers |
 | Equity | ✅ | Exact enumeration (bounded) or seeded Monte Carlo with standard error |
-| Solver | ⚠️ Interface only | Traits, validated config, job lifecycle; no algorithm (ADR-0005) |
+| Postflop solver | ✅ Heads-up | GTOpen (Apache-2.0, pinned) behind RiverLab's solver interface; local worker with queue, progress and cancel; results stored with provenance |
+| Independent validation | ✅ | Best response and exploitability for river/turn/flop trees; exact heads-up push/fold (see `docs/solver-validation.md`) |
 | Trainer, hand-history import, analytics, solution library | ⏳ Planned | See `docs/roadmap.md` |
 
 ## Architecture in one paragraph
@@ -86,6 +87,7 @@ defaults, and `docker compose` refuses to start without `POSTGRES_PASSWORD`.
 | `RIVERLAB_TEST_DATABASE_URL` | tests | Test database (must end in `_test`) |
 | `RIVERLAB_EQUITY_EXACT_BUDGET` / `RIVERLAB_EQUITY_MAX_ITERATIONS` | backend | CPU bounds for equity requests |
 | `RIVERLAB_CORS_ORIGINS` | backend | Normally empty (same-origin proxy) |
+| `RIVERLAB_SOLVER_ENABLED` / `RIVERLAB_SOLVER_MAX_MEMORY_MB` / `RIVERLAB_SOLVER_THREADS` | backend | Local solver on/off, memory cap per solve (default 2048), threads (0 = all cores) |
 | `RIVERLAB_API_URL` | frontend server | Where `/api/backend/*` is forwarded |
 
 ## API overview (`/api/v1`)
@@ -101,7 +103,7 @@ defaults, and `docker compose` refuses to start without `POSTGRES_PASSWORD`.
 | `POST /hands/replay` | Replays a hand event by event through the betting engine |
 | `POST /ranges/analyze` | Combos, card removal and the 13×13 matrix for range notation |
 | `POST /equity` | Exact or Monte Carlo equity for 2–6 hands/ranges |
-| `GET /solver/capabilities`, `/solver/jobs…` | Solver contract; submissions return `503 solver_unavailable` |
+| `GET /solver/capabilities`, `POST/GET /solver/jobs`, `POST /solver/jobs/{id}/cancel`, `GET /solver/jobs/{id}/result` | Queue, track, cancel and read postflop solves |
 
 Errors always use `{"error": {"code", "message", "details?"}}`.
 
@@ -123,7 +125,10 @@ docs/              Architecture, ADRs, rules, rake, evaluator, equity, roadmap, 
 - [Third-party solver audit](docs/solver-research.md)
 
 ## Known limitations
-- No solver: no strategies, EVs or exploitability figures exist.
+- Solving is heads-up postflop only; the app shows the first decision's strategy (browsing the
+  full tree is next). Solves run one at a time inside the API process and do not survive a
+  restart (they are marked failed).
+- Full-range flop results are not independently re-checked yet (river and turn are).
 - Heads-up tables are not supported by the betting engine yet.
 - There is no authentication. The API is for local, single-user use and must not be exposed
   publicly.

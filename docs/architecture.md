@@ -102,7 +102,10 @@ riverlab_api/
 
 - `services/engine.py` is the only module that imports `riverlab_engine`.
 - `services/compute.py` defines the `ComputeBackend` protocol (submit / status / cancel /
-  progress / result). The registry is empty in Milestone 1, so solver job creation returns
+  progress / result). `services/local_solver.py` registers the `local` backend at startup:
+  GTOpen solves via `riverlab_engine.solve_postflop` (GIL released) in a single worker thread,
+  progress and results written to PostgreSQL, interrupted jobs failed on restart. With
+  `RIVERLAB_SOLVER_ENABLED=false` the registry is empty and job creation returns
   `503 solver_unavailable`. Local (in-process) and cloud (queued worker) backends will implement
   the same protocol; the job record stores which backend ran it, never exposed as a UI concern.
 - Errors: engine errors become structured `422` responses (`{"error": {"code", "message"}}`);
@@ -139,7 +142,7 @@ tables, while remaining independently versioned and independently selectable.
 | Hand evaluation, combinatorics, ranges | engine, in-process    | Implemented        |
 | Equity (exact enumeration)             | engine, in-process    | Implemented (bounded) |
 | Training grading                       | engine, in-process    | Planned            |
-| Postflop solves                        | ComputeBackend (local worker or cloud) | Interface only |
+| Postflop solves (heads-up)             | ComputeBackend `local`: GTOpen in a worker thread of the API | Implemented; cloud workers planned |
 | Batch / high-iteration jobs            | cloud workers + Redis queue | Planned       |
 
 Job lifecycle (designed, not active): `queued → running → (succeeded | failed | cancelled)`,

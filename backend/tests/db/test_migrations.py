@@ -54,3 +54,18 @@ def test_destructive_downgrade_requires_confirmation(db_engine: Engine) -> None:
     )()  # type: ignore[assignment]
     with pytest.raises(RuntimeError, match="Refusing to drop"):
         command.downgrade(cfg, "base")
+
+
+def test_latest_migration_round_trips(db_engine: Engine) -> None:
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    url = db_engine.url.render_as_string(hide_password=False)
+    cfg.cmd_opts = type("Opts", (), {"x": [f"db_url={url}", "allow_destructive=true"]})()  # type: ignore[assignment]
+    command.downgrade(cfg, "0001")
+    command.upgrade(cfg, "head")
+    with db_engine.connect() as conn:
+        assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []

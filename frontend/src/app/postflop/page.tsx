@@ -26,8 +26,8 @@ export default function PostflopPage() {
           <CardHeader title="Postflop strategy explorer" actions={<StatusBadge status="planned" />} />
           <CardBody>
             <EmptyState
-              title="No postflop solutions available"
-              description="Strategy trees, EVs and node-by-node frequencies require the postflop solver (Milestone 3)."
+              title="Browsing full strategy trees is planned"
+              description="Heads-up postflop solves can be run on the Solver page, which shows values, exploitability and the first decision's strategy. Node-by-node navigation comes next."
             />
           </CardBody>
         </Card>

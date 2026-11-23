@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from riverlab_api import __version__
 from riverlab_api.schemas.meta import Capability, MetaResponse
-from riverlab_api.services import engine
+from riverlab_api.services import compute, engine
 
 router = APIRouter(tags=["meta"])
 
@@ -31,20 +31,29 @@ CAPABILITIES = [
         status="available",
         detail="Betting rules, side pots, uncalled bets, rake and settlement.",
     ),
-    Capability(
-        key="solver",
-        name="CFR solver",
-        status="interface_only",
-        detail="Interfaces and configuration exist. No solver is implemented; no GTO results exist.",
-    ),
     Capability(key="trainer", name="Trainer", status="planned", detail="Requires validated solver results."),
     Capability(key="hand_analysis", name="Hand analysis", status="planned", detail="Hand-history parsing."),
     Capability(key="analytics", name="Analytics", status="planned", detail="Built from your own hands."),
 ]
 
 
+SOLVER_AVAILABLE = Capability(
+    key="solver",
+    name="Postflop solver",
+    status="available",
+    detail="Heads-up postflop solving (GTOpen, pinned and audited). Every result reports its "
+    "exploitability; river and turn results are re-checked independently.",
+)
+SOLVER_OFF = Capability(
+    key="solver",
+    name="Postflop solver",
+    status="interface_only",
+    detail="No solver backend is enabled on this server.",
+)
+
+
 @router.get("/meta", response_model=MetaResponse)
 def meta() -> MetaResponse:
-    return MetaResponse(
-        api_version=__version__, engine_version=engine.engine_version(), capabilities=CAPABILITIES
-    )
+    solver = SOLVER_AVAILABLE if compute.registry.backends else SOLVER_OFF
+    caps = [*CAPABILITIES[:4], solver, *CAPABILITIES[4:]]
+    return MetaResponse(api_version=__version__, engine_version=engine.engine_version(), capabilities=caps)

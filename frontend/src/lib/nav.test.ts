@@ -17,9 +17,9 @@ describe("navigation", () => {
     expect(new Set(NAV_ITEMS.map((i) => i.href)).size).toBe(9);
   });
 
-  it("never marks the solver or trainer as available", () => {
+  it("labels partial and planned features honestly", () => {
     const status = Object.fromEntries(NAV_ITEMS.map((i) => [i.label, i.status]));
-    expect(status.Solver).toBe("interface_only");
+    expect(status.Solver).toBe("partial");
     expect(status.Trainer).toBe("planned");
   });
 
