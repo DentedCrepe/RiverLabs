@@ -38,7 +38,15 @@ def _game(result: SolverResult) -> Any:
     path = path_from_uri(result.storage_uri)
     if not path.exists():
         raise NotFoundError("This result's saved tree is missing from storage")
-    game = engine.load_solved(result.assumptions["spec"], str(path))
+    if result.job.kind == "preflop":
+        from riverlab_api.services import compute
+
+        cache_dir = next(
+            (str(d) for b in compute.registry.backends if (d := getattr(b, "equity_cache_dir", None))), None
+        )
+        game = engine.load_preflop(result.assumptions["spec"], str(path), cache_dir)
+    else:
+        game = engine.load_solved(result.assumptions["spec"], str(path))
     with _lock:
         _cache[result.id] = game
         while len(_cache) > get_settings().result_cache_size:
@@ -62,3 +70,15 @@ def parse_path(text: str) -> list[dict[str, Any]]:
 
 def node(result: SolverResult, path: str) -> dict[str, Any]:
     return engine.solved_node(_game(result), parse_path(path))
+
+
+def parse_preflop_path(text: str) -> list[int]:
+    """`0.2.1` -> [0, 2, 1] (action indices from the root)."""
+    steps = [t for t in text.split(".") if t]
+    if not all(t.isdigit() and len(t) <= 3 for t in steps):
+        raise EngineValidationError("Invalid preflop path (use dot-separated action indices, e.g. 0.2)")
+    return [int(t) for t in steps]
+
+
+def preflop_node(result: SolverResult, path: str) -> dict[str, Any]:
+    return engine.preflop_node(_game(result), parse_preflop_path(path))

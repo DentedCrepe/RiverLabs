@@ -105,5 +105,6 @@ memory limit alongside the solve.
 - Kuhn/Leduc-style toy games for future in-house CFR variants.
 - Miri on GTOpen's `unsafe` code.
 
-Until these are done, the API keeps returning `503 solver_unavailable` and the UI shows the
-solver as "Interface only".
+The app labels results accordingly: postflop results show their exploitability (re-checked
+independently), and preflop results beyond heads-up push/fold carry an "Approximate model"
+banner.

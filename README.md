@@ -8,8 +8,10 @@ configurable.
 > API, app) is complete. **Heads-up postflop solving** runs in the app through GTOpen, an
 > audited open-source solver pinned to a commit. Every result shows its exploitability, re-checked
 > by RiverLab's own independent best-response code (flop, turn and river) whenever it fits in
-> memory. Results are approximate equilibria for the configured bet sizes. Preflop and multiway
-> solving are not available in the app yet; unfinished areas are labelled.
+> memory. Results are approximate equilibria for the configured bet sizes. **Preflop** runs GTOpen's
+> preflop model and is labelled an **approximate model**: flop pots are valued by a model, not
+> solved. Only heads-up push/fold is validated. Multiway postflop solving is not available;
+> unfinished areas are labelled.
 
 ## What works today
 
@@ -22,6 +24,7 @@ configurable.
 | Range engine | ✅ | 169 classes, 1,326 combos, weights, notation, card removal, blockers |
 | Equity | ✅ | Exact enumeration (bounded) or seeded Monte Carlo with standard error |
 | Postflop solver | ✅ Heads-up | GTOpen (Apache-2.0, pinned) behind RiverLab's solver interface; local worker with queue, progress and cancel; results stored with provenance |
+| Preflop solver | ⚠️ Approximate model | GTOpen's preflop model for 2–6 players with RiverLab's blinds, ante, stack, rake and sizes; browsable tree. Heads-up push/fold is validated; everything else is labelled approximate |
 | Independent validation | ✅ | Best response and exploitability for river/turn/flop trees; exact heads-up push/fold (see `docs/solver-validation.md`) |
 | Trainer, hand-history import, analytics, solution library | ⏳ Planned | See `docs/roadmap.md` |
 
@@ -107,6 +110,7 @@ defaults, and `docker compose` refuses to start without `POSTGRES_PASSWORD`.
 | `POST /equity` | Exact or Monte Carlo equity for 2–6 hands/ranges |
 | `GET /solver/capabilities`, `POST/GET /solver/jobs`, `POST /solver/jobs/{id}/cancel`, `GET /solver/jobs/{id}/result`, `DELETE /solver/jobs/{id}` | Queue, track, cancel, read and delete postflop solves |
 | `GET /solver/jobs/{id}/node?path=a0.a1.cAh` | Browse a saved tree: `a<action index>` / `c<dealt card>` steps |
+| `POST /solver/preflop/jobs`, `GET /solver/jobs/{id}/preflop`, `GET /solver/jobs/{id}/preflop/node?path=0.2` | Queue, read and browse preflop solves (approximate model); `GET /solver/jobs?kind=preflop` lists them |
 
 Errors always use `{"error": {"code", "message", "details?"}}`.
 
@@ -128,7 +132,8 @@ docs/              Architecture, ADRs, rules, rake, evaluator, equity, roadmap, 
 - [Third-party solver audit](docs/solver-research.md)
 
 ## Known limitations
-- Solving is heads-up postflop only. Solved trees are saved to `RIVERLAB_RESULT_STORAGE_DIR`
+- Postflop solving is heads-up only. Preflop solving is an approximate model (see above), and
+  six-player trees with more than two raises can take hours on a desktop CPU. Solved trees are saved to `RIVERLAB_RESULT_STORAGE_DIR`
   (about the solve's memory size each) for browsing; delete solves you no longer need. Solves run one at a time inside the API process and do not survive a
   restart (they are marked failed).
 - The independent check is skipped (and says so) when it would not fit in the memory limit

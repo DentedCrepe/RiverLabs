@@ -1,0 +1,78 @@
+diff --git a/crates/solver/src/store.rs b/crates/solver/src/store.rs
+index 873aa1c7c..396639516 100644
+--- a/crates/solver/src/store.rs
++++ b/crates/solver/src/store.rs
+@@ -14,8 +14,15 @@ use serde::{Deserialize, Serialize};
+ /// pass, and node data ranges never overlap, so concurrent chance-branch
+ /// recursion touches disjoint slices.
+ pub struct ArenaBuf<T> {
+-    buf: Box<[T]>,
+     ptr: *mut T,
++    len: usize,
++}
++
++impl<T> Drop for ArenaBuf<T> {
++    fn drop(&mut self) {
++        // SAFETY: ptr/len came from Box::into_raw in `new` and are freed exactly once here.
++        unsafe { drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(self.ptr, self.len))) }
++    }
+ }
+ 
+ unsafe impl<T: Send> Send for ArenaBuf<T> {}
+@@ -23,45 +30,46 @@ unsafe impl<T: Sync> Sync for ArenaBuf<T> {}
+ 
+ impl<T: Copy + Default> ArenaBuf<T> {
+     pub fn new(len: usize) -> Self {
+-        let mut buf = vec![T::default(); len].into_boxed_slice();
+-        let ptr = buf.as_mut_ptr();
+-        ArenaBuf { buf, ptr }
++        let buf = vec![T::default(); len].into_boxed_slice();
++        let len = buf.len();
++        let ptr = Box::into_raw(buf) as *mut T;
++        ArenaBuf { ptr, len }
+     }
+ 
+     #[inline(always)]
+     #[allow(clippy::mut_from_ref)]
+     pub unsafe fn slice(&self, offset: u64, len: usize) -> &mut [T] {
+-        debug_assert!(offset as usize + len <= self.buf.len());
++        debug_assert!(offset as usize + len <= self.len);
+         std::slice::from_raw_parts_mut(self.ptr.add(offset as usize), len)
+     }
+ 
+     #[inline(always)]
+     pub unsafe fn read_at(&self, idx: usize) -> T {
+-        debug_assert!(idx < self.buf.len());
++        debug_assert!(idx < self.len);
+         *self.ptr.add(idx)
+     }
+ 
+     #[inline(always)]
+     pub unsafe fn write_at(&self, idx: usize, v: T) {
+-        debug_assert!(idx < self.buf.len());
++        debug_assert!(idx < self.len);
+         *self.ptr.add(idx) = v;
+     }
+ 
+     pub fn len(&self) -> usize {
+-        self.buf.len()
++        self.len
+     }
+ 
+     pub fn is_empty(&self) -> bool {
+-        self.buf.is_empty()
++        self.len == 0
+     }
+ 
+     /// Read-only view. Only call while no traversal is mutating the buffer.
+     pub fn as_slice(&self) -> &[T] {
+-        unsafe { std::slice::from_raw_parts(self.ptr, self.buf.len()) }
++        unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
+     }
+ 
+     pub fn as_mut_slice(&mut self) -> &mut [T] {
+-        unsafe { std::slice::from_raw_parts_mut(self.ptr, self.buf.len()) }
++        unsafe { std::slice::from_raw_parts_mut(self.ptr, self.len) }
+     }
+ }
+ 

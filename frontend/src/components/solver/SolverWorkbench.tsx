@@ -9,7 +9,7 @@ import { ResultView } from "./ResultView";
 import { SolveForm } from "./SolveForm";
 
 export function SolverWorkbench() {
-  const jobs = useApi<SolverJob[]>("/api/v1/solver/jobs?limit=20", { refreshMs: 1500 });
+  const jobs = useApi<SolverJob[]>("/api/v1/solver/jobs?kind=postflop&limit=20", { refreshMs: 1500 });
   const [selected, setSelected] = useState<string | null>(null);
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">

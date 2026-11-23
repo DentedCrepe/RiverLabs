@@ -10,8 +10,11 @@ RiverLab is a six-max no-limit hold'em theory, solving and training platform. Re
 - **Solver output is always shown with its exploitability** and its approximations. Postflop
   solves come from GTOpen (pinned commit, `engine/solver-gtopen`); results are re-checked by
   `engine/solver-validation` (skipped, with a note, only when memory does not allow). Never call a result "GTO" without qualification:
-  it is an approximate equilibrium for the configured bet sizes. GTOpen's preflop beyond
-  push/fold is a modelled approximation and is not exposed in the app.
+  it is an approximate equilibrium for the configured bet sizes. GTOpen's preflop solver
+  runs in the app (Preflop page, `kind = "preflop"` jobs) and is a **modelled approximation**:
+  every preflop result must say so (`ValidatedScope` in `engine/solver-gtopen/src/preflop.rs`).
+  Only heads-up push/fold without ante or rake is validated; never widen that label without
+  new validation in `docs/solver-validation.md`.
 - **Changing the GTOpen commit** requires re-running `tools/solver-audit/run.sh` and the
   validation examples (`docs/solver-validation.md`) before updating the pin.
 - **Poker mathematics lives only in `engine/` (Rust).** The backend calls it through

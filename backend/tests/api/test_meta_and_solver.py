@@ -61,3 +61,37 @@ def test_invalid_spec_is_rejected_with_422(client: TestClient) -> None:
     spec = _spec(client)
     spec["ranges"] = ["QQ+", "ZZ"]
     assert client.post("/api/v1/solver/jobs", json={"spec": spec}).status_code == 422
+
+
+def _preflop_spec(client: TestClient) -> dict[str, Any]:
+    return {
+        "game": client.get("/api/v1/game-configs/default").json(),
+        "heads_up": False,
+        "sizing": {
+            "open_raise_to_mbb": [2_500],
+            "reraise_pct_of_bet": [300],
+            "max_raises": 3,
+            "add_all_in": True,
+            "all_in_threshold_pct_stack": 85,
+            "allow_limp": False,
+        },
+        "realization": "positional",
+        "max_iterations": 100,
+        "max_seconds": None,
+        "check_interval": 10,
+        "threads": 1,
+    }
+
+
+def test_preflop_jobs_validate_then_need_a_backend(client: TestClient) -> None:
+    caps = {c["key"]: c["status"] for c in client.get("/api/v1/meta").json()["capabilities"]}
+    assert caps["preflop_solver"] == "interface_only"
+    spec = _preflop_spec(client)
+    assert client.post("/api/v1/solver/preflop/jobs", json={"spec": spec}).status_code == 503
+    spec["sizing"]["open_raise_to_mbb"] = [1_500]
+    r = client.post("/api/v1/solver/preflop/jobs", json={"spec": spec})
+    assert r.status_code == 422
+    assert "at least 2bb" in r.json()["error"]["message"]
+    # A postflop spec is not a preflop spec.
+    assert client.post("/api/v1/solver/preflop/jobs", json={"spec": {"bogus": 1}}).status_code == 422
+    assert client.get("/api/v1/solver/jobs", params={"kind": "river"}).status_code == 422

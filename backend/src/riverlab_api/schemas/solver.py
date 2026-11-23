@@ -26,6 +26,7 @@ class SolverJobCreate(StrictModel):
 
 class SolverJobOut(StrictModel):
     id: UUID
+    kind: str
     status: str
     backend: str
     iterations: int
@@ -91,3 +92,59 @@ class NodeViewOut(StrictModel):
     by_class: list[ClassStrategy]
     reach_fraction: list[float]
     path: str
+
+
+class PreflopAction(StrictModel):
+    label: str
+    kind: str
+    to_mbb: float
+    frequency: float
+
+
+class PreflopStep(StrictModel):
+    actor: str
+    actions: list[str]
+    chosen: int | None
+
+
+class SeatRange(StrictModel):
+    position: str
+    classes: list[ClassStrategy]
+
+
+class PreflopNodeOut(StrictModel):
+    kind: str
+    actor: str | None
+    positions: list[str]
+    pot_mbb: float
+    invested_mbb: list[float]
+    live: list[bool]
+    actions: list[PreflopAction]
+    by_class: list[ClassStrategy]
+    ranges: list[SeatRange]
+    history: list[PreflopStep]
+    strategy_note: str | None
+    reach_probability: float
+    stack_to_pot: float | None
+    path: str = ""
+
+
+class PreflopResultOut(StrictModel):
+    job_id: UUID
+    engine_version: str
+    solver_backend: str
+    solver_version: str
+    model: str
+    validated_scope: str
+    model_notes: list[str]
+    iterations: int
+    stop_reason: str
+    positions: list[str]
+    model_gap_mbb: float
+    gaps_mbb: list[float]
+    values_mbb: list[float]
+    elapsed_ms: int
+    memory_bytes: int
+    nodes: int
+    root: PreflopNodeOut
+    tree_available: bool

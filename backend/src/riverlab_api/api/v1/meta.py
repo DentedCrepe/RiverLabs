@@ -50,10 +50,24 @@ SOLVER_OFF = Capability(
     status="interface_only",
     detail="No solver backend is enabled on this server.",
 )
+PREFLOP_AVAILABLE = Capability(
+    key="preflop_solver",
+    name="Preflop solver",
+    status="approximate",
+    detail="GTOpen's preflop model: pots that reach the flop are valued by a model, not solved. "
+    "Only heads-up push/fold is validated against an exact equilibrium.",
+)
+PREFLOP_OFF = Capability(
+    key="preflop_solver",
+    name="Preflop solver",
+    status="interface_only",
+    detail="No solver backend is enabled on this server.",
+)
 
 
 @router.get("/meta", response_model=MetaResponse)
 def meta() -> MetaResponse:
     solver = SOLVER_AVAILABLE if compute.registry.backends else SOLVER_OFF
-    caps = [*CAPABILITIES[:4], solver, *CAPABILITIES[4:]]
+    preflop = PREFLOP_AVAILABLE if compute.registry.backends else PREFLOP_OFF
+    caps = [*CAPABILITIES[:4], solver, preflop, *CAPABILITIES[4:]]
     return MetaResponse(api_version=__version__, engine_version=engine.engine_version(), capabilities=caps)

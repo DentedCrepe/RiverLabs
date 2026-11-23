@@ -212,6 +212,94 @@ impl SolveSpec {
     }
 }
 
+/// How a preflop model values the pots that reach the flop. Preflop solving in RiverLab is an
+/// **approximate model**: the flop is not played out (see `docs/solver-validation.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EquityRealization {
+    /// Every player realises exactly their all-in equity.
+    Full,
+    /// A fixed positional adjustment: the last player to act postflop realises more of their
+    /// equity, the first less, growing with stack-to-pot ratio (GTOpen's "static" model).
+    Positional,
+}
+
+/// Preflop bet-size abstraction. Sizes are "raise to" amounts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PreflopSizing {
+    /// First-raise sizes, as the total raised to, in mbb.
+    pub open_raise_to_mbb: Vec<u64>,
+    /// Re-raise sizes as a percentage of the bet faced (300 = raise to 3x).
+    pub reraise_pct_of_bet: Vec<u32>,
+    /// Raises allowed in total, the open included (2 = open and one 3-bet).
+    pub max_raises: u8,
+    /// Always offer an all-in in addition to the configured sizes.
+    pub add_all_in: bool,
+    /// A raise to more than this percentage of the stack becomes all-in.
+    pub all_in_threshold_pct_stack: u32,
+    /// Allow limping (calling the big blind without a raise).
+    pub allow_limp: bool,
+}
+
+/// Everything that defines a preflop solve. Persisted verbatim with every job and result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PreflopSpec {
+    /// Players, blinds, ante, stack and rake. `heads_up` overrides the player count.
+    pub game: GameConfig,
+    /// Small blind against big blind only.
+    pub heads_up: bool,
+    pub sizing: PreflopSizing,
+    pub realization: EquityRealization,
+    pub max_iterations: u64,
+    pub max_seconds: Option<u64>,
+    /// Measure each player's best-response gap every N iterations.
+    pub check_interval: u64,
+    pub threads: u16,
+}
+
+impl PreflopSpec {
+    pub fn players(&self) -> usize {
+        if self.heads_up { 2 } else { self.game.players as usize }
+    }
+
+    pub fn validate(&self) -> Result<(), SolverError> {
+        self.game.validate().map_err(|e| SolverError::InvalidConfig(e.to_string()))?;
+        let s = &self.sizing;
+        let stack = self.game.stack.effective_stack.mbb();
+        let bb = GameConfig::BIG_BLIND.mbb();
+        if s.open_raise_to_mbb.is_empty() && !s.add_all_in {
+            return invalid("give at least one open-raise size or allow all-in");
+        }
+        if s.open_raise_to_mbb.len() > 4 || s.reraise_pct_of_bet.len() > 4 {
+            return invalid("at most 4 open sizes and 4 re-raise sizes");
+        }
+        if s.open_raise_to_mbb.iter().any(|&o| o < 2 * bb || o >= stack) {
+            return invalid("open-raise sizes must be at least 2bb and less than the stack");
+        }
+        if s.reraise_pct_of_bet.iter().any(|&m| !(200..=1000).contains(&m)) {
+            return invalid("re-raise sizes must be between 2x (200) and 10x (1000) the bet faced");
+        }
+        if !(1..=6).contains(&s.max_raises) {
+            return invalid("max_raises must be between 1 and 6");
+        }
+        if !(1..=100).contains(&s.all_in_threshold_pct_stack) {
+            return invalid("all_in_threshold_pct_stack must be between 1 and 100");
+        }
+        if self.max_iterations == 0 || self.check_interval == 0 {
+            return invalid("max_iterations and check_interval must be positive");
+        }
+        if self.max_iterations > u32::MAX as u64 {
+            return invalid("max_iterations must be at most 4294967295");
+        }
+        if self.threads == 0 {
+            return invalid("threads must be at least 1");
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,5 +340,52 @@ mod tests {
         let back: SolverConfig = serde_json::from_value(json).unwrap();
         assert_eq!(back, SolverConfig::default());
         assert!(serde_json::from_str::<SolverConfig>(r#"{"bogus":1}"#).is_err());
+    }
+
+    fn preflop() -> PreflopSpec {
+        PreflopSpec {
+            game: GameConfig::default(),
+            heads_up: false,
+            sizing: PreflopSizing {
+                open_raise_to_mbb: vec![2_500],
+                reraise_pct_of_bet: vec![300],
+                max_raises: 3,
+                add_all_in: true,
+                all_in_threshold_pct_stack: 85,
+                allow_limp: false,
+            },
+            realization: EquityRealization::Positional,
+            max_iterations: 100,
+            max_seconds: None,
+            check_interval: 10,
+            threads: 1,
+        }
+    }
+
+    #[test]
+    fn preflop_spec_validation() {
+        let base = preflop();
+        base.validate().unwrap();
+        assert_eq!(base.players(), 6);
+        assert_eq!(PreflopSpec { heads_up: true, ..base.clone() }.players(), 2);
+        let bad = |f: &dyn Fn(&mut PreflopSpec)| {
+            let mut s = base.clone();
+            f(&mut s);
+            s.validate().is_err()
+        };
+        assert!(bad(&|s| s.sizing.open_raise_to_mbb = vec![1_500]), "open below a min-raise");
+        assert!(bad(&|s| s.sizing.open_raise_to_mbb = vec![100_000]), "open at the stack");
+        assert!(bad(&|s| {
+            s.sizing.open_raise_to_mbb.clear();
+            s.sizing.add_all_in = false;
+        }));
+        assert!(bad(&|s| s.sizing.reraise_pct_of_bet = vec![150]));
+        assert!(bad(&|s| s.sizing.max_raises = 0));
+        assert!(bad(&|s| s.sizing.all_in_threshold_pct_stack = 0));
+        assert!(bad(&|s| s.max_iterations = 0));
+        assert!(bad(&|s| s.threads = 0));
+        let json = serde_json::to_value(&base).unwrap();
+        assert_eq!(json["realization"], "positional");
+        assert_eq!(serde_json::from_value::<PreflopSpec>(json).unwrap(), base);
     }
 }

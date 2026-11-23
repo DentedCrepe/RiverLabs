@@ -37,11 +37,14 @@ class LocalSolverBackend:
         max_memory_mb: int,
         threads: int,
         storage_dir: str | None = None,
+        equity_cache_dir: str | None = None,
     ) -> None:
         self._sessions = session_factory
         self._storage = Path(storage_dir).resolve() if storage_dir else None
         if self._storage:
             self._storage.mkdir(parents=True, exist_ok=True)
+        # GTOpen's preflop class-equity table (~30 s to build) is cached here; defaults to storage.
+        self._equity_cache = Path(equity_cache_dir).resolve() if equity_cache_dir else self._storage
         self._max_bytes = max_memory_mb * 1024 * 1024
         self._threads = threads or (os.cpu_count() or 1)
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="riverlab-solver")
@@ -51,10 +54,14 @@ class LocalSolverBackend:
     def can_run(self, spec: dict[str, Any]) -> bool:
         return True
 
-    def submit(self, job_id: uuid.UUID, spec: dict[str, Any]) -> None:
+    @property
+    def equity_cache_dir(self) -> Path | None:
+        return self._equity_cache
+
+    def submit(self, job_id: uuid.UUID, spec: dict[str, Any], kind: str = "postflop") -> None:
         with self._lock:
             self._tokens[job_id] = engine.CancelToken()
-        self._executor.submit(self._run_guarded, job_id, spec)
+        self._executor.submit(self._run_guarded, job_id, spec, kind)
 
     def request_cancel(self, job_id: uuid.UUID) -> None:
         with self._lock:
@@ -70,9 +77,9 @@ class LocalSolverBackend:
 
     # ---- worker ----
 
-    def _run_guarded(self, job_id: uuid.UUID, spec: dict[str, Any]) -> None:
+    def _run_guarded(self, job_id: uuid.UUID, spec: dict[str, Any], kind: str) -> None:
         try:
-            self._run(job_id, spec)
+            self._run(job_id, spec, kind)
         except Exception:  # pragma: no cover - last-resort reporting, never silent
             logger.exception("solver job %s crashed", job_id)
             self._finish(
@@ -87,7 +94,7 @@ class LocalSolverBackend:
 
         return JobService(session, BackendRegistry())
 
-    def _run(self, job_id: uuid.UUID, spec: dict[str, Any]) -> None:
+    def _run(self, job_id: uuid.UUID, spec: dict[str, Any], kind: str) -> None:
         with self._sessions() as session:
             job = session.get(SolverJob, job_id)
             if job is None or job.status != JobStatus.QUEUED:
@@ -102,22 +109,38 @@ class LocalSolverBackend:
                 if current is not None and current.status == JobStatus.RUNNING:
                     self._service(s).report_progress(job_id, int(p["iterations"]), p)
 
-        save_path = str(self._storage / f"{job_id}.gto") if self._storage else None
+        suffix = "gtp" if kind == "preflop" else "gto"
+        save_path = str(self._storage / f"{job_id}.{suffix}") if self._storage else None
         try:
-            outcome = engine.solve_postflop(
-                spec, token, on_progress, self._max_bytes, self._threads, save_path
-            )
+            if kind == "preflop":
+                outcome = engine.solve_preflop(
+                    spec,
+                    token,
+                    on_progress,
+                    self._max_bytes,
+                    self._threads,
+                    save_path,
+                    str(self._equity_cache) if self._equity_cache else None,
+                )
+            else:
+                outcome = engine.solve_postflop(
+                    spec, token, on_progress, self._max_bytes, self._threads, save_path
+                )
         except engine.SolveRejectedError as exc:
             self._finish(job_id, JobStatus.FAILED, ("solve_rejected", str(exc)))
             return
         except engine.SolveFailedError as exc:
             self._finish(job_id, JobStatus.FAILED, ("solver_error", str(exc)))
             return
-        if outcome["stop_reason"] == "cancelled":
+        stop_reason = outcome["outcome"]["stop_reason"] if kind == "preflop" else outcome["stop_reason"]
+        if stop_reason == "cancelled":
             self._finish(job_id, JobStatus.CANCELLED)
             return
         with self._sessions() as session:
-            self._store_result(session, job_id, spec, outcome, save_path)
+            if kind == "preflop":
+                self._store_preflop_result(session, job_id, spec, outcome, save_path)
+            else:
+                self._store_result(session, job_id, spec, outcome, save_path)
             self._service(session).mark_finished(job_id, JobStatus.SUCCEEDED)
 
     def _finish(self, job_id: uuid.UUID, status: JobStatus, error: tuple[str, str] | None = None) -> None:
@@ -178,6 +201,52 @@ class LocalSolverBackend:
                     "combos": root["combos"],
                     "frequencies": root["frequencies"],
                     "by_class": outcome["root_by_class"],
+                },
+            )
+        )
+        session.commit()
+
+    @staticmethod
+    def _store_preflop_result(
+        session: Session,
+        job_id: uuid.UUID,
+        spec: dict[str, Any],
+        result: dict[str, Any],
+        save_path: str | None,
+    ) -> None:
+        outcome = result["outcome"]
+        progress = outcome["progress"]
+        session.add(
+            SolverResult(
+                job_id=job_id,
+                engine_version=engine.engine_version(),
+                solver_backend=outcome["backend"],
+                solver_version=outcome["backend_commit"],
+                config_schema_version=spec["game"]["schema_version"],
+                assumptions={
+                    "spec": spec,
+                    "model": "GTOpen preflop model (approximate; flop pots are modelled, not solved)",
+                    "validated_scope": outcome["validated_scope"],
+                    "model_notes": outcome["model_notes"],
+                    "backend_repository": outcome["backend_repository"],
+                    "units": "mbb",
+                },
+                iterations=progress["iterations"],
+                # Not an exploitability of the real game: the model's own best-response gap is in
+                # the summary instead, labelled as such.
+                exploitability=None,
+                exploitability_unit=None,
+                storage_uri=Path(save_path).as_uri() if save_path else None,
+                summary={
+                    "stop_reason": outcome["stop_reason"],
+                    "positions": outcome["positions"],
+                    "model_gap_mbb": progress["model_gap_mbb"],
+                    "gaps_mbb": outcome["gaps_mbb"],
+                    "values_mbb": outcome["values_mbb"],
+                    "elapsed_ms": progress["elapsed_ms"],
+                    "memory_bytes": outcome["memory_bytes"],
+                    "nodes": outcome["nodes"],
+                    "root": result["root"],
                 },
             )
         )

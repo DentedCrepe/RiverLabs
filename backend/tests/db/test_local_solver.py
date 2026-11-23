@@ -19,7 +19,10 @@ from riverlab_api.services.local_solver import LocalSolverBackend, fail_interrup
 
 pytestmark = pytest.mark.db
 
-NONE = {"bet_pct_pot": [[], [], []], "raise_pct_pot": [[], [], []]}
+# GTOpen's preflop equity table takes ~30 s to build; keep it between test runs (git-ignored).
+EQUITY_CACHE = Path(__file__).resolve().parents[2] / ".cache"
+
+NONE: dict[str, Any] = {"bet_pct_pot": [[], [], []], "raise_pct_pot": [[], [], []]}
 
 
 def _clean(db_engine: Engine) -> None:
@@ -38,7 +41,13 @@ def _start(
             yield s
 
     app.dependency_overrides[get_db] = real_db
-    backend = LocalSolverBackend(factory, max_memory_mb=max_memory_mb, threads=2, storage_dir=storage_dir)
+    backend = LocalSolverBackend(
+        factory,
+        max_memory_mb=max_memory_mb,
+        threads=2,
+        storage_dir=storage_dir,
+        equity_cache_dir=str(EQUITY_CACHE),
+    )
     compute.registry.register(backend)
     return TestClient(app), backend
 
@@ -241,3 +250,95 @@ def test_saved_tree_can_be_browsed_and_deleted(live: TestClient, tmp_path: Path)
     assert live.delete(f"/api/v1/solver/jobs/{job['id']}").status_code == 204
     assert live.get(f"/api/v1/solver/jobs/{job['id']}").status_code == 404
     assert not saved[0].exists()
+
+
+def preflop_spec(
+    heads_up: bool = True, push_fold: bool = True, iterations: int = 400, rake_bps: int = 0
+) -> dict[str, Any]:
+    cfg = engine.default_game_config()
+    cfg["rake"]["percentage_bps"] = rake_bps
+    cfg["players"] = 3
+    cfg["stack"]["effective_stack"] = 10_000
+    return {
+        "game": cfg,
+        "heads_up": heads_up,
+        "sizing": {
+            "open_raise_to_mbb": [] if push_fold else [2_500],
+            "reraise_pct_of_bet": [] if push_fold else [300],
+            "max_raises": 1 if push_fold else 2,
+            "add_all_in": True,
+            "all_in_threshold_pct_stack": 85,
+            "allow_limp": False,
+        },
+        "realization": "positional",
+        "max_iterations": iterations,
+        "max_seconds": None,
+        "check_interval": 100,
+        "threads": 1,
+    }
+
+
+def _range_frequency(node: dict[str, Any], action: int) -> float:
+    total = sum(c["weight"] for c in node["by_class"])
+    return float(sum(c["weight"] * c["frequencies"][action] for c in node["by_class"]) / total)
+
+
+def test_heads_up_push_fold_matches_the_validated_equilibrium(live: TestClient, tmp_path: Path) -> None:
+    meta = {c["key"]: c["status"] for c in live.get("/api/v1/meta").json()["capabilities"]}
+    assert meta["preflop_solver"] == "approximate"
+    created = live.post("/api/v1/solver/preflop/jobs", json={"spec": preflop_spec()})
+    assert created.status_code == 202, created.json()
+    assert created.json()["kind"] == "preflop"
+    job = wait(live, created.json()["id"], {"succeeded", "failed"}, timeout=300)
+    assert job["status"] == "succeeded", job
+
+    res = live.get(f"/api/v1/solver/jobs/{job['id']}/preflop").json()
+    assert res["validated_scope"] == "heads_up_push_fold"
+    assert res["positions"] == ["SB", "BB"]
+    assert res["tree_available"] is True
+    assert len(res["gaps_mbb"]) == 2
+    root = res["root"]
+    assert root["actor"] == "SB"
+    jam = next(i for i, a in enumerate(root["actions"]) if a["kind"] == "jam")
+    # RiverLab's exact combo-level equilibrium at 10bb: SB jams 58.3%, BB calls 37.4%.
+    assert root["actions"][jam]["frequency"] == pytest.approx(0.583, abs=0.02)
+    assert _range_frequency(root, jam) == pytest.approx(0.583, abs=0.02)
+
+    base = f"/api/v1/solver/jobs/{job['id']}/preflop/node"
+    bb = live.get(base, params={"path": str(jam)}).json()
+    assert bb["actor"] == "BB"
+    call = next(i for i, a in enumerate(bb["actions"]) if a["kind"] == "call")
+    assert bb["actions"][call]["frequency"] == pytest.approx(0.374, abs=0.02)
+    assert bb["history"][0]["chosen"] == jam
+    assert live.get(base, params={"path": "9"}).status_code == 422
+    assert live.get(base, params={"path": "a1"}).status_code == 422
+    # The postflop endpoints refuse preflop jobs, pointing at the right one.
+    wrong = live.get(f"/api/v1/solver/jobs/{job['id']}/result")
+    assert wrong.status_code == 404
+    assert "/preflop" in wrong.json()["error"]["message"]
+
+    listed = live.get("/api/v1/solver/jobs", params={"kind": "preflop"}).json()
+    assert [j["id"] for j in listed] == [job["id"]]
+    assert live.get("/api/v1/solver/jobs", params={"kind": "postflop"}).json() == []
+    saved = list((tmp_path / "results").glob("*.gtp"))
+    assert len(saved) == 1
+    assert live.delete(f"/api/v1/solver/jobs/{job['id']}").status_code == 204
+    assert not saved[0].exists()
+
+
+def test_three_handed_preflop_is_labelled_approximate(live: TestClient) -> None:
+    spec = preflop_spec(heads_up=False, push_fold=False, iterations=30, rake_bps=500)
+    job = wait(
+        live,
+        live.post("/api/v1/solver/preflop/jobs", json={"spec": spec}).json()["id"],
+        {"succeeded", "failed"},
+        timeout=300,
+    )
+    assert job["status"] == "succeeded", job
+    res = live.get(f"/api/v1/solver/jobs/{job['id']}/preflop").json()
+    assert res["validated_scope"] == "approximate_model"
+    assert res["model_notes"][0].startswith("Approximate model")
+    assert any("Rake rounding" in n for n in res["model_notes"])
+    assert res["positions"] == ["BTN", "SB", "BB"]
+    assert res["root"]["actor"] == "BTN"
+    assert res["root"]["actions"][0]["kind"] == "fold"

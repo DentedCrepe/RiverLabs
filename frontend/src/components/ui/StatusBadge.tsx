@@ -3,6 +3,7 @@ import { cn } from "./cn";
 
 const STYLES: Record<FeatureStatus, { label: string; className: string }> = {
   available: { label: "Available", className: "bg-accent-dim text-accent-strong border-accent/30" },
+  approximate: { label: "Approximate model", className: "bg-warn-dim text-warn border-warn/30" },
   partial: { label: "In development", className: "bg-info-dim text-info border-info/30" },
   interface_only: { label: "Interface only", className: "bg-warn-dim text-warn border-warn/30" },
   planned: { label: "Planned", className: "bg-surface-3 text-muted border-line-strong" },

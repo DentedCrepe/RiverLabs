@@ -24,6 +24,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use thiserror::Error;
 
+pub mod preflop;
+
 pub const BACKEND: &str = "gtopen";
 pub const GTOPEN_REPOSITORY: &str = "https://github.com/MatthewPDingle/GTOpen";
 pub const GTOPEN_COMMIT: &str = "eb5ccd671223293527f36d219cfe33baf0b0475c";

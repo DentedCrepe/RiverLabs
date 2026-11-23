@@ -27,6 +27,7 @@ describe("StrategyMatrix", () => {
 
 const job = (patch: Partial<SolverJob>): SolverJob => ({
   id: "j1",
+  kind: "postflop",
   status: "running",
   backend: "local",
   iterations: 120,

@@ -1,7 +1,6 @@
 """Solver configuration, jobs, results and strategy storage.
 
-No solver exists yet (ADR-0005). These tables define how results will be stored: every
-result carries the engine version, solver backend/version, configuration schema version and
+Every result carries the engine version, solver backend/version, configuration schema version and
 the full assumptions document, so stored results stay interpretable as the engine evolves.
 """
 
@@ -70,7 +69,9 @@ class SolverJob(UUIDPk, Timestamps, Base):
     solver_config_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("solver_configs.id", ondelete="SET NULL"), nullable=True
     )
-    # Full engine-validated SolveSpec, copied so later config edits never change a job.
+    # "postflop" (SolveSpec) or "preflop" (PreflopSpec, an approximate model).
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, server_default="postflop")
+    # Full engine-validated SolveSpec or PreflopSpec, copied so later config edits never change a job.
     spec: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     # Which compute backend accepted the job (e.g. "local", "cloud"); hidden from the UI.
     backend: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -95,6 +96,7 @@ class SolverJob(UUIDPk, Timestamps, Base):
         ),
         CheckConstraint("status <> 'failed' OR error_code IS NOT NULL", name="failed_has_error"),
         CheckConstraint("iterations >= 0", name="iterations_non_negative"),
+        CheckConstraint("kind IN ('postflop', 'preflop')", name="job_kind"),
     )
 
 

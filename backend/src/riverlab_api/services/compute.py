@@ -36,7 +36,7 @@ class ComputeBackend(Protocol):
     name: str
 
     def can_run(self, spec: dict[str, Any]) -> bool: ...
-    def submit(self, job_id: uuid.UUID, spec: dict[str, Any]) -> None: ...
+    def submit(self, job_id: uuid.UUID, spec: dict[str, Any], kind: str) -> None: ...
     def request_cancel(self, job_id: uuid.UUID) -> None: ...
 
 
@@ -60,19 +60,28 @@ class JobService:
         self.db = db
         self.backends = backends if backends is not None else registry
 
-    def submit(self, spec: dict[str, Any], owner_id: uuid.UUID | None = None) -> SolverJob:
-        canonical = engine.validate_solve_spec(spec)
+    def submit(
+        self, spec: dict[str, Any], owner_id: uuid.UUID | None = None, kind: str = "postflop"
+    ) -> SolverJob:
+        if kind == "preflop":
+            canonical = engine.validate_preflop_spec(spec)
+        elif kind == "postflop":
+            canonical = engine.validate_solve_spec(spec)
+        else:
+            raise ValueError(f"unknown job kind {kind!r}")
         backend = self.backends.select(canonical)
         if backend is None:
             raise SolverUnavailableError(
                 "No solver backend is available. RiverLab's solver is not implemented yet; "
                 "the request was validated but not queued."
             )
-        job = SolverJob(owner_id=owner_id, status=JobStatus.QUEUED, spec=canonical, backend=backend.name)
+        job = SolverJob(
+            owner_id=owner_id, status=JobStatus.QUEUED, kind=kind, spec=canonical, backend=backend.name
+        )
         self.db.add(job)
         self.db.commit()
         try:
-            backend.submit(job.id, canonical)
+            backend.submit(job.id, canonical, kind)
         except Exception as exc:
             self._transition(job, JobStatus.FAILED, error=("backend_submit_failed", str(exc)))
             raise
@@ -108,8 +117,10 @@ class JobService:
         self.db.delete(job)
         self.db.commit()
 
-    def list(self, limit: int = 50) -> list[SolverJob]:
+    def list(self, limit: int = 50, kind: str | None = None) -> list[SolverJob]:
         query = select(SolverJob).order_by(SolverJob.created_at.desc(), SolverJob.id).limit(limit)
+        if kind is not None:
+            query = query.where(SolverJob.kind == kind)
         return list(self.db.scalars(query))
 
     def cancel(self, job_id: uuid.UUID) -> SolverJob:

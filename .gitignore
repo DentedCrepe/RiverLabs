@@ -34,3 +34,6 @@ next-env.d.ts
 # Saved solver trees
 backend/data/
 data/
+
+# GTOpen preflop equity table cache used by backend tests
+backend/.cache/

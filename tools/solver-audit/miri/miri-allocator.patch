@@ -1,0 +1,12 @@
+diff --git a/crates/solver/src/lib.rs b/crates/solver/src/lib.rs
+index 694c7e7fa..255a16b8e 100644
+--- a/crates/solver/src/lib.rs
++++ b/crates/solver/src/lib.rs
+@@ -4,6 +4,7 @@
+ /// Hot paths use pooled scratch buffers (see `scratch`), but tree building
+ /// and queries still allocate from many threads; mimalloc removes the
+ /// resulting allocator contention.
++#[cfg(not(miri))]
+ #[global_allocator]
+ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+ 

@@ -344,7 +344,7 @@ fn solver_backends() -> PyResult<String> {
         "name": solver_gtopen::BACKEND,
         "repository": solver_gtopen::GTOPEN_REPOSITORY,
         "commit": solver_gtopen::GTOPEN_COMMIT,
-        "scope": "heads-up postflop (flop, turn or river root)",
+        "scope": "heads-up postflop (flop, turn or river root); preflop as an approximate model",
     }]))
 }
 
@@ -400,6 +400,99 @@ fn solve_postflop(
     }
 }
 
+/// Validates a preflop `PreflopSpec` (JSON) and returns it in canonical form.
+#[pyfunction]
+fn validate_preflop_spec(spec_json: &str) -> PyResult<String> {
+    let spec: solver_interface::PreflopSpec = serde_json::from_str(spec_json).map_err(err)?;
+    solver_gtopen::preflop::prepare_preflop(&spec).map_err(err)?;
+    to_json(&spec)
+}
+
+/// A solved preflop game (approximate model), for browsing its tree.
+#[pyclass(frozen)]
+struct PreflopGame {
+    inner: solver_gtopen::preflop::PreflopBrowser,
+}
+
+#[pymethods]
+impl PreflopGame {
+    /// The node reached by `path` (action indices from the root), as JSON.
+    fn node(&self, py: Python<'_>, path: Vec<usize>) -> PyResult<String> {
+        let view = py.detach(|| self.inner.node(&path));
+        to_json(&view.map_err(err)?)
+    }
+}
+
+fn preflop_error(e: solver_gtopen::AdapterError) -> PyErr {
+    match e {
+        solver_gtopen::AdapterError::Backend(m) => pyo3::exceptions::PyRuntimeError::new_err(m),
+        other => err(other),
+    }
+}
+
+/// Solves a `PreflopSpec` (JSON) with GTOpen's preflop model. Releases the GIL while solving.
+/// `equity_cache_dir` keeps GTOpen's class equity table between runs (it takes ~30 s to build).
+/// Raises `ValueError` for rejected specs and `RuntimeError` for solver failures.
+#[pyfunction]
+#[pyo3(signature = (spec_json, cancel, progress = None, max_bytes = 2u64 << 30, threads = None, save_path = None, equity_cache_dir = None))]
+#[allow(clippy::too_many_arguments)]
+fn solve_preflop(
+    py: Python<'_>,
+    spec_json: &str,
+    cancel: &CancelToken,
+    progress: Option<Py<PyAny>>,
+    max_bytes: u64,
+    threads: Option<u16>,
+    save_path: Option<String>,
+    equity_cache_dir: Option<String>,
+) -> PyResult<String> {
+    let mut spec: solver_interface::PreflopSpec = serde_json::from_str(spec_json).map_err(err)?;
+    if let Some(t) = threads {
+        spec.threads = t;
+    }
+    let flag = cancel.flag.clone();
+    let result = py.detach(|| {
+        let eq = solver_gtopen::preflop::equity_table(equity_cache_dir.as_deref().map(std::path::Path::new));
+        solver_gtopen::preflop::solve_preflop(&spec, eq, max_bytes, flag, |p| {
+            if let Some(cb) = &progress {
+                let payload = serde_json::to_string(p).expect("progress serializes");
+                Python::attach(|py| {
+                    if let Err(e) = cb.call1(py, (payload,)) {
+                        e.print(py);
+                    }
+                });
+            }
+        })
+    });
+    let solved = result.map_err(preflop_error)?;
+    if let Some(path) = save_path {
+        if solved.outcome.stop_reason != solver_gtopen::StopReason::Cancelled {
+            py.detach(|| solved.save(std::path::Path::new(&path)))
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("saving the solve failed: {e}")))?;
+        }
+    }
+    to_json(&json!({ "outcome": solved.outcome, "root": solved.node(&[]).map_err(preflop_error)? }))
+}
+
+/// Loads a preflop solve saved with `solve_preflop(..., save_path=...)` (GIL released).
+#[pyfunction]
+#[pyo3(signature = (spec_json, path, equity_cache_dir = None))]
+fn load_preflop(
+    py: Python<'_>,
+    spec_json: &str,
+    path: &str,
+    equity_cache_dir: Option<String>,
+) -> PyResult<PreflopGame> {
+    let spec: solver_interface::PreflopSpec = serde_json::from_str(spec_json).map_err(err)?;
+    let inner = py
+        .detach(|| {
+            let eq = solver_gtopen::preflop::equity_table(equity_cache_dir.as_deref().map(std::path::Path::new));
+            solver_gtopen::preflop::load_preflop(&spec, std::path::Path::new(path), eq)
+        })
+        .map_err(preflop_error)?;
+    Ok(PreflopGame { inner })
+}
+
 #[pymodule]
 fn riverlab_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(engine_version, m)?)?;
@@ -420,5 +513,9 @@ fn riverlab_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CancelToken>()?;
     m.add_class::<SolvedGame>()?;
     m.add_function(wrap_pyfunction!(load_solved, m)?)?;
+    m.add_function(wrap_pyfunction!(validate_preflop_spec, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_preflop, m)?)?;
+    m.add_function(wrap_pyfunction!(load_preflop, m)?)?;
+    m.add_class::<PreflopGame>()?;
     Ok(())
 }

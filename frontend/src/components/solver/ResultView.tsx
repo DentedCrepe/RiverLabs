@@ -11,7 +11,7 @@ import { StrategyMatrix } from "./StrategyMatrix";
 
 const bb = (mbb: number) => `${mbb >= 0 ? "+" : "−"}${formatBb(Math.round(Math.abs(mbb)))}bb`;
 
-function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
+export function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="rounded-md border border-line bg-surface-2/60 px-3 py-2">
       <p className="label-caps">{label}</p>

@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 /** Implementation status shown next to navigation items and on pages. */
-export type FeatureStatus = "available" | "partial" | "interface_only" | "planned";
+export type FeatureStatus = "available" | "approximate" | "partial" | "interface_only" | "planned";
 
 export interface NavItem {
   href: string;
@@ -34,8 +34,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     href: "/preflop",
     label: "Preflop",
     icon: Grid3x3,
-    status: "partial",
-    description: "Range editor; preflop strategies are planned",
+    status: "approximate",
+    description: "Range editor and GTOpen's preflop model (approximate; push/fold validated)",
   },
   {
     href: "/postflop",
@@ -49,7 +49,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "Solver",
     icon: Cpu,
     status: "partial",
-    description: "Heads-up postflop solving (GTOpen); preflop and multiway planned",
+    description: "Heads-up postflop solving (GTOpen); multiway planned",
   },
   {
     href: "/trainer",

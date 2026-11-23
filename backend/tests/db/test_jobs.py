@@ -26,7 +26,7 @@ class RecordingBackend:
     def can_run(self, spec: dict[str, Any]) -> bool:
         return True
 
-    def submit(self, job_id: uuid.UUID, spec: dict[str, Any]) -> None:
+    def submit(self, job_id: uuid.UUID, spec: dict[str, Any], kind: str) -> None:
         if self.fail:
             raise RuntimeError("boom")
         self.submitted.append(job_id)

@@ -172,3 +172,52 @@ def load_solved(spec: dict[str, Any], path: str) -> Any:
 def solved_node(game: Any, path: list[dict[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = _call(game.node, json.dumps(path))
     return result
+
+
+def validate_preflop_spec(spec: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = _call(_engine.validate_preflop_spec, json.dumps(spec))
+    return result
+
+
+def solve_preflop(
+    spec: dict[str, Any],
+    cancel: Any,
+    progress: Callable[[dict[str, Any]], None],
+    max_bytes: int,
+    threads: int,
+    save_path: str | None = None,
+    equity_cache_dir: str | None = None,
+) -> dict[str, Any]:
+    """Runs GTOpen's preflop model (blocking; the GIL is released while solving).
+
+    Returns {"outcome": ..., "root": ...}.
+    """
+    try:
+        raw = _engine.solve_preflop(
+            json.dumps(spec),
+            cancel,
+            lambda payload: progress(json.loads(payload)),
+            max_bytes=max_bytes,
+            threads=threads,
+            save_path=save_path,
+            equity_cache_dir=equity_cache_dir,
+        )
+    except ValueError as exc:
+        raise SolveRejectedError(str(exc)) from exc
+    except RuntimeError as exc:
+        raise SolveFailedError(str(exc)) from exc
+    result: dict[str, Any] = json.loads(raw)
+    return result
+
+
+def load_preflop(spec: dict[str, Any], path: str, equity_cache_dir: str | None = None) -> Any:
+    """Loads a saved preflop solve for browsing."""
+    try:
+        return _engine.load_preflop(json.dumps(spec), path, equity_cache_dir)
+    except ValueError as exc:
+        raise EngineValidationError(str(exc)) from exc
+
+
+def preflop_node(game: Any, path: list[int]) -> dict[str, Any]:
+    result: dict[str, Any] = _call(game.node, path)
+    return result

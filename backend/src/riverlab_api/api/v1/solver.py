@@ -4,12 +4,15 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
-from riverlab_api.db.models import SolverJob
+from riverlab_api.db.models import SolverJob, SolverResult
 from riverlab_api.db.session import get_db
+from riverlab_api.errors import NotFoundError
 from riverlab_api.schemas.solver import (
     ClassStrategy,
     IndependentCheck,
     NodeViewOut,
+    PreflopNodeOut,
+    PreflopResultOut,
     RootStrategy,
     SolverBackendInfo,
     SolverCapabilities,
@@ -26,6 +29,7 @@ DbSession = Annotated[Session, Depends(get_db)]
 def _out(job: SolverJob) -> SolverJobOut:
     return SolverJobOut(
         id=job.id,
+        kind=job.kind,
         status=job.status.value,
         backend=job.backend,
         iterations=job.iterations,
@@ -46,7 +50,9 @@ def capabilities() -> SolverCapabilities:
         status="available" if backends else "unavailable",
         message=(
             "Heads-up postflop solving with GTOpen (pinned, audited). Every result's exploitability is "
-            "re-checked by RiverLab's independent validator whenever it fits in the memory limit."
+            "re-checked by RiverLab's independent validator whenever it fits in the memory limit. "
+            "Preflop solving is an approximate model (flop pots are modelled, not solved); only "
+            "heads-up push/fold is validated."
             if backends
             else "No solver backend is enabled. Job submission is validated and then rejected (503)."
         ),
@@ -61,9 +67,19 @@ def submit_job(body: SolverJobCreate, db: DbSession) -> SolverJobOut:
     return _out(compute.JobService(db).submit(body.spec))
 
 
+@router.post("/preflop/jobs", response_model=SolverJobOut, status_code=202)
+def submit_preflop_job(body: SolverJobCreate, db: DbSession) -> SolverJobOut:
+    """Queues a preflop solve. Results are an approximate model (flop pots are not solved)."""
+    return _out(compute.JobService(db).submit(body.spec, kind="preflop"))
+
+
 @router.get("/jobs", response_model=list[SolverJobOut])
-def list_jobs(db: DbSession, limit: Annotated[int, Query(ge=1, le=200)] = 50) -> list[SolverJobOut]:
-    return [_out(j) for j in compute.JobService(db).list(limit)]
+def list_jobs(
+    db: DbSession,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    kind: Annotated[str | None, Query(pattern="^(postflop|preflop)$")] = None,
+) -> list[SolverJobOut]:
+    return [_out(j) for j in compute.JobService(db).list(limit, kind)]
 
 
 @router.get("/jobs/{job_id}", response_model=SolverJobOut)
@@ -79,6 +95,7 @@ def cancel_job(job_id: uuid.UUID, db: DbSession) -> SolverJobOut:
 @router.get("/jobs/{job_id}/result", response_model=SolverResultOut)
 def get_result(job_id: uuid.UUID, db: DbSession) -> SolverResultOut:
     job, result, root = compute.JobService(db).result(job_id)
+    _require_kind(job, "postflop")
     summary = result.summary
     return SolverResultOut(
         job_id=job.id,
@@ -104,7 +121,7 @@ def get_result(job_id: uuid.UUID, db: DbSession) -> SolverResultOut:
         )
         if root
         else None,
-        tree_available=result.storage_uri is not None and trees.path_from_uri(result.storage_uri).exists(),
+        tree_available=_tree_available(result),
     )
 
 
@@ -113,8 +130,56 @@ def get_node(
     job_id: uuid.UUID, db: DbSession, path: Annotated[str, Query(max_length=400)] = ""
 ) -> NodeViewOut:
     """A node of the saved tree. `path`: dot-separated steps, `a<action index>` or `c<card>`."""
-    _, result, _ = compute.JobService(db).result(job_id)
+    job, result, _ = compute.JobService(db).result(job_id)
+    _require_kind(job, "postflop")
     return NodeViewOut(**trees.node(result, path), path=path)
+
+
+def _require_kind(job: SolverJob, kind: str) -> None:
+    if job.kind != kind:
+        other = "/preflop" if job.kind == "preflop" else "/result"
+        raise NotFoundError(f"Job {job.id} is a {job.kind} solve; read it at /solver/jobs/{job.id}{other}")
+
+
+def _tree_available(result: SolverResult) -> bool:
+    return result.storage_uri is not None and trees.path_from_uri(result.storage_uri).exists()
+
+
+@router.get("/jobs/{job_id}/preflop", response_model=PreflopResultOut)
+def get_preflop_result(job_id: uuid.UUID, db: DbSession) -> PreflopResultOut:
+    job, result, _ = compute.JobService(db).result(job_id)
+    _require_kind(job, "preflop")
+    summary, assumptions = result.summary, result.assumptions
+    return PreflopResultOut(
+        job_id=job.id,
+        engine_version=result.engine_version,
+        solver_backend=result.solver_backend,
+        solver_version=result.solver_version,
+        model=assumptions["model"],
+        validated_scope=assumptions["validated_scope"],
+        model_notes=assumptions["model_notes"],
+        iterations=result.iterations,
+        stop_reason=summary["stop_reason"],
+        positions=summary["positions"],
+        model_gap_mbb=summary["model_gap_mbb"],
+        gaps_mbb=summary["gaps_mbb"],
+        values_mbb=summary["values_mbb"],
+        elapsed_ms=summary["elapsed_ms"],
+        memory_bytes=summary["memory_bytes"],
+        nodes=summary["nodes"],
+        root=PreflopNodeOut(**summary["root"]),
+        tree_available=_tree_available(result),
+    )
+
+
+@router.get("/jobs/{job_id}/preflop/node", response_model=PreflopNodeOut)
+def get_preflop_node(
+    job_id: uuid.UUID, db: DbSession, path: Annotated[str, Query(max_length=200)] = ""
+) -> PreflopNodeOut:
+    """A node of a saved preflop tree. `path`: dot-separated action indices from the root."""
+    job, result, _ = compute.JobService(db).result(job_id)
+    _require_kind(job, "preflop")
+    return PreflopNodeOut(**trees.preflop_node(result, path), path=path)
 
 
 @router.delete("/jobs/{job_id}", status_code=204)

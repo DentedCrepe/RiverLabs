@@ -7,7 +7,7 @@
 | 2 | Solver validation harness | `solver-rust` crate; CFR, CFR+, DCFR on Kuhn and Leduc; best response + exploitability; convergence tests vs known values | Exploitability → 0 at expected rates on toy games |
 | 3 | Hold'em postflop tree | Bet-size abstraction, tree builder from `GameState`, suit isomorphism, memory estimates, river-only solves validated against independent results | River solves match brute-force best response |
 | 4 | Job infrastructure | Redis queue, worker process, progress/cancellation, S3-compatible result storage | Jobs survive restarts; cancellation works |
-| 5 | Preflop | Range editor persistence, preflop solution import/solve, 13×13 strategy visualisation (D3) | Only solver-produced data displayed |
+| 5 | Preflop | Range editor persistence, preflop solution import/solve, 13×13 strategy visualisation | Only solver-produced data displayed. **In progress:** GTOpen's preflop model runs in the app, labelled approximate; heads-up push/fold validated |
 | 6 | Trainer | Spot generation from stored solutions, grading by EV loss | Grades reproducible from stored results |
 | 7 | Hand analysis & analytics | Hand-history parsing, leak reports | Parser validated on real histories |
 | 8 | Accounts | Authentication, per-user settings, quotas | Security review passed |

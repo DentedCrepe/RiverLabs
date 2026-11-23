@@ -36,3 +36,12 @@ a (modelled) six-max preflop solver. **Recommendation: GTOpen as the primary bac
 b-inary/postflop-solver and ucsandman/postflop as independent cross-checks in validation
 tooling. This removes the need to license RiverLabs under AGPL. GTOpen's preflop output must
 be labelled an approximate model until validated. See `docs/solver-comparison.md`.
+
+## Amendment (2026-11-23, later still): preflop in the app
+GTOpen's preflop solver is exposed on the Preflop page as `kind = "preflop"` jobs, always with
+its blocker model (`card_removal`) on. Each result carries a `validated_scope`:
+`heads_up_push_fold` (heads-up, all-in or fold only, no ante, no rake: the tree RiverLab checked
+against its exact equilibrium) or `approximate_model` (everything else). The UI shows the
+corresponding banner on every result, and the reported "model gap" is labelled as convergence
+inside the model, not exploitability in real poker. Results are stored without an
+`exploitability` value for the same reason.

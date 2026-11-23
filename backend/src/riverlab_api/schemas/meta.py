@@ -2,7 +2,7 @@ from typing import Literal
 
 from riverlab_api.schemas.common import StrictModel
 
-CapabilityStatus = Literal["available", "interface_only", "planned"]
+CapabilityStatus = Literal["available", "approximate", "interface_only", "planned"]
 
 
 class Capability(StrictModel):

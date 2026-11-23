@@ -2,7 +2,7 @@
 
 export type Readiness = { status: "ok" | "degraded"; database: "ok" | "unavailable"; engine: string };
 
-export type CapabilityStatus = "available" | "interface_only" | "planned";
+export type CapabilityStatus = "available" | "approximate" | "interface_only" | "planned";
 export type Capability = { key: string; name: string; status: CapabilityStatus; detail: string };
 export type Meta = { api_version: string; engine_version: string; capabilities: Capability[] };
 
@@ -91,10 +91,17 @@ export type SolverCapabilities = {
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 export type SolverJob = {
   id: string;
+  kind: "postflop" | "preflop";
   status: JobStatus;
   backend: string;
   iterations: number;
-  progress: { iterations?: number; exploitability_mbb?: number; exploitability_pct_pot?: number; elapsed_ms?: number };
+  progress: {
+    iterations?: number;
+    exploitability_mbb?: number;
+    exploitability_pct_pot?: number;
+    model_gap_mbb?: number;
+    elapsed_ms?: number;
+  };
   cancel_requested: boolean;
   error_code: string | null;
   error_message: string | null;
@@ -138,4 +145,42 @@ export type NodeView = {
   by_class: ClassStrategy[];
   reach_fraction: number[];
   path: string;
+};
+
+export type PreflopAction = { label: string; kind: string; to_mbb: number; frequency: number };
+export type PreflopNode = {
+  kind: "action" | "fold_win" | "pot_share";
+  actor: string | null;
+  positions: string[];
+  pot_mbb: number;
+  invested_mbb: number[];
+  live: boolean[];
+  actions: PreflopAction[];
+  by_class: ClassStrategy[];
+  ranges: { position: string; classes: ClassStrategy[] }[];
+  history: { actor: string; actions: string[]; chosen: number | null }[];
+  strategy_note: string | null;
+  reach_probability: number;
+  stack_to_pot: number | null;
+  path: string;
+};
+export type PreflopResult = {
+  job_id: string;
+  engine_version: string;
+  solver_backend: string;
+  solver_version: string;
+  model: string;
+  validated_scope: "heads_up_push_fold" | "approximate_model";
+  model_notes: string[];
+  iterations: number;
+  stop_reason: string;
+  positions: string[];
+  model_gap_mbb: number;
+  gaps_mbb: number[];
+  values_mbb: number[];
+  elapsed_ms: number;
+  memory_bytes: number;
+  nodes: number;
+  root: PreflopNode;
+  tree_available: boolean;
 };

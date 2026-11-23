@@ -23,7 +23,9 @@ Status: Milestone 1 (foundation). Last updated 2026-11-22.
 │   ├── hand-evaluator/      7-card evaluator (bitmask-based, exhaustively validated)
 │   ├── range-engine/        169 hand classes, 1326 combos, weighted ranges, notation, card removal
 │   ├── equity-engine/       exact enumeration equity (+ seeded Monte Carlo)
-│   ├── solver-interface/    traits + configuration models for CFR-family solvers (no solver)
+│   ├── solver-interface/    traits + specs (SolveSpec, PreflopSpec, SolverConfig)
+│   ├── solver-validation/   independent best response / exploitability; exact HU push/fold
+│   ├── solver-gtopen/       adapter to GTOpen (pinned): postflop solves, preflop model
 │   └── riverlab-py/         PyO3 bindings → Python module `riverlab_engine`
 ├── backend/                 FastAPI + Pydantic + SQLAlchemy + Alembic (package `riverlab_api`)
 ├── frontend/                Next.js (App Router) + React + TypeScript + Tailwind
@@ -34,9 +36,8 @@ Status: Milestone 1 (foundation). Last updated 2026-11-22.
 └── docker-compose.yml
 ```
 
-Deviation from the suggested layout: the suggested `engine/solver-rust/` crate is **not created
-yet** (ADR-0005). An empty crate would imply a solver exists. It will be added when solver work
-starts; the `solver-interface` crate defines the contract it must satisfy.
+Deviation from the suggested layout: there is no in-house `engine/solver-rust/` crate. Solving
+uses GTOpen through `solver-gtopen`, checked by `solver-validation` (ADR-0005).
 
 ## 3. Dependency direction
 
@@ -86,8 +87,11 @@ documented in `docs/poker-rules.md`.
 ### 4.4 Solver interface
 Traits (`GameTree`, `Solver`, `StrategyProfile`, `ExploitabilityEvaluator`) and validated
 configuration (`SolverConfig`, `CfrVariant::{Vanilla, CfrPlus, Discounted, MonteCarlo}`,
-stopping criteria). **No solver implements these traits yet.** The backend reports
-"no solver backend available" rather than pretending.
+stopping criteria), plus `SolveSpec` (heads-up postflop) and `PreflopSpec` (2–6 players).
+`solver-gtopen` runs both on GTOpen. Postflop results are equilibria for the bet abstraction,
+re-checked by `solver-validation`. Preflop results come from GTOpen's model, where flop pots are
+modelled rather than solved, and carry a `validated_scope`: `heads_up_push_fold` or
+`approximate_model`.
 
 ## 5. Backend (FastAPI)
 
@@ -103,7 +107,8 @@ riverlab_api/
 - `services/engine.py` is the only module that imports `riverlab_engine`.
 - `services/compute.py` defines the `ComputeBackend` protocol (submit / status / cancel /
   progress / result). `services/local_solver.py` registers the `local` backend at startup:
-  GTOpen solves via `riverlab_engine.solve_postflop` (GIL released) in a single worker thread,
+  GTOpen solves via `riverlab_engine.solve_postflop` / `solve_preflop` (GIL released; jobs
+  have a `kind`) in a single worker thread,
   progress and results written to PostgreSQL, interrupted jobs failed on restart. With
   `RIVERLAB_SOLVER_ENABLED=false` the registry is empty and job creation returns
   `503 solver_unavailable`. Local (in-process) and cloud (queued worker) backends will implement

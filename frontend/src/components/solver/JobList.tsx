@@ -56,6 +56,7 @@ export function JobList({
       {jobs.map((j) => {
         const active = j.status === "queued" || j.status === "running";
         const pct = j.progress.exploitability_pct_pot;
+        const gap = j.progress.model_gap_mbb;
         return (
           <li
             key={j.id}
@@ -70,6 +71,7 @@ export function JobList({
             <span className="font-mono text-xs text-fg tabular">
               {j.iterations.toLocaleString()} it
               {pct !== undefined && ` · ${pct.toFixed(3)}% pot`}
+              {gap !== undefined && ` · model gap ${gap.toFixed(1)} mbb`}
             </span>
             {j.cancel_requested && j.status === "running" && <span className="text-xs text-warn">cancelling…</span>}
             {j.error_message && <span className="w-full text-xs text-danger">{j.error_message}</span>}
