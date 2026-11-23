@@ -12,6 +12,13 @@
 | 7 | Hand analysis & analytics | Hand-history parsing, leak reports | Parser validated on real histories |
 | 8 | Accounts | Authentication, per-user settings, quotas | Security review passed |
 
+## Follow-ups (noted, not scheduled)
+- **GTOpen `ArenaBuf` fix** (Miri finding, `docs/solver-validation.md`): build RiverLab from a
+  patched GTOpen pinned to a commit in a fork (`tools/solver-audit/miri/arenabuf-provenance.patch`),
+  re-run the validation, and offer the fix upstream. Results are correct today; this guards
+  against future compilers.
+- **Android:** confirm `scripts/termux/setup.sh` on a real phone (docs/android.md).
+
 ## Risks
 | Risk | Impact | Mitigation |
 |------|--------|-----------|

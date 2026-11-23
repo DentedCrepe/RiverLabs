@@ -55,6 +55,10 @@ docker compose up --build
 
 The backend container applies migrations on start.
 
+### Option C: on an Android phone
+See [`docs/android.md`](docs/android.md): Termux from F-Droid, then one setup script. Everything
+runs on the phone, offline.
+
 ### Option B: local development (hot reload)
 ```bash
 scripts/setup.sh   # creates .env with a random DB password, uv sync (compiles the engine), npm ci
