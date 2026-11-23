@@ -7,8 +7,12 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
+from riverlab_api.db.models import PushFoldAnswer
 from riverlab_api.services import trainer
+
+pytestmark = pytest.mark.db
 
 REAL_TABLE = Path(__file__).resolve().parents[3] / "engine" / "target" / trainer.TABLE_NAME
 
@@ -58,7 +62,10 @@ def test_a_corrupt_table_is_rejected(client: TestClient, use_table: Any, tmp_pat
 @pytest.mark.skipif(
     not REAL_TABLE.exists(), reason="exact equity table not built (scripts/build-push-fold-table.sh)"
 )
-def test_drill_answer_and_chart_with_the_exact_table(client: TestClient, use_table: Any) -> None:
+def test_drill_answer_and_chart_with_the_exact_table(
+    db_client: TestClient, use_table: Any, db: Session
+) -> None:
+    client = db_client
     use_table(REAL_TABLE)
     assert wait_state(client, {"ready", "error"})["state"] == "ready"
     r = client.post(
@@ -84,3 +91,53 @@ def test_drill_answer_and_chart_with_the_exact_table(client: TestClient, use_tab
     # Out-of-scope depths are rejected by the engine, not rounded.
     assert client.get("/api/v1/trainer/push-fold/chart", params={"stack_mbb": 10_250}).status_code == 422
     assert client.post("/api/v1/trainer/push-fold/build").status_code == 409
+    # Every graded answer is stored for Analytics.
+    assert db.query(PushFoldAnswer).count() == 2
+    stats = client.get("/api/v1/analytics/trainer").json()
+    assert stats["total"]["answers"] == 2
+    assert stats["by_seat"]["bb"]["mistakes"] == 1
+
+
+def _answer(stack: int, seat: str, cls: str, verdict: str, loss: float) -> PushFoldAnswer:
+    return PushFoldAnswer(
+        stack_mbb=stack,
+        seat=seat,
+        cards="AsKd",
+        hand_class=cls,
+        choice="fold",
+        verdict=verdict,
+        ev_loss_bb=loss,
+        grade={},
+    )
+
+
+def test_trainer_analytics_aggregate_stored_answers(db_client: TestClient, db: Session) -> None:
+    empty = db_client.get("/api/v1/analytics/trainer").json()
+    assert empty["total"] == {"answers": 0, "correct": 0, "close": 0, "mistakes": 0, "ev_lost_bb": 0.0}
+    assert empty["costliest"] == []
+    db.add_all(
+        [
+            _answer(5_000, "sb", "K7o", "mistake", 0.4),
+            _answer(5_000, "sb", "K7o", "mistake", 0.2),
+            _answer(12_000, "bb", "A2o", "close", 0.03),
+            _answer(20_000, "bb", "QQ", "correct", 0.0),
+        ]
+    )
+    db.flush()
+    s = db_client.get("/api/v1/analytics/trainer").json()
+    assert s["total"]["answers"] == 4
+    assert s["total"]["mistakes"] == 2
+    assert s["total"]["ev_lost_bb"] == pytest.approx(0.63)
+    assert s["by_seat"]["sb"]["answers"] == 2
+    assert [b["answers"] for b in s["by_stack"]] == [2, 0, 1, 1, 0]
+    assert s["costliest"][0] == {
+        "hand_class": "K7o",
+        "seat": "sb",
+        "answers": 2,
+        "correct": 0,
+        "close": 0,
+        "mistakes": 2,
+        "ev_lost_bb": pytest.approx(0.6),
+    }
+    assert len(s["costliest"]) == 2  # QQ lost nothing
+    assert len(s["recent"]) == 4

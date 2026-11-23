@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import { Card, CardBody } from "@/components/ui/Card";
+import { Analytics } from "@/components/analytics/Analytics";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { EmptyState } from "@/components/ui/States";
 
 export const metadata: Metadata = { title: "Analytics" };
 
@@ -10,17 +9,10 @@ export default function Page() {
     <>
       <PageHeader
         title="Analytics"
-        status="planned"
-        description="Performance analytics computed from your own hands and training decisions."
+        status="partial"
+        description="Computed only from your own data: every hand you played against the bots, and every graded trainer answer. Imported hand histories are planned."
       />
-      <Card>
-        <CardBody>
-          <EmptyState
-            title="No data"
-            description="Analytics will only summarise real imported hands and graded decisions (Milestone 7). No sample statistics are shown."
-          />
-        </CardBody>
-      </Card>
+      <Analytics />
     </>
   );
 }

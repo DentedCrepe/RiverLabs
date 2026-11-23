@@ -32,7 +32,7 @@ EV minus yours.
 The thresholds are `EQUAL_BB` and `CLOSE_BB` in `engine/play-engine/src/push_fold.rs`. The
 answer also shows how often the equilibrium plays each action with your hand, and a chart of
 the whole equilibrium by hand class. The session tally (hands, verdicts, average EV lost) lives
-in the page and is not stored.
+in the page; every graded answer is also stored for Analytics (`docs/analytics.md`).
 
 EV loss is measured against an opponent who plays the equilibrium. Against a different opponent
 another action can be better; that is exploitation, which these drills do not grade.
