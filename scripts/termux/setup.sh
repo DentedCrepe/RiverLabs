@@ -41,7 +41,7 @@ fi
 step "installing Termux packages"
 pkg update -y
 pkg upgrade -y -o Dpkg::Options::=--force-confnew
-pkg install -y git rust python nodejs-lts postgresql clang make cmake pkg-config binutils openssl libffi curl
+pkg install -y git rust python nodejs-lts postgresql clang make cmake pkg-config binutils openssl libffi curl procps
 
 step "preparing the Python environment"
 # Rust-based Python packages (pydantic-core, the engine) need the Android API level to build.

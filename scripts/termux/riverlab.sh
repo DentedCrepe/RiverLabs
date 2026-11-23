@@ -8,7 +8,16 @@ RUN="$DATA/run"
 PGDATA="$PREFIX/var/lib/postgresql"
 mkdir -p "$RUN"
 
-running() { [ -f "$RUN/$1.pid" ] && kill -0 "$(cat "$RUN/$1.pid")" 2>/dev/null; }
+# Processes are found by their command line, not by saved PIDs: a stale PID file must never
+# leave an old server running (it would keep the port and serve the old version).
+pattern() {
+  case "$1" in
+    api) echo "uvicorn riverlab_api.main:app" ;;
+    web) echo "$DATA/web/riverlab-web/server.js" ;;
+    watchdog) echo "riverlab.sh watchdog" ;;
+  esac
+}
+running() { pgrep -f "$(pattern "$1")" >/dev/null 2>&1; }
 # Detach from the launching shell, so a home-screen shortcut can exit without taking RiverLab down.
 detach() { if command -v setsid >/dev/null; then setsid nohup "$@"; else nohup "$@"; fi; }
 
@@ -35,7 +44,7 @@ start() {
     (
       cd "$DATA/web/riverlab-web"
       PORT=3000 HOSTNAME=127.0.0.1 RIVERLAB_API_URL=http://127.0.0.1:8000 NODE_ENV=production \
-        detach node server.js >>"$DATA/web.log" 2>&1 &
+        detach node "$DATA/web/riverlab-web/server.js" >>"$DATA/web.log" 2>&1 &
       echo $! >"$RUN/web.pid"
     )
   fi
@@ -61,8 +70,14 @@ start() {
 
 stop() {
   for p in watchdog web api; do
-    if running "$p"; then kill "$(cat "$RUN/$p.pid")"; fi
+    # Never kill this script itself (the watchdog calls stop).
+    pgrep -f "$(pattern "$p")" | grep -vx "$$" | xargs -r kill 2>/dev/null || true
     rm -f "$RUN/$p.pid"
+  done
+  # Wait for the ports to free up, so a following start can bind them.
+  for _ in $(seq 1 20); do
+    curl -s -o /dev/null http://127.0.0.1:8000/health || curl -s -o /dev/null http://127.0.0.1:3000/ || break
+    sleep 0.5
   done
   pg_ctl -D "$PGDATA" status >/dev/null 2>&1 && pg_ctl -D "$PGDATA" -m fast stop >/dev/null
   command -v termux-wake-unlock >/dev/null && termux-wake-unlock
@@ -103,8 +118,12 @@ case "${1:-}" in
     ;;
   logs) tail -n "${2:-40}" "$DATA/api.log" "$DATA/web.log" ;;
   update)
-    # New code, then the same setup (it only redoes what changed), then a restart.
+    # Pull, then continue with the *new* version of this script (bash would otherwise keep
+    # running the old one it already read).
     git -C "$REPO" pull --ff-only
+    exec bash "$REPO/scripts/termux/riverlab.sh" update-installed
+    ;;
+  update-installed)
     stop || true
     bash "$REPO/scripts/termux/setup.sh"
     start
