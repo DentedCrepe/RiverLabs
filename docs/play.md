@@ -182,8 +182,11 @@ one. Implementation: `engine/play-engine/src/review.rs`, run by `services/hand_r
   exact for the solved tree; how much it says about real play depends on the tree's bet sizes and
   the starting ranges.
 
-Each street is an ordinary solve: it appears in the Solver and the Solution Library with its
-exploitability. A review interrupted by a restart is marked as such and can be started again.
+Each street is an ordinary solve with its exploitability. In the Solution Library a hand's
+street solves are shown together as one hand: the replay with the solver's view at each of your
+decisions, and each street's solve can be opened at any of your decisions (following the real
+line) or from its start. Postflop drills dealt from these solves also show the real hand up to
+that street. A review interrupted by a restart is marked as such and can be started again.
 
 ## Persistence and limits
 - A game lives in the API process while you play. Every finished hand is stored in

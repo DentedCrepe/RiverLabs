@@ -3,7 +3,7 @@
 import { RotateCw } from "lucide-react";
 import { useState } from "react";
 import { ApiError, api } from "@/lib/api";
-import type { SeatView, TableView } from "@/lib/play";
+import { type HandRecord, type SeatView, type TableView, describeAction } from "@/lib/play";
 import { formatBb } from "@/lib/units";
 import { useApi } from "@/lib/useApi";
 import { CardRow } from "@/components/poker/CardText";
@@ -42,7 +42,51 @@ type Dealt = {
   drill: PostflopDrill;
   starting_pot_mbb: number;
   exploitability_pct_pot: number | null;
+  /** Set when the solve came from a hand you played (a solver review). */
+  hand?: { session_id: string; hand_no: number; street: string; record: HandRecord } | null;
 };
+
+const STREETS = ["preflop", "flop", "turn", "river"];
+const BOARD_AT: Record<string, number> = { preflop: 0, flop: 3, turn: 4, river: 5 };
+
+/** The real hand up to the street this solve starts on. */
+export function HandSoFar({ hand }: { hand: NonNullable<Dealt["hand"]> }) {
+  const h = hand.record;
+  const units = h.tournament ? "chips" : "bb";
+  const hero = h.seats.findIndex((s) => s.is_hero);
+  const before = STREETS.slice(0, STREETS.indexOf(hand.street));
+  return (
+    <section
+      aria-label="The hand so far"
+      className="flex flex-col gap-1 rounded-md border border-line px-3 py-2 text-xs"
+    >
+      <p className="font-medium text-fg">
+        From hand #{hand.hand_no} you played. Before the {hand.street}:
+      </p>
+      {before.map((st) => {
+        const acts = h.actions.filter((a) => a.street === st);
+        return (
+          <p key={st} className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-muted">
+            <span className="text-fg capitalize">{st}</span>
+            {BOARD_AT[st] > 0 && <CardRow cards={h.board.slice(0, BOARD_AT[st])} size="sm" />}
+            <span>
+              {acts
+                .map(
+                  (a) =>
+                    `${a.seat === hero ? "You" : `${h.seats[a.seat].position} ${h.seats[a.seat].name}`} ${describeAction(a.action, units, a.all_in, a.seat === hero)}`,
+                )
+                .join(", ") || "no action"}
+            </span>
+          </p>
+        );
+      })}
+      <p className="text-[11px] text-subtle">
+        The drill deals both hands at random from the solve&apos;s ranges, so the cards and the action on the{" "}
+        {hand.street} can differ from the real hand.
+      </p>
+    </section>
+  );
+}
 
 type Grade = {
   actions: string[];
@@ -230,6 +274,7 @@ export function PostflopTrainer() {
           </div>
           {d && dealt && (
             <div className="flex flex-col gap-3" aria-label="Current postflop drill">
+              {dealt.hand && <HandSoFar hand={dealt.hand} />}
               <div className="max-w-xl self-center sm:w-full">
                 <TableFelt t={drillTable(d)} showAll={false} />
               </div>

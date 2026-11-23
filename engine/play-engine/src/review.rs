@@ -83,6 +83,7 @@ pub struct StreetSpec {
     pub line: Vec<ReviewStep>,
     pub hero_player: u8,
     pub hero_combo: String,
+    pub hero_class: String,
     /// The next street's card, when the hand continued.
     pub next_card: Option<String>,
     pub notes: Vec<String>,
@@ -315,6 +316,7 @@ pub fn street_spec(
         line,
         hero_player,
         hero_combo: combo.to_string(),
+        hero_class: range_engine::HandClass::of(combo).to_string(),
         next_card: record.board.get(next).filter(|_| next < 5).cloned(),
         notes,
     })

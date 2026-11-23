@@ -298,6 +298,11 @@ export type ReviewStreet = {
   notes?: string[];
   error?: string;
   review?: { decisions: DecisionReview[]; followed: boolean; notes: string[]; next_ranges: string[] | null };
+  /** The street's real line (solve units), your seat in the solve and your hand. */
+  line?: { player: number; kind: string; to_mbb: number; all_in: boolean; decision: number | null }[];
+  hero_player?: number;
+  hero_combo?: string;
+  hero_class?: string;
 };
 
 export type HandSolverReview = {

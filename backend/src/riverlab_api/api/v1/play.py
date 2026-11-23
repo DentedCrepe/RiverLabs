@@ -98,6 +98,12 @@ def all_hands(
     return play.require().all_hands(db, verdict, limit, offset)
 
 
+@router.get("/sessions/{session_id}/hands/{hand_no}")
+def one_hand(session_id: uuid.UUID, hand_no: int, db: DbSession) -> dict[str, Any]:
+    """One stored hand record."""
+    return play.require().hand(db, session_id, hand_no)
+
+
 @router.get("/sessions/{session_id}/hands/{hand_no}/spot")
 def spot(
     session_id: uuid.UUID, hand_no: int, db: DbSession, decision: Annotated[int, Query(ge=0, le=100)]
