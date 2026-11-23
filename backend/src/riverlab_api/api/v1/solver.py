@@ -44,8 +44,8 @@ def capabilities() -> SolverCapabilities:
     return SolverCapabilities(
         status="available" if backends else "unavailable",
         message=(
-            "Heads-up postflop solving with GTOpen (pinned, audited). River and turn results are "
-            "re-checked by RiverLab's independent validator; flop results report GTOpen's exploitability."
+            "Heads-up postflop solving with GTOpen (pinned, audited). Every result's exploitability is "
+            "re-checked by RiverLab's independent validator whenever it fits in the memory limit."
             if backends
             else "No solver backend is enabled. Job submission is validated and then rejected (503)."
         ),

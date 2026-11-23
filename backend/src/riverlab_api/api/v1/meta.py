@@ -42,7 +42,7 @@ SOLVER_AVAILABLE = Capability(
     name="Postflop solver",
     status="available",
     detail="Heads-up postflop solving (GTOpen, pinned and audited). Every result reports its "
-    "exploitability; river and turn results are re-checked independently.",
+    "exploitability, re-checked by RiverLab's own best-response code when memory allows.",
 )
 SOLVER_OFF = Capability(
     key="solver",

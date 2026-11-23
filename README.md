@@ -4,10 +4,12 @@ RiverLab is a poker theory, solving and training platform for **six-max no-limit
 hold'em cash games**. The default is 100bb deep, and both stack depth and rake are
 configurable.
 
-> **Status: Milestone 1 (foundation).** The poker engine, hand evaluator, ranges, equity,
-> betting rules, rake, database schema, API and application shell are implemented and tested.
-> **There is no solver yet**, so RiverLab does not display any GTO strategy. Every unfinished
-> area is labelled *Planned* or *Interface only* in the app.
+> **Status:** the foundation (engine, evaluator, ranges, equity, betting rules, rake, schema,
+> API, app) is complete. **Heads-up postflop solving** runs in the app through GTOpen, an
+> audited open-source solver pinned to a commit. Every result shows its exploitability, re-checked
+> by RiverLab's own independent best-response code (flop, turn and river) whenever it fits in
+> memory. Results are approximate equilibria for the configured bet sizes. Preflop and multiway
+> solving are not available in the app yet; unfinished areas are labelled.
 
 ## What works today
 
@@ -128,7 +130,8 @@ docs/              Architecture, ADRs, rules, rake, evaluator, equity, roadmap, 
 - Solving is heads-up postflop only; the app shows the first decision's strategy (browsing the
   full tree is next). Solves run one at a time inside the API process and do not survive a
   restart (they are marked failed).
-- Full-range flop results are not independently re-checked yet (river and turn are).
+- The independent check is skipped (and says so) when it would not fit in the memory limit
+  alongside the solve.
 - Heads-up tables are not supported by the betting engine yet.
 - There is no authentication. The API is for local, single-user use and must not be exposed
   publicly.

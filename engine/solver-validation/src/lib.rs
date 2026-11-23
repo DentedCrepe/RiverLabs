@@ -17,6 +17,7 @@
 //! `52 − |board| − 4` cards can come, so each card is weighted by that reciprocal and hands
 //! holding the dealt card are removed below it. That is the exact conditional distribution.
 
+mod fast;
 pub mod push_fold;
 
 use hand_evaluator::evaluate_mask;
@@ -90,12 +91,12 @@ pub struct Evaluation {
     pub exploitability: f64,
 }
 
-struct Prepared<'a> {
+struct Reference<'a> {
     game: &'a PostflopGame,
     masks: [Vec<u64>; 2],
 }
 
-impl Prepared<'_> {
+impl Reference<'_> {
     fn compat(&self, p: usize, i: usize, j: usize) -> bool {
         self.masks[p][i] & self.masks[1 - p][j] == 0
     }
@@ -286,12 +287,36 @@ fn validate(game: &PostflopGame, masks: &[Vec<u64>; 2]) -> Result<u64, Validatio
     Ok(board.bits())
 }
 
-/// Evaluates a strategy profile on a postflop game.
+/// Evaluates a strategy profile on a postflop game (fast path: sorted showdown sweeps with
+/// per-card inclusion–exclusion, chance subtrees in parallel). Cross-checked against
+/// [`evaluate_reference`] by property tests.
 pub fn evaluate(game: &PostflopGame) -> Result<Evaluation, ValidationError> {
     let masks: [Vec<u64>; 2] =
         std::array::from_fn(|p| game.ranges[p].iter().map(|(c, _)| c.card_set().bits()).collect());
     let board = validate(game, &masks)?;
-    let prep = Prepared { game, masks };
+    let fast = fast::Fast::new(game, &masks);
+    let weights: [Vec<f64>; 2] = std::array::from_fn(|p| game.ranges[p].iter().map(|&(_, w)| w).collect());
+    let z: f64 = (0..weights[0].len()).map(|i| weights[0][i] * fast.live_mass(0, i, &weights[1])).sum();
+    if z <= 0.0 {
+        return invalid("no compatible pair of hands".into());
+    }
+    let value = |p: usize, best: bool| -> f64 {
+        let cfv = fast.cfv(0, p, &weights[1 - p], board, best);
+        weights[p].iter().zip(&cfv).map(|(w, v)| w * v).sum::<f64>() / z
+    };
+    let ev = [value(0, false), value(1, false)];
+    let br = [value(0, true), value(1, true)];
+    let nash_conv = (br[0] - ev[0]) + (br[1] - ev[1]);
+    Ok(Evaluation { ev, br, nash_conv, exploitability: nash_conv / 2.0 })
+}
+
+/// The original, deliberately simple implementation: O(n·m) pair checks at every terminal.
+/// Slow on wide flop ranges, but obviously correct; kept as the oracle for [`evaluate`].
+pub fn evaluate_reference(game: &PostflopGame) -> Result<Evaluation, ValidationError> {
+    let masks: [Vec<u64>; 2] =
+        std::array::from_fn(|p| game.ranges[p].iter().map(|(c, _)| c.card_set().bits()).collect());
+    let board = validate(game, &masks)?;
+    let prep = Reference { game, masks };
     let weights: [Vec<f64>; 2] = std::array::from_fn(|p| game.ranges[p].iter().map(|&(_, w)| w).collect());
     let z: f64 = (0..weights[0].len())
         .map(|i| {

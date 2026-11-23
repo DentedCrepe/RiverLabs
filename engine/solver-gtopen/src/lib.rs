@@ -253,6 +253,7 @@ pub struct SolveOutcome {
 pub struct Solved {
     solver: Solver,
     prepared: Prepared,
+    limits: Limits,
     pub outcome: SolveOutcome,
 }
 
@@ -382,7 +383,7 @@ pub fn solve_with_limits(
             note: "not run".into(),
         },
     };
-    let mut solved = Solved { solver, prepared, outcome };
+    let mut solved = Solved { solver, prepared, limits, outcome };
     solved.outcome.independent_check = solved.independent_check();
     Ok(solved)
 }
@@ -462,25 +463,25 @@ fn node_strategy(solver: &Solver, idx: u32) -> Result<NodeStrategy, AdapterError
     Ok(NodeStrategy { player: p, actions, combos, frequencies })
 }
 
-/// River and turn spots are re-checked automatically; flop spots are too slow for the simple
-/// validator with wide ranges (see docs/solver-validation.md).
-const INDEPENDENT_CHECK_MAX_STREET: u8 = 1;
-
 impl Solved {
     pub fn solver(&self) -> &Solver {
         &self.solver
     }
 
-    /// Recomputes values and exploitability with RiverLab's own validator.
+    /// Recomputes values and exploitability with RiverLab's own validator, if the exported tree
+    /// (about the size of the solver's own arenas) fits in the memory left under the limit.
     pub fn independent_check(&self) -> IndependentCheck {
-        if self.solver.spot.tree.root_street < INDEPENDENT_CHECK_MAX_STREET {
-            return IndependentCheck {
-                performed: false,
-                values_mbb: None,
-                exploitability_mbb: None,
-                note: "Flop spots are not independently re-checked yet; GTOpen's own exploitability is reported."
-                    .into(),
-            };
+        let skipped =
+            |note: String| IndependentCheck { performed: false, values_mbb: None, exploitability_mbb: None, note };
+        let ds = self.solver.spot.tree.data_size;
+        let export_bytes = 8 * (ds[0] + ds[1]);
+        if self.outcome.memory_bytes.saturating_add(export_bytes) > self.limits.max_bytes {
+            return skipped(format!(
+                "Skipped: the independent check needs about {} more memory than the {} limit allows. \
+                 GTOpen's own exploitability is reported.",
+                human_bytes(export_bytes),
+                human_bytes(self.limits.max_bytes)
+            ));
         }
         match self
             .postflop_game()
@@ -493,12 +494,7 @@ impl Solved {
                 exploitability_mbb: Some(e.exploitability),
                 note: "Recomputed by RiverLab's independent validator.".into(),
             },
-            Err(err) => IndependentCheck {
-                performed: false,
-                values_mbb: None,
-                exploitability_mbb: None,
-                note: format!("Independent check failed: {err}"),
-            },
+            Err(err) => skipped(format!("Independent check failed: {err}")),
         }
     }
 

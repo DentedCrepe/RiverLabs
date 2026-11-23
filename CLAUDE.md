@@ -8,8 +8,8 @@ RiverLab is a six-max no-limit hold'em theory, solving and training platform. Re
   "example" solver output — not in the UI, fixtures, seeds or docs. Unfinished features show a
   labelled empty state ("Planned", "Interface only").
 - **Solver output is always shown with its exploitability** and its approximations. Postflop
-  solves come from GTOpen (pinned commit, `engine/solver-gtopen`); river and turn results are
-  re-checked by `engine/solver-validation`. Never call a result "GTO" without qualification:
+  solves come from GTOpen (pinned commit, `engine/solver-gtopen`); results are re-checked by
+  `engine/solver-validation` (skipped, with a note, only when memory does not allow). Never call a result "GTO" without qualification:
   it is an approximate equilibrium for the configured bet sizes. GTOpen's preflop beyond
   push/fold is a modelled approximation and is not exposed in the app.
 - **Changing the GTOpen commit** requires re-running `tools/solver-audit/run.sh` and the

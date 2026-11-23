@@ -292,6 +292,10 @@ fn class_strategies_are_distributions_and_checks_run_where_supported() {
     f.tree.ip = sz(50);
     f.solver.stopping.max_iterations = 10;
     let flop = solve(&f, &AtomicBool::new(false), |_| {}).unwrap();
-    assert!(!flop.outcome.independent_check.performed);
-    assert!(flop.outcome.independent_check.note.contains("Flop"));
+    assert!(flop.outcome.independent_check.performed, "flop spots are checked too");
+    // Without memory headroom for the export, the check is skipped and says why.
+    let tight = solver_gtopen::Limits { max_nodes: 50_000_000, max_bytes: flop.outcome.memory_bytes };
+    let skipped = solver_gtopen::solve_with_limits(&f, tight, &AtomicBool::new(false), |_| {}).unwrap();
+    assert!(!skipped.outcome.independent_check.performed);
+    assert!(skipped.outcome.independent_check.note.contains("Skipped"), "{}", skipped.outcome.independent_check.note);
 }

@@ -78,10 +78,28 @@ With it off, a few marginal classes flip and the strategy is measurably exploita
 part of GTOpen's preflop. Leaves that continue to the flop use GTOpen's modelled values and
 remain unvalidated.
 
+## Fast evaluator and full-range flops
+`evaluate` computes the same quantities with per-card inclusion–exclusion (each hand's
+compatible opponent weight is `total − card[a] − card[b] + identical combo`), a strength-sorted
+sweep at showdowns, and chance subtrees in parallel. The original O(n·m) implementation is
+kept as `evaluate_reference`, and a randomised test requires both to agree to 1e-9 on generated
+turn and river games. Those games use overlapping weighted ranges, random trees mixing folds,
+showdowns and chance nodes, and random strategies, with and without rake.
+
+Full-range flop spots (173 v 251 combos; OOP bets 33%, IP 75% on every street; pot 6.5bb,
+stacks 97.5bb; 300 iterations; `cargo run --release -p solver-gtopen --example validate_flop`):
+
+| Spot | Tree | Values (mbb): GTOpen = RiverLab | Exploitability: GTOpen / RiverLab | Solve | Check |
+|---|---|---|---|---|---|
+| Ks7d2c, no rake | 191,844 nodes, 313 MB | 541.634 / −541.634 | 2.1933 / 2.1933 | 54 s | 2.1 s |
+| Ks7d2c, 5% rake, one raise size | 716,346 nodes, 1.2 GB | −195.514 / −644.791 | 6.0572 / 6.0572 | 189 s | 8.2 s |
+| Qh8h3h (monotone; suit-isomorphic runouts) | 191,844 nodes, 313 MB | 251.928 / −251.928 | 0.9501 / 0.9501 | 15 s | 2.0 s |
+
+Every solve in the app is now re-checked automatically. The check is skipped, with an explicit
+note, only when the exported tree (about the size of GTOpen's own arenas) would not fit in the
+memory limit alongside the solve.
+
 ## What is not validated yet
-- Full-range **flop** solves: the validator supports them, but its simple O(n²)-per-terminal
-  design is slow on wide ranges, so automated flop coverage uses small ranges. A faster
-  sorted-sweep showdown would allow full-range flop checks.
 - GTOpen's preflop leaves that continue postflop (modelled values; see `solver-comparison.md`).
   Push/fold (all-in) is validated above.
 - Kuhn/Leduc-style toy games for future in-house CFR variants.

@@ -12,7 +12,7 @@ export default function SolverPage() {
       <PageHeader
         title="Solver"
         status="partial"
-        description="Heads-up postflop solving with GTOpen (Discounted CFR), pinned to an audited commit. Every result reports its exploitability; river and turn results are re-checked by RiverLab's own best-response calculation. Preflop and multiway solving are not available here yet."
+        description="Heads-up postflop solving with GTOpen (Discounted CFR), pinned to an audited commit. Every result reports its exploitability; results are re-checked by RiverLab's own best-response calculation whenever it fits in memory. Preflop and multiway solving are not available here yet."
       />
       <div className="grid gap-6">
         <div className="grid gap-6 lg:grid-cols-2">
