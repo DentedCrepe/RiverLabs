@@ -65,6 +65,33 @@ function Seat({
   );
 }
 
+/** Your live equity against the bots' ranges, and the price when facing a bet. */
+function OddsStrip({ equity, required }: { equity: number; required: number | null }) {
+  const enough = required === null || equity >= required;
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm" aria-label="Your odds">
+      <span className="flex items-center gap-1 text-muted">
+        Your equity vs their ranges
+        <InfoTip label="your equity">{GLOSSARY.heroEquity}</InfoTip>
+      </span>
+      <span className={cn("font-mono font-semibold tabular", enough ? "text-accent-strong" : "text-danger")}>
+        {(equity * 100).toFixed(0)}%
+      </span>
+      {required !== null && (
+        <span className="text-muted">
+          Price needs <span className="font-mono text-fg tabular">{(required * 100).toFixed(0)}%</span>
+        </span>
+      )}
+      <span className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3" aria-hidden>
+        <span
+          className={cn("block h-full", enough ? "bg-accent" : "bg-danger")}
+          style={{ width: `${equity * 100}%` }}
+        />
+      </span>
+    </div>
+  );
+}
+
 const VERDICT: Record<Feedback["verdict"], { label: string; className: string }> = {
   mistake: { label: "Flagged", className: "border-danger/50 bg-danger-dim/40" },
   rare: { label: "Unusual", className: "border-warn/50 bg-warn-dim/40" },
@@ -79,7 +106,7 @@ function FeedbackCard({ item, compact }: { item: TableView["feedback"][number]; 
     <div className={cn("rounded-md border px-3 py-2", v.className)} aria-label={`Feedback: ${v.label}`}>
       <p className="flex flex-wrap items-center gap-x-2 text-sm">
         <span className="text-[10px] font-semibold tracking-wide uppercase">{v.label}</span>
-        <span className="font-medium text-fg">{f.headline}</span>
+        {f.verdict !== "not_graded" && <span className="font-medium text-fg">{f.headline}</span>}
         <span className="text-xs text-muted">
           · {item.street}: you {item.action}
         </span>
@@ -130,6 +157,7 @@ function Controls({ t, onAct, busy }: { t: TableView; onAct: (a: Record<string, 
       className="sticky bottom-0 z-20 -mx-4 flex flex-col gap-2 border-t border-line bg-canvas/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-md sm:border"
       aria-label="Your action"
     >
+      {t.hero_equity !== null && <OddsStrip equity={t.hero_equity} required={t.required_equity} />}
       <div className="grid grid-cols-3 gap-2">
         {l.fold ? (
           <Button disabled={busy} onClick={() => onAct({ type: "fold" })} className="h-11 justify-center">

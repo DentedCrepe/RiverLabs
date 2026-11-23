@@ -101,6 +101,15 @@ sit & go decisions beyond chip equity (no ICM yet).
     off the model tree.
 
   Preflop feedback lists the model's whole mix for your hand class in that spot.
+- **Your odds on your turn.** The action bar shows your equity against the live bots' tracked
+  ranges (Monte Carlo) and, when you face a bet, the equity the price needs. The same equity is
+  stored with the decision, so the review shows what you saw.
+- **Hand history and review.** Every hand of the session is listed with your cards, the board,
+  your result and how many decisions were flagged or unusual. Tap one to replay it street by
+  street, with everyone's cards. Each of your decisions shows:
+  - the pot, the amount to call, your equity and the price;
+  - the verdict;
+  - preflop, the model's frequencies for your hand class, with your choice marked.
 - **Reveal bots' cards** (practice mode) shows their cards during hands. Hands played with it
   on are flagged, and the report says how many there were.
 - **Show all hands** after a hand reveals cards that weren't shown at showdown, without

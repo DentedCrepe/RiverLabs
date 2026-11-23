@@ -124,7 +124,11 @@ fn every_decision_gets_feedback_and_reveal_is_flagged() {
             assert!(v.seats.iter().all(|seat| !seat.in_hand || seat.cards.is_some()), "all cards shown in reveal mode");
         }
         while s.status() == SessionStatus::AwaitingHero {
-            let before = s.view().feedback.len();
+            let v = s.view();
+            let eq = v.hero_equity.expect("your equity is shown on your turn");
+            assert!((0.0..=1.0).contains(&eq));
+            assert_eq!(v.required_equity.is_some(), v.legal.as_ref().unwrap().call.is_some());
+            let before = v.feedback.len();
             let a = hero_action(&s, &mut rng);
             s.act(a).unwrap();
             let fb = s.view().feedback;

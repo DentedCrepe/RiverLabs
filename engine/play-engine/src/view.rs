@@ -72,6 +72,10 @@ pub struct TableView {
     /// Last finished hand: your net result in chip units.
     pub last_hand_net: Option<i64>,
     pub hero_total_net: i64,
+    /// Your turn: your equity against the bots' current ranges (Monte Carlo) and, facing a bet,
+    /// the equity the price requires (to call / (pot + to call)).
+    pub hero_equity: Option<f64>,
+    pub required_equity: Option<f64>,
     pub notes: Vec<String>,
     /// Practice mode: the bots' cards are shown during hands.
     pub reveal: bool,
@@ -87,6 +91,7 @@ pub struct HandRef<'a> {
     pub seat_player: &'a [usize],
     pub hole: &'a [HoleCards],
     pub record: &'a crate::record::HandRecord,
+    pub hero_odds: Option<crate::session::HeroOdds>,
 }
 
 fn amount(units_chips: bool, x: u64) -> String {
@@ -170,6 +175,8 @@ pub fn build(s: &Session, hand: Option<HandRef>, notes: &[String]) -> TableView 
         hero_total_net,
         notes: notes.to_vec(),
         reveal: s.reveal(),
+        hero_equity: None,
+        required_equity: None,
         feedback: vec![],
         summary: vec![],
     };
@@ -212,6 +219,10 @@ pub fn build(s: &Session, hand: Option<HandRef>, notes: &[String]) -> TableView 
                 seat.last_action = last_actions(h.record)[k].clone();
             }
             view.feedback = feedback_of(h.record);
+            if let Some(o) = h.hero_odds {
+                view.hero_equity = o.equity;
+                view.required_equity = o.required;
+            }
             if let Phase::Betting { to_act } = st.phase() {
                 view.to_act = Some(h.seat_player[to_act]);
                 if h.seat_player[to_act] == 0 {

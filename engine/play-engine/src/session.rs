@@ -51,6 +51,15 @@ struct Hand {
     model_path: Option<Vec<usize>>,
     record: HandRecord,
     decisions: u64,
+    /// When you are to act: your equity against the live bots' tracked ranges, and the equity
+    /// the price requires (if facing a bet).
+    hero_odds: Option<HeroOdds>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct HeroOdds {
+    pub equity: Option<f64>,
+    pub required: Option<f64>,
 }
 
 #[derive(Debug)]
@@ -280,6 +289,7 @@ impl Session {
             model_path: Some(vec![]),
             record,
             decisions: 0,
+            hero_odds: None,
         });
         self.hand_no += 1;
         self.run()
@@ -317,6 +327,16 @@ impl Session {
             match hand.state.phase() {
                 Phase::Betting { to_act } => {
                     if hand.seat_player[to_act] == 0 {
+                        let state = &hand.state;
+                        let to_call = state.legal_actions().ok().and_then(|l| l.call).map_or(0, |c| c.mbb());
+                        let pot = state.pot_total().mbb();
+                        let opponents: Vec<usize> =
+                            (0..state.players().len()).filter(|&k| k != to_act && !state.players()[k].folded).collect();
+                        let board = state.board().cards().to_vec();
+                        hand.hero_odds = Some(HeroOdds {
+                            equity: equity_vs_ranges(hand, to_act, &opponents, &board),
+                            required: (to_call > 0).then(|| to_call as f64 / (pot + to_call) as f64),
+                        });
                         self.status = SessionStatus::AwaitingHero;
                         return Ok(());
                     }
@@ -457,6 +477,7 @@ impl Session {
                 seat_player: &h.seat_player,
                 hole: &h.hole,
                 record: &h.record,
+                hero_odds: if self.status == SessionStatus::AwaitingHero { h.hero_odds } else { None },
             }),
             &self.notes,
         )
@@ -648,7 +669,8 @@ fn hero_decision(hand: &mut Hand, seat: usize, action: Action) -> HeroDecision {
     let required = (to_call > 0).then(|| to_call as f64 / (pot + to_call) as f64);
     let opponents: Vec<usize> =
         (0..state.players().len()).filter(|&k| k != seat && !state.players()[k].folded).collect();
-    let equity = if to_call > 0 { equity_vs_ranges(hand, seat, &opponents, &board) } else { None };
+    // Computed once when your turn began (shown live), so the record matches what you saw.
+    let equity = hand.hero_odds.and_then(|o| o.equity);
     let mut model_check = None;
     if board.is_empty() {
         if let (Some(model), Some(path)) = (&hand.model, &hand.model_path) {

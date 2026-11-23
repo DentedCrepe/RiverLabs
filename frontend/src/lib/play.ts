@@ -59,7 +59,73 @@ export type TableView = {
   reveal: boolean;
   feedback: { street: string; action: string; feedback: Feedback }[];
   summary: string[];
+  hero_equity: number | null;
+  required_equity: number | null;
 };
+
+export type RecordAction = {
+  seat: number;
+  street: string;
+  action: { type: "fold" | "check" | "call" | "bet" | "raise"; to?: number };
+  added: number;
+  street_commit: number;
+  all_in: boolean;
+};
+export type HeroDecision = {
+  street: string;
+  action: RecordAction["action"];
+  to_call: number;
+  pot: number;
+  required_equity: number | null;
+  equity_vs_ranges: number | null;
+  opponents: number;
+  model: { spot: string; class: string; actions: string[]; frequencies: number[]; taken: number | null } | null;
+  all_in_call: boolean;
+  feedback: Feedback | null;
+};
+/** A finished hand (engine play_engine::HandRecord). */
+export type HandRecord = {
+  hand_no: number;
+  level: number | null;
+  tournament: boolean;
+  small_blind: number;
+  big_blind: number;
+  ante: number;
+  seats: {
+    name: string;
+    position: string;
+    starting_stack: number;
+    hole_cards: string[];
+    shown: boolean;
+    is_hero: boolean;
+  }[];
+  board: string[];
+  actions: RecordAction[];
+  net: number[];
+  showdown: boolean;
+  hero_decisions: HeroDecision[];
+  hero_all_in_ev: number | null;
+  revealed: boolean;
+  summary: string[];
+};
+
+/** "raises to 7.5bb" — another player's action, in the table's units. */
+export function describeAction(a: RecordAction["action"], units: "bb" | "chips", allIn = false, you = false): string {
+  const ai = allIn ? " (all-in)" : "";
+  const s = (verb: string) => (you ? verb : `${verb}s`);
+  switch (a.type) {
+    case "fold":
+      return s("fold");
+    case "check":
+      return s("check");
+    case "call":
+      return `${s("call")}${ai}`;
+    case "bet":
+      return `${s("bet")} ${amount(a.to ?? 0, units)}${ai}`;
+    case "raise":
+      return `${you ? "raise" : "raises"} to ${amount(a.to ?? 0, units)}${ai}`;
+  }
+}
 export type PlaySessionInfo = {
   id: string;
   format: FormatType;

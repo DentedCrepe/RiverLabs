@@ -124,6 +124,8 @@ const table = (patch: Partial<TableView>): PlayState => ({
       },
     ],
     summary: [],
+    hero_equity: 0.31,
+    required_equity: 0.25,
     ...patch,
   },
 });
@@ -165,5 +167,96 @@ describe("play table", () => {
     expect(screen.queryByRole("img", { name: /queen of hearts/i })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Show all hands" }));
     expect(screen.getAllByRole("img").length).toBeGreaterThan(2);
+  });
+});
+
+import { HandReview } from "./HandHistory";
+import type { HandRecord } from "@/lib/play";
+
+describe("hand review", () => {
+  it("shows your live equity against the price", () => {
+    render(<PlayTable state={table({})} onChange={() => undefined} />);
+    expect(screen.getByLabelText("Your odds")).toHaveTextContent("31%");
+    expect(screen.getByLabelText("Your odds")).toHaveTextContent("Price needs 25%");
+  });
+
+  it("replays a hand street by street with the model's mix for your decisions", () => {
+    const hand: HandRecord = {
+      hand_no: 7,
+      level: null,
+      tournament: false,
+      small_blind: 500,
+      big_blind: 1000,
+      ante: 0,
+      seats: [
+        {
+          name: "Bot 1 (hard)",
+          position: "SB",
+          starting_stack: 100_000,
+          hole_cards: ["Qh", "Qc"],
+          shown: false,
+          is_hero: false,
+        },
+        { name: "You", position: "BB", starting_stack: 100_000, hole_cards: ["As", "Kd"], shown: false, is_hero: true },
+      ],
+      board: ["Ks", "7d", "2c"],
+      actions: [
+        {
+          seat: 0,
+          street: "preflop",
+          action: { type: "raise", to: 2500 },
+          added: 2000,
+          street_commit: 2500,
+          all_in: false,
+        },
+        { seat: 1, street: "preflop", action: { type: "call" }, added: 1500, street_commit: 2500, all_in: false },
+        { seat: 1, street: "flop", action: { type: "check" }, added: 0, street_commit: 0, all_in: false },
+        { seat: 0, street: "flop", action: { type: "check" }, added: 0, street_commit: 0, all_in: false },
+      ],
+      net: [-2500, 2500],
+      showdown: false,
+      hero_decisions: [
+        {
+          street: "preflop",
+          action: { type: "call" },
+          to_call: 1500,
+          pot: 3500,
+          required_equity: 0.3,
+          equity_vs_ranges: 0.55,
+          opponents: 1,
+          model: {
+            spot: "vs_open",
+            class: "AKo",
+            actions: ["Fold", "Call", "Raise 7.5"],
+            frequencies: [0, 0.35, 0.65],
+            taken: 1,
+          },
+          all_in_call: false,
+          feedback: { verdict: "ok", headline: "A choice the model also makes (35%)", detail: "…", reference: null },
+        },
+        {
+          street: "flop",
+          action: { type: "check" },
+          to_call: 0,
+          pot: 5000,
+          required_equity: null,
+          equity_vs_ranges: 0.7,
+          opponents: 1,
+          model: null,
+          all_in_call: false,
+          feedback: { verdict: "not_graded", headline: "Not graded", detail: "…", reference: null },
+        },
+      ],
+      hero_all_in_ev: null,
+      revealed: false,
+      summary: ["You win 5bb (everyone else folded)"],
+    };
+    render(<HandReview hand={hand} />);
+    expect(screen.getByLabelText("Model frequencies for your hand")).toHaveTextContent("Call ← you");
+    expect(screen.getByLabelText("Model frequencies for your hand")).toHaveTextContent("65%");
+    expect(screen.getByText("Bot 1 (hard) raises to 2.5bb")).toBeInTheDocument();
+    expect(screen.getByText("You call")).toBeInTheDocument();
+    expect(screen.getByText(/your equity 55% · price needs 30%/)).toBeInTheDocument();
+    expect(screen.getByText("You win 5bb (everyone else folded)")).toBeInTheDocument();
   });
 });

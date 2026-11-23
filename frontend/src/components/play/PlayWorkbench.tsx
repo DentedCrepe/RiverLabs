@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Field, Select, TextInput } from "@/components/ui/Field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/States";
+import { HandHistory } from "./HandHistory";
 import { PlayReport } from "./PlayReport";
 import { PlayTable } from "./PlayTable";
 
@@ -294,6 +295,17 @@ export function PlayWorkbench() {
               {openError && <ErrorState message={openError} />}
             </CardBody>
           </Card>
+          {s.hands > 0 && (
+            <Card>
+              <CardHeader
+                title="Hand history"
+                subtitle="Tap a hand to replay it and compare your decisions with the model"
+              />
+              <CardBody className="py-2">
+                <HandHistory sessionId={s.id} refreshKey={s.hands} />
+              </CardBody>
+            </Card>
+          )}
           {s.status !== "preparing" && s.status !== "failed" && (!playable || s.hands > 0) && (
             <Card>
               <CardHeader

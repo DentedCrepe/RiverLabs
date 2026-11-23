@@ -23,6 +23,8 @@ export const GLOSSARY = {
     "For preflop spots on the bots' model tree: how often you played or raised, against how often the model would with the same hands in the same spots. The model is approximate.",
   feedback:
     "Each decision is compared with the same references as the session report: the bots' preflop model (approximate) for preflop choices, and pot odds against the bots' actual ranges for calls and folds. Bets and raises after the flop aren't graded.",
+  heroEquity:
+    "Your share of the pot if all remaining cards were dealt with no more betting, against the hands the bots could still have given how they've played (their tracked ranges). Monte Carlo estimate. Facing a bet, the price shows the equity a call needs to break even when no more money goes in.",
   reveal:
     "Practice mode: shows the bots' cards during hands. It makes decisions easier, so hands played with it on are flagged in the report.",
   exploitability:
