@@ -150,6 +150,15 @@ def test_heads_up_cash_game_is_played_recorded_and_reported(
     missing = f"/api/v1/play/sessions/{sid}/hands/99999/spot"
     assert client.get(missing, params={"decision": 0}).status_code == 404
 
+    # Analytics: the same hands, as one report across sessions.
+    a = client.get("/api/v1/analytics/play", params={"scope": "cash"}).json()
+    assert [x["id"] for x in a["sessions"]] == [sid]
+    stored = len(client.get(f"/api/v1/play/sessions/{sid}/hands").json())
+    assert a["report"]["hands"] == stored
+    sng = client.get("/api/v1/analytics/play", params={"scope": "sit_and_go"}).json()
+    assert sng["sessions"] == []
+    assert sng["report"] is None
+
     left = client.post(f"/api/v1/play/sessions/{sid}/leave").json()
     assert left["session"]["status"] == "finished"
     assert client.post(f"/api/v1/play/sessions/{sid}/next").status_code == 409

@@ -85,8 +85,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     href: "/analytics",
     label: "Analytics",
     icon: BarChart3,
-    status: "planned",
-    description: "Performance metrics from your own hands",
+    status: "partial",
+    description: "Your play results across sessions and your trainer history",
   },
   {
     href: "/library",
