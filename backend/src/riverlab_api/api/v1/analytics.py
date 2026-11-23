@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from riverlab_api.db.models import PlayHand, PlaySession, PushFoldAnswer
+from riverlab_api.db.models import PlayHand, PlaySession, PostflopAnswer, PushFoldAnswer
 from riverlab_api.db.session import get_db
 from riverlab_api.services import engine
 
@@ -70,8 +70,7 @@ def _summary(rows: Any) -> dict[str, Any]:
     }
 
 
-def _cols() -> list[Any]:
-    a = PushFoldAnswer
+def _cols(a: Any = PushFoldAnswer) -> list[Any]:
     return [
         func.count(a.id),
         func.sum(case((a.verdict == "correct", 1), else_=0)),
@@ -124,4 +123,33 @@ def trainer(db: DbSession) -> dict[str, Any]:
             }
             for r in recent
         ],
+    }
+
+
+@router.get("/postflop")
+def postflop(db: DbSession) -> dict[str, Any]:
+    """Your postflop drill answers: totals, by street and position, and the costliest hands. EV
+    losses are the engine's, from the saved solves the drills came from."""
+    a = PostflopAnswer
+    total = _summary(db.execute(select(*_cols(a))).one())
+    by_street = [
+        {"street": st, **_summary(db.execute(select(*_cols(a)).where(a.street == st)).one())}
+        for st in ("flop", "turn", "river")
+    ]
+    by_position = {
+        name: _summary(db.execute(select(*_cols(a)).where(a.hero_player == p)).one())
+        for p, name in ((0, "oop"), (1, "ip"))
+    }
+    costly = db.execute(
+        select(a.hand_class, a.street, *_cols(a))
+        .group_by(a.hand_class, a.street)
+        .having(func.sum(a.ev_loss_bb) > 0)
+        .order_by(func.sum(a.ev_loss_bb).desc())
+        .limit(10)
+    ).all()
+    return {
+        "total": total,
+        "by_street": by_street,
+        "by_position": by_position,
+        "costliest": [{"hand_class": r[0], "street": r[1], **_summary(r[2:])} for r in costly],
     }

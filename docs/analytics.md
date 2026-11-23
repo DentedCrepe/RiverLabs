@@ -19,3 +19,9 @@ engine's full grade. `GET /api/v1/analytics/trainer` reports:
 
 EV lost is always the engine's: the best action's EV minus yours, against the exact equilibrium.
 Analytics only adds these numbers up and averages them.
+
+## Postflop drills
+`GET /api/v1/analytics/postflop` adds up your postflop drill answers (`postflop_answers`,
+migration 0008): verdicts and EV lost overall, by street, by position (in or out of position), and
+the ten hand class and street pairs that cost you the most. EV losses are the engine's, from the
+saved solves the drills came from.

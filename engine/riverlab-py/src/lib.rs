@@ -324,6 +324,28 @@ impl SolvedGame {
         });
         to_json(&view.map_err(err)?)
     }
+
+    /// Deals a postflop drill from this solve (`hero`: 0 out of position, 1 in position, or None).
+    #[pyo3(signature = (spec_json, seed, hero=None))]
+    fn drill(&self, py: Python<'_>, spec_json: &str, seed: u64, hero: Option<u8>) -> PyResult<String> {
+        let spec: SolveSpec = serde_json::from_str(spec_json).map_err(err)?;
+        let d = py.detach(|| {
+            let solved = self.inner.lock().expect("solved game lock");
+            play_engine::drill::deal(&solved, &spec, seed, hero)
+        });
+        to_json(&d.map_err(play_err)?)
+    }
+
+    /// Grades action `choice` for a drill dealt from this solve.
+    fn grade(&self, py: Python<'_>, spec_json: &str, drill_json: &str, choice: usize) -> PyResult<String> {
+        let spec: SolveSpec = serde_json::from_str(spec_json).map_err(err)?;
+        let drill: play_engine::drill::PostflopDrill = serde_json::from_str(drill_json).map_err(err)?;
+        let g = py.detach(|| {
+            let solved = self.inner.lock().expect("solved game lock");
+            play_engine::drill::grade(&solved, &spec, &drill, choice)
+        });
+        to_json(&g.map_err(play_err)?)
+    }
 }
 
 /// Loads a solve saved with `solve_postflop(..., save_path=...)` (GIL released).

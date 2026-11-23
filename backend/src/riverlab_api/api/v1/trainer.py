@@ -1,6 +1,7 @@
 """Push/fold trainer: heads-up jam/fold drills graded against the exact equilibrium."""
 
 import secrets
+import uuid
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -71,3 +72,37 @@ def answer(body: AnswerIn, db: DbSession) -> dict[str, Any]:
 def chart(stack_mbb: Annotated[int, Query(ge=0, le=1_000_000)]) -> dict[str, Any]:
     """The exact equilibrium at one stack depth, by hand class."""
     return trainer.service().chart(stack_mbb)
+
+
+postflop = APIRouter(prefix="/trainer/postflop", tags=["trainer"])
+
+
+class PostflopDrillIn(StrictModel):
+    job_id: uuid.UUID | None = None
+    hero: Literal[0, 1] | None = None
+    seed: int | None = None
+
+
+class PostflopAnswerIn(StrictModel):
+    job_id: uuid.UUID
+    drill: dict[str, Any]
+    choice: int
+
+
+@postflop.get("/sources")
+def postflop_sources(db: DbSession) -> list[dict[str, Any]]:
+    """Saved postflop solves that drills can be dealt from."""
+    return trainer.postflop_sources(db)
+
+
+@postflop.post("/drill")
+def postflop_drill(body: PostflopDrillIn, db: DbSession) -> dict[str, Any]:
+    """A decision dealt from a saved solve (a random one if `job_id` is not given)."""
+    seed = body.seed if body.seed is not None else secrets.randbits(63)
+    return trainer.postflop_drill(db, body.job_id, seed, body.hero)
+
+
+@postflop.post("/answer")
+def postflop_answer(body: PostflopAnswerIn, db: DbSession) -> dict[str, Any]:
+    """Grades a choice by its EV for your hand from the solve. Stored for Analytics."""
+    return trainer.postflop_answer(db, body.job_id, body.drill, body.choice)

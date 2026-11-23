@@ -9,12 +9,17 @@ be built here, which takes tens of minutes. Nothing is loaded until the trainer 
 import json
 import logging
 import threading
+import uuid
 from pathlib import Path
 from typing import Any, Literal
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from riverlab_api.config import get_settings
+from riverlab_api.db.models import PostflopAnswer, SolverJob, SolverResult
 from riverlab_api.errors import ConflictError
-from riverlab_api.services import activity, engine
+from riverlab_api.services import activity, compute, engine, trees
 
 logger = logging.getLogger(__name__)
 
@@ -118,3 +123,76 @@ def service() -> PushFoldService:
         if _service is None:
             _service = PushFoldService(Path(get_settings().result_storage_dir) / TABLE_NAME)
         return _service
+
+
+# ---- postflop drills from saved solves ----
+
+
+def postflop_sources(db: Session) -> list[dict[str, Any]]:
+    """Saved postflop solves whose trees are on disk, newest first."""
+    rows = db.execute(
+        select(SolverJob, SolverResult)
+        .join(SolverResult, SolverResult.job_id == SolverJob.id)
+        .where(SolverJob.kind == "postflop", SolverResult.storage_uri.is_not(None))
+        .order_by(SolverJob.finished_at.desc().nulls_last(), SolverJob.id)
+    ).all()
+    out = []
+    for job, result in rows:
+        if not trees.path_from_uri(result.storage_uri or "").exists():
+            continue
+        spec = result.assumptions["spec"]
+        out.append(
+            {
+                "job_id": job.id,
+                "board": spec["board"],
+                "starting_pot_mbb": spec["starting_pot_mbb"],
+                "effective_stack_mbb": spec["effective_stack_mbb"],
+                "exploitability_pct_pot": result.summary.get("exploitability_pct_pot"),
+                "finished_at": job.finished_at,
+            }
+        )
+    return out
+
+
+def _solve(db: Session, job_id: uuid.UUID) -> tuple[Any, dict[str, Any], SolverResult]:
+    _, result, _ = compute.JobService(db).result(job_id)
+    if result.job.kind != "postflop":
+        raise ConflictError("Postflop drills need a postflop solve")
+    return trees.game(result), result.assumptions["spec"], result
+
+
+def postflop_drill(db: Session, job_id: uuid.UUID | None, seed: int, hero: int | None) -> dict[str, Any]:
+    if job_id is None:
+        sources = postflop_sources(db)
+        if not sources:
+            raise ConflictError("No saved postflop solves yet: solve a spot first (Solver, or a hand review)")
+        job_id = sources[seed % len(sources)]["job_id"]
+    game, spec, result = _solve(db, job_id)
+    drill: dict[str, Any] = engine.play_call(game.drill, json.dumps(spec), seed, hero)
+    return {
+        "job_id": job_id,
+        "drill": drill,
+        "starting_pot_mbb": spec["starting_pot_mbb"],
+        "exploitability_pct_pot": result.summary.get("exploitability_pct_pot"),
+    }
+
+
+def postflop_answer(db: Session, job_id: uuid.UUID, drill: dict[str, Any], choice: int) -> dict[str, Any]:
+    game, spec, _ = _solve(db, job_id)
+    grade: dict[str, Any] = engine.play_call(game.grade, json.dumps(spec), json.dumps(drill), choice)
+    db.add(
+        PostflopAnswer(
+            job_id=job_id,
+            street=drill["street"],
+            hero_player=drill["hero_player"],
+            cards=drill["hero_combo"],
+            hand_class=drill["hero_class"],
+            choice=grade["actions"][choice][:40],
+            verdict=grade["verdict"],
+            ev_loss_bb=grade["ev_loss_bb"],
+            ev_loss_pct_pot=grade["ev_loss_pct_pot"],
+            grade=grade,
+        )
+    )
+    db.commit()
+    return grade

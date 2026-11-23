@@ -1,8 +1,8 @@
 # Trainer
 
-The Trainer grades decisions only against solutions RiverLab has validated. Today that is one
-game: **heads-up push/fold** (Trainer page). Other drills will follow once their solutions are
-validated; nothing is graded against invented answers.
+The Trainer grades decisions only against real solutions, never invented answers. Two kinds of
+drill exist: **heads-up push/fold**, graded against RiverLab's exact equilibrium, and **postflop
+drills**, dealt from your own saved solves and graded by the EV the solve gives each action.
 
 ## Push/fold drills
 - **Game:** heads-up, blinds 0.5/1, equal stacks of 2bb to 25bb (steps of 0.5bb), no ante, no
@@ -48,3 +48,32 @@ If the table is missing, the Trainer page can build it (about 20 minutes on four
 on a phone). The Android setup downloads a pre-built copy from the `android-web` branch instead.
 It is the same table, checked the same way when loaded. Build one yourself with
 `cargo run --release -p solver-validation --example build_hu_equity -- <path>`.
+
+## Postflop drills
+Postflop drills come from postflop solves you have already run and saved (Solver page, "Solve
+this spot", or a solver review of a hand). Choose one solve or any, and a position or either.
+Implementation: `engine/play-engine/src/drill.rs`.
+
+- **Deal:** a hand is drawn for each player from their starting range in the solve (by weight,
+  without shared cards). The hand is then played forward: each decision follows the solver's
+  strategy for that player's hand, and turn and river cards are dealt at random from the cards
+  left. At each of your decisions on the way the deal stops with probability one half; that
+  decision is the drill. Spots therefore come up about as often as they would when both players
+  follow the solution, and early decisions come up more often than late ones.
+- **Shown:** the table (pot, bets on this street, stacks, the board, your cards, the actions so
+  far) and one button per action in the solve's tree.
+- **Graded by EV:** the engine computes the EV of each action for your exact hand, against your
+  opponent's range at that point, with both players following the solution afterwards. EV lost is
+  the best action's EV minus yours.
+
+| Verdict | EV lost |
+|---|---|
+| Correct | at most 1% of the solve's starting pot |
+| Close | at most 5% of the starting pot |
+| Mistake | more than 5% of the starting pot |
+
+The thresholds are `CORRECT_PCT_POT` and `CLOSE_PCT_POT` in `drill.rs`. The answer also shows the
+solver's mix for your hand, and the solve's exploitability. A solve is an approximate equilibrium
+for its own bet sizes and starting ranges; differences between actions smaller than its
+exploitability are within its error, which is why near-equal options all count as correct or
+close. Every answer is stored for Analytics (`docs/analytics.md`).

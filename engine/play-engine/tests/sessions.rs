@@ -287,3 +287,52 @@ fn whole_hand_review_chains_street_solves() {
     // Preflop decisions are not part of the solver review.
     assert!(review::streets(&record).iter().all(|x| x.street != "preflop"));
 }
+
+#[test]
+fn postflop_drills_are_dealt_from_a_solve_and_graded_by_ev() {
+    use play_engine::drill;
+    use solver_interface::{PlayerSizing, SolveSpec, SolverConfig, TreeAbstraction};
+    let sizing =
+        |b: Vec<u32>| PlayerSizing { bet_pct_pot: [vec![], vec![], b], raise_pct_pot: [vec![], vec![], vec![100]] };
+    let mut solver = SolverConfig::default();
+    solver.stopping.max_iterations = 300;
+    let spec = SolveSpec {
+        game: GameConfig::default(),
+        ranges: vec!["AA,KK,QQ,AKs,AKo,JJ,TT,98s".into(), "AQs,AQo,KQs,JJ,TT,99,88,76s".into()],
+        board: "Kh9c4d2s7h".parse().unwrap(),
+        starting_pot_mbb: 10_000,
+        effective_stack_mbb: 50_000,
+        tree: TreeAbstraction {
+            oop: sizing(vec![50]),
+            ip: sizing(vec![50, 100]),
+            max_raises_per_street: 1,
+            all_in_threshold_pct_stack: 100,
+            add_all_in: false,
+        },
+        solver,
+    };
+    let solved = solver_gtopen::solve(&spec, &std::sync::atomic::AtomicBool::new(false), |_| {}).unwrap();
+    let a = drill::deal(&solved, &spec, 7, None).unwrap();
+    assert_eq!(a, drill::deal(&solved, &spec, 7, None).unwrap(), "seeded");
+    let mut seen_players = std::collections::HashSet::new();
+    for seed in 0..40 {
+        let d = drill::deal(&solved, &spec, seed, None).unwrap();
+        seen_players.insert(d.hero_player);
+        assert!(!d.actions.is_empty());
+        assert_eq!(d.board.len(), 5);
+        assert!((d.pot_mbb - 10_000.0).abs() < 1e-6, "river root: the pot is the starting pot");
+        assert!(d.stacks_mbb.iter().all(|s| (0.0..=50_000.0).contains(s)));
+        let grades: Vec<_> = (0..d.actions.len()).map(|c| drill::grade(&solved, &spec, &d, c).unwrap()).collect();
+        let best = grades[0].best;
+        assert_eq!(grades[best].verdict, "correct");
+        assert_eq!(grades[best].ev_loss_bb, 0.0);
+        for g in &grades {
+            assert!(g.ev_loss_bb >= 0.0);
+            assert!((g.strategy.iter().sum::<f64>() - 1.0).abs() < 1e-3);
+            assert!((g.ev_loss_pct_pot - g.ev_loss_bb * 10.0).abs() < 1e-9, "1bb is 10% of a 10bb pot");
+        }
+        assert!(drill::grade(&solved, &spec, &d, d.actions.len()).is_err());
+    }
+    assert_eq!(seen_players.len(), 2, "both positions are drilled");
+    assert!(drill::deal(&solved, &spec, 3, Some(1)).unwrap().hero_player == 1);
+}

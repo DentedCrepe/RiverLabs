@@ -54,6 +54,11 @@ def _game(result: SolverResult) -> Any:
     return game
 
 
+def game(result: SolverResult) -> Any:
+    """The loaded game for a saved result (cached)."""
+    return _game(result)
+
+
 def parse_path(text: str) -> list[dict[str, Any]]:
     """`a0.a2.cAh` -> [{"type": "action", "value": 0}, ..., {"type": "card", "value": "Ah"}]."""
     steps: list[dict[str, Any]] = []
