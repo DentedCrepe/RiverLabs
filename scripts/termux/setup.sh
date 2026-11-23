@@ -69,6 +69,11 @@ step "compiling the RiverLab engine (Rust; 20–40 minutes the first time, faste
 pip install --quiet "maturin>=1.9,<2"
 # Faster, lower-memory build than the desktop release profile; results are identical.
 export CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16
+# Android's loader does not let an extension borrow Python's symbols from the running
+# interpreter (as Linux does), so link the engine against libpython explicitly.
+PY_LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
+PY_LDVERSION="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LDVERSION"))')"
+export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-L$PY_LIBDIR -C link-arg=-lpython$PY_LDVERSION"
 rm -rf "$DATA/wheels"
 maturin build --release -m "$REPO/engine/riverlab-py/Cargo.toml" -o "$DATA/wheels"
 # Rust tags the wheel for Android (android_<api>_arm64_v8a); Termux's Python only accepts its
