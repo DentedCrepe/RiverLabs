@@ -168,32 +168,33 @@ export function HandReview({ hand: h, sessionId }: { hand: HandRecord; sessionId
   );
 }
 
-/** Every hand of the session, newest first; tap one to review it. */
-export function HandHistory({ sessionId, refreshKey }: { sessionId: string; refreshKey: number }) {
-  const { data, error, loading } = useApi<HandRecord[]>(`/api/v1/play/sessions/${sessionId}/hands?v=${refreshKey}`);
-  const [open, setOpen] = useState<number | null>(null);
-  if (error) return <ErrorState message={error.message} />;
-  if (loading && !data) return <LoadingState label="Loading hands…" />;
-  if (!data || data.length === 0) return <EmptyState title="No hands yet" description="Finished hands appear here." />;
+/** One hand of a list (a session's hands, or hands across sessions). */
+export type HandItem = { sessionId: string; hand: HandRecord; label?: string };
+
+/** Hands as rows; tap one to replay it street by street. */
+export function HandRows({ items, ariaLabel }: { items: HandItem[]; ariaLabel: string }) {
+  const [open, setOpen] = useState<string | null>(null);
   return (
-    <ul className="divide-y divide-line" aria-label="Hand history">
-      {[...data].reverse().map((h) => {
+    <ul className="divide-y divide-line" aria-label={ariaLabel}>
+      {items.map(({ sessionId, hand: h, label }) => {
+        const key = `${sessionId}:${h.hand_no}`;
         const hero = h.seats.findIndex((s) => s.is_hero);
         const flagged = h.hero_decisions.filter((d) => d.feedback?.verdict === "mistake").length;
         const unusual = h.hero_decisions.filter((d) => d.feedback?.verdict === "rare").length;
-        const isOpen = open === h.hand_no;
+        const isOpen = open === key;
         return (
-          <li key={h.hand_no} className="py-1.5">
+          <li key={key} className="py-1.5">
             <button
               type="button"
               aria-expanded={isOpen}
-              onClick={() => setOpen(isOpen ? null : h.hand_no)}
+              onClick={() => setOpen(isOpen ? null : key)}
               className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded px-1 py-1 text-left text-xs hover:bg-surface-2"
             >
               <ChevronRight
                 aria-hidden
                 className={cn("size-3.5 shrink-0 text-subtle transition-transform", isOpen && "rotate-90")}
               />
+              {label && <span className="text-subtle">{label}</span>}
               <span className="w-8 font-mono text-muted tabular">#{h.hand_no}</span>
               <span className="w-8 text-muted">{h.seats[hero].position}</span>
               <CardRow cards={h.seats[hero].hole_cards} size="sm" />
@@ -219,4 +220,13 @@ export function HandHistory({ sessionId, refreshKey }: { sessionId: string; refr
       })}
     </ul>
   );
+}
+
+/** Every hand of the session, newest first; tap one to review it. */
+export function HandHistory({ sessionId, refreshKey }: { sessionId: string; refreshKey: number }) {
+  const { data, error, loading } = useApi<HandRecord[]>(`/api/v1/play/sessions/${sessionId}/hands?v=${refreshKey}`);
+  if (error) return <ErrorState message={error.message} />;
+  if (loading && !data) return <LoadingState label="Loading hands…" />;
+  if (!data || data.length === 0) return <EmptyState title="No hands yet" description="Finished hands appear here." />;
+  return <HandRows ariaLabel="Hand history" items={[...data].reverse().map((hand) => ({ sessionId, hand }))} />;
 }

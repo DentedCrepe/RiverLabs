@@ -1,7 +1,7 @@
 """Play against bots: create a table, deal, act, leave, review the report."""
 
 import uuid
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
@@ -83,6 +83,18 @@ def report(session_id: uuid.UUID, db: DbSession) -> dict[str, Any]:
 @router.get("/sessions/{session_id}/hands")
 def hands(session_id: uuid.UUID, db: DbSession) -> list[dict[str, Any]]:
     return play.require().records(db, session_id)
+
+
+@router.get("/hands")
+def all_hands(
+    db: DbSession,
+    verdict: Annotated[Literal["mistake", "rare"] | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 30,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> dict[str, Any]:
+    """Your hands from every session, newest first; `verdict` keeps hands with a decision the
+    feedback flagged ("mistake") or found unusual ("rare")."""
+    return play.require().all_hands(db, verdict, limit, offset)
 
 
 @router.get("/sessions/{session_id}/hands/{hand_no}/spot")
