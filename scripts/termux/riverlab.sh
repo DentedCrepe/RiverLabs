@@ -9,11 +9,13 @@ PGDATA="$PREFIX/var/lib/postgresql"
 mkdir -p "$RUN"
 
 running() { [ -f "$RUN/$1.pid" ] && kill -0 "$(cat "$RUN/$1.pid")" 2>/dev/null; }
+# Detach from the launching shell, so a home-screen shortcut can exit without taking RiverLab down.
+detach() { if command -v setsid >/dev/null; then setsid nohup "$@"; else nohup "$@"; fi; }
 
 start() {
   [ -f "$DATA/riverlab.env" ] || { echo "Run setup first: bash $REPO/scripts/termux/setup.sh"; exit 1; }
-  # Keep the phone from suspending Termux while RiverLab runs (released by `riverlab stop`).
-  command -v termux-wake-lock >/dev/null && termux-wake-lock
+  # No wake lock here: the API takes one only while a solve or table preparation is running
+  # (RIVERLAB_WAKE_LOCK_COMMAND), so an idle phone can sleep.
   pg_ctl -D "$PGDATA" status >/dev/null 2>&1 || pg_ctl -D "$PGDATA" -l "$DATA/postgres.log" -w start >/dev/null
   set -a
   # shellcheck disable=SC1091
@@ -25,7 +27,7 @@ start() {
       # shellcheck disable=SC1091
       source "$DATA/venv/bin/activate"
       alembic upgrade head >>"$DATA/api.log" 2>&1
-      nohup uvicorn riverlab_api.main:app --host 127.0.0.1 --port 8000 >>"$DATA/api.log" 2>&1 &
+      detach uvicorn riverlab_api.main:app --host 127.0.0.1 --port 8000 >>"$DATA/api.log" 2>&1 &
       echo $! >"$RUN/api.pid"
     )
   fi
@@ -33,16 +35,20 @@ start() {
     (
       cd "$DATA/web/riverlab-web"
       PORT=3000 HOSTNAME=127.0.0.1 RIVERLAB_API_URL=http://127.0.0.1:8000 NODE_ENV=production \
-        nohup node server.js >>"$DATA/web.log" 2>&1 &
+        detach node server.js >>"$DATA/web.log" 2>&1 &
       echo $! >"$RUN/web.pid"
     )
+  fi
+  if ! running watchdog; then
+    detach bash "$REPO/scripts/termux/riverlab.sh" watchdog >>"$DATA/watchdog.log" 2>&1 &
+    echo $! >"$RUN/watchdog.pid"
   fi
   echo -n "Starting"
   for _ in $(seq 1 60); do
     if curl -sf http://127.0.0.1:8000/health >/dev/null && curl -sf -o /dev/null http://127.0.0.1:3000/; then
       echo
       echo "RiverLab is running: open http://localhost:3000 in your browser."
-      echo "Leave Termux running in the background; stop with: riverlab stop"
+      echo "It stops by itself after ${RIVERLAB_IDLE_MINUTES:-20} idle minutes; or: riverlab stop"
       return
     fi
     echo -n "."
@@ -54,7 +60,7 @@ start() {
 }
 
 stop() {
-  for p in web api; do
+  for p in watchdog web api; do
     if running "$p"; then kill "$(cat "$RUN/$p.pid")"; fi
     rm -f "$RUN/$p.pid"
   done
@@ -63,8 +69,32 @@ stop() {
   echo "RiverLab stopped."
 }
 
+# Stops RiverLab after RIVERLAB_IDLE_MINUTES (default 20; 0 = never) without user requests,
+# unless a solve or table preparation is running. Checks once a minute.
+watchdog() {
+  local limit=$((${RIVERLAB_IDLE_MINUTES:-20} * 60)) status idle
+  [ "$limit" -gt 0 ] || exit 0
+  while sleep 60; do
+    status="$(curl -sf http://127.0.0.1:8000/health/activity)" || continue
+    case "$status" in *'"busy":true'*) continue ;; esac
+    idle="$(sed -n 's/.*"idle_seconds":\([0-9]*\).*/\1/p' <<<"$status")"
+    if [ -n "$idle" ] && [ "$idle" -ge "$limit" ]; then
+      echo "$(date) idle for ${idle}s: stopping RiverLab"
+      rm -f "$RUN/watchdog.pid"
+      stop
+      exit 0
+    fi
+  done
+}
+
 case "${1:-}" in
   start) start ;;
+  open)
+    # Start if needed, then open the app (the installed RiverLab app, or the browser).
+    running api && running web || start
+    termux-open-url http://localhost:3000
+    ;;
+  watchdog) watchdog ;;
   stop) stop ;;
   restart) stop; start ;;
   status)
@@ -80,7 +110,7 @@ case "${1:-}" in
     start
     ;;
   *)
-    echo "Usage: riverlab {start|stop|restart|status|logs [lines]|update}"
+    echo "Usage: riverlab {open|start|stop|restart|status|logs [lines]|update}"
     exit 1
     ;;
 esac

@@ -66,6 +66,8 @@ export async function forwardToBackend(
   const headers: Record<string, string> = {};
   const contentType = request.headers.get("content-type");
   if (contentType) headers["content-type"] = contentType;
+  // Marks background refreshes, which the API's idle tracking ignores.
+  if (request.headers.get("x-riverlab-poll") === "1") headers["x-riverlab-poll"] = "1";
 
   try {
     const res = await fetchImpl(target, {

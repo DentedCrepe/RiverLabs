@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api } from "./api";
 
 export interface ApiState<T> {
@@ -17,11 +17,15 @@ export function useApi<T>(path: string, opts: { refreshMs?: number } = {}): ApiS
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
   const reload = useCallback(() => setTick((t) => t + 1), []);
+  // Interval refreshes are marked as polling so they don't keep an idle RiverLab awake.
+  const polling = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
+    const poll = polling.current;
+    polling.current = false;
     api
-      .get<T>(path)
+      .get<T>(path, { poll })
       .then((d) => {
         if (!cancelled) {
           setData(d);
@@ -41,7 +45,10 @@ export function useApi<T>(path: string, opts: { refreshMs?: number } = {}): ApiS
 
   useEffect(() => {
     if (!opts.refreshMs) return;
-    const id = setInterval(reload, opts.refreshMs);
+    const id = setInterval(() => {
+      polling.current = true;
+      reload();
+    }, opts.refreshMs);
     return () => clearInterval(id);
   }, [opts.refreshMs, reload]);
 

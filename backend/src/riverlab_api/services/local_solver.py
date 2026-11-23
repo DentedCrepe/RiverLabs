@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from riverlab_api.db.models import JobStatus, SolverJob, SolverResult, StrategyNode
-from riverlab_api.services import engine
+from riverlab_api.services import activity, engine
 
 logger = logging.getLogger(__name__)
 SessionFactory = Callable[[], Session]
@@ -61,7 +61,13 @@ class LocalSolverBackend:
     def submit(self, job_id: uuid.UUID, spec: dict[str, Any], kind: str = "postflop") -> None:
         with self._lock:
             self._tokens[job_id] = engine.CancelToken()
-        self._executor.submit(self._run_guarded, job_id, spec, kind)
+        # Busy from queueing until the job ends: keeps the device awake and RiverLab running.
+        activity.begin()
+        try:
+            self._executor.submit(self._run_guarded, job_id, spec, kind)
+        except BaseException:
+            activity.end()
+            raise
 
     def request_cancel(self, job_id: uuid.UUID) -> None:
         with self._lock:
@@ -88,6 +94,7 @@ class LocalSolverBackend:
         finally:
             with self._lock:
                 self._tokens.pop(job_id, None)
+            activity.end()
 
     def _service(self, session: Session) -> Any:
         from riverlab_api.services.compute import BackendRegistry, JobService

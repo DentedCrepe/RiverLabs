@@ -1,0 +1,20 @@
+import type { MetadataRoute } from "next";
+
+/** Lets the browser install RiverLab as an app (its own window, home-screen icon). */
+export default function manifest(): MetadataRoute.Manifest {
+  return {
+    name: "RiverLab",
+    short_name: "RiverLab",
+    description: "Poker theory, solving and training for no-limit hold'em.",
+    start_url: "/",
+    scope: "/",
+    display: "standalone",
+    background_color: "#0c0e11",
+    theme_color: "#0c0e11",
+    icons: [
+      { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+    ],
+  };
+}

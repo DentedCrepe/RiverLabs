@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     result_storage_dir: str = "data/solver-results"
     # Solved trees kept loaded in memory for browsing.
     result_cache_size: int = Field(default=2, ge=1, le=16)
+    # Commands run when work starts / when the last work ends (e.g. termux-wake-lock and
+    # termux-wake-unlock on Android). Empty = do nothing.
+    wake_lock_command: str = ""
+    wake_unlock_command: str = ""
 
     @model_validator(mode="after")
     def _no_placeholder_credentials_in_production(self) -> "Settings":

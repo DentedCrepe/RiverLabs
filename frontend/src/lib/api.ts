@@ -56,7 +56,9 @@ export async function apiFetch<T>(path: string, init?: RequestInit & { json?: un
 }
 
 export const api = {
-  get: <T>(path: string) => apiFetch<T>(path),
+  /** `poll`: a background refresh, which the API does not count as user activity. */
+  get: <T>(path: string, opts: { poll?: boolean } = {}) =>
+    apiFetch<T>(path, opts.poll ? { headers: { "X-RiverLab-Poll": "1" } } : undefined),
   post: <T>(path: string, json: unknown) => apiFetch<T>(path, { method: "POST", json }),
   delete: (path: string) => apiFetch<void>(path, { method: "DELETE" }),
 };

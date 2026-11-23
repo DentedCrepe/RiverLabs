@@ -34,16 +34,37 @@ bash riverlabs/scripts/termux/setup.sh
 
 Re-running it is safe: steps that are already done are skipped.
 
-## 3. Use it
+## 3. Use it as an app
+**One-time setup**
+1. Run `riverlab open`. RiverLab starts and opens in your browser.
+2. In Chrome's menu, choose **Add to home screen → Install**. RiverLab gets its own icon and
+   opens full-screen, without the address bar.
+3. Optional: install **Termux:Widget** from F-Droid, then add its widget to your home screen.
+   It shows two buttons, made by setup:
+   - **RiverLab:** starts RiverLab if needed and opens the app.
+   - **Stop RiverLab.**
+
+**Daily use:** tap the **RiverLab** widget button. If RiverLab is already running, the
+installed app icon works too.
+
+**From Termux**
 ```bash
-riverlab start      # then open http://localhost:3000 in Chrome or Samsung Internet
+riverlab open       # start if needed, then open the app
 riverlab status
 riverlab logs       # last 40 lines of the API and web logs
 riverlab stop
 ```
-Add the page to your home screen from the browser menu to open it like an app. Leave Termux
-running in the background while you use it. `riverlab start` holds a wake lock so long solves
-are not suspended; `riverlab stop` releases it.
+
+**Battery**
+- **No wake lock while idle.** The phone is kept awake only while a solve or table preparation is
+  running, so it can sleep mid-solve without the solve stopping. The lock is released when that
+  work ends.
+- **Stops itself after 20 idle minutes.** With no use and nothing running, RiverLab shuts down
+  completely, database included. Tap the widget to start it again; that takes a few seconds.
+  Background refreshes and health checks don't count as use.
+- **Changing the idle time:** re-run setup with `RIVERLAB_IDLE_MINUTES=60` (0 = never stop).
+- **Checking it:** look at Settings → Battery → Termux after a day of normal use. While idle,
+  the three processes use almost no CPU.
 
 Defaults suited to a phone: solves use 2 threads and at most 3 GB of memory. To change them,
 re-run setup with `RIVERLAB_SOLVER_THREADS=4 RIVERLAB_SOLVER_MAX_MEMORY_MB=4096 bash

@@ -216,7 +216,7 @@ export function PlayWorkbench() {
     if (!id || !preparing) return;
     const t = setInterval(async () => {
       try {
-        setState(await api.get<PlayState>(`/api/v1/play/sessions/${id}`));
+        setState(await api.get<PlayState>(`/api/v1/play/sessions/${id}`, { poll: true }));
       } catch (e) {
         setOpenError(e instanceof ApiError ? e.message : String(e));
       }

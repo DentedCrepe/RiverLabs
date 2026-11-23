@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from riverlab_api.db.models import PlayHand, PlaySession
 from riverlab_api.errors import ConflictError, NotFoundError, SolverUnavailableError
-from riverlab_api.services import engine
+from riverlab_api.services import activity, engine
 
 logger = logging.getLogger(__name__)
 SessionFactory = Callable[[], Session]
@@ -52,23 +52,27 @@ class PlayManager:
         with self._lock:
             self._games[row.id] = game
             self._locks[row.id] = threading.Lock()
+        activity.begin()
         self._executor.submit(self._prepare, row.id, game)
         return row
 
     def _prepare(self, session_id: uuid.UUID, game: Any) -> None:
         try:
-            game.prepare()
-            status, error = "active", None
-        except Exception as exc:  # reported on the session, never swallowed
-            logger.exception("preparing play session %s failed", session_id)
-            status, error = "failed", str(exc)[:500]
-        with self._sessions() as s:
-            s.execute(
-                update(PlaySession)
-                .where(PlaySession.id == session_id, PlaySession.status == "preparing")
-                .values(status=status, error_message=error)
-            )
-            s.commit()
+            try:
+                game.prepare()
+                status, error = "active", None
+            except Exception as exc:  # reported on the session, never swallowed
+                logger.exception("preparing play session %s failed", session_id)
+                status, error = "failed", str(exc)[:500]
+            with self._sessions() as s:
+                s.execute(
+                    update(PlaySession)
+                    .where(PlaySession.id == session_id, PlaySession.status == "preparing")
+                    .values(status=status, error_message=error)
+                )
+                s.commit()
+        finally:
+            activity.end()
 
     def get(self, db: Session, session_id: uuid.UUID) -> PlaySession:
         row = db.get(PlaySession, session_id)
@@ -101,7 +105,7 @@ class PlayManager:
 
     def next_hand(self, db: Session, session_id: uuid.UUID) -> dict[str, Any]:
         row, game, lock = self._game(db, session_id)
-        with lock:
+        with lock, activity.working():
             view: dict[str, Any] = engine.play_call(game.next_hand)
             self._sync(db, row, game, view)
         return view

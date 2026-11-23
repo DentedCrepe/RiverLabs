@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from riverlab_api import __version__
 from riverlab_api.db.session import get_db
 from riverlab_api.schemas.meta import HealthResponse, ReadinessResponse
-from riverlab_api.services import engine
+from riverlab_api.services import activity, engine
 
 router = APIRouter(tags=["health"])
 
@@ -32,3 +32,9 @@ def ready(db: Annotated[Session, Depends(get_db)]) -> ReadinessResponse:
         database=database,
         engine=engine.engine_version(),
     )
+
+
+@router.get("/health/activity")
+def activity_status() -> dict[str, float | bool]:
+    """For an idle watchdog: seconds since the last user request, and whether work is running."""
+    return {"idle_seconds": round(activity.idle_seconds(), 1), "busy": activity.busy()}

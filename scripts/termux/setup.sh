@@ -105,6 +105,11 @@ RIVERLAB_SOLVER_THREADS=${RIVERLAB_SOLVER_THREADS:-2}
 RIVERLAB_SOLVER_MAX_MEMORY_MB=${RIVERLAB_SOLVER_MAX_MEMORY_MB:-3072}
 RIVERLAB_RESULT_STORAGE_DIR=$DATA/solver-results
 RIVERLAB_ACADEMY_CONTENT_DIR=$REPO/content/academy
+# Battery: the device stays awake only while a solve or table preparation runs, and RiverLab
+# stops itself after this many idle minutes (0 = never).
+RIVERLAB_WAKE_LOCK_COMMAND=termux-wake-lock
+RIVERLAB_WAKE_UNLOCK_COMMAND=termux-wake-unlock
+RIVERLAB_IDLE_MINUTES=${RIVERLAB_IDLE_MINUTES:-20}
 EOF
 set -a
 # shellcheck disable=SC1091
@@ -134,5 +139,12 @@ exec bash "$REPO/scripts/termux/riverlab.sh" "\$@"
 EOF
 chmod +x "$PREFIX/bin/riverlab"
 
+step "adding home-screen shortcuts (for the Termux:Widget add-on)"
+# Termux:Widget lists scripts in ~/.shortcuts; those in tasks/ run in the background.
+mkdir -p "$HOME/.shortcuts/tasks"
+printf '#!/data/data/com.termux/files/usr/bin/bash\nexec riverlab open\n' >"$HOME/.shortcuts/tasks/RiverLab"
+printf '#!/data/data/com.termux/files/usr/bin/bash\nexec riverlab stop\n' >"$HOME/.shortcuts/tasks/Stop RiverLab"
+chmod +x "$HOME/.shortcuts/tasks/RiverLab" "$HOME/.shortcuts/tasks/Stop RiverLab"
+
 echo
-echo "==> Done. Start RiverLab with:  riverlab start"
+echo "==> Done. Open RiverLab with:  riverlab open   (or the RiverLab home-screen shortcut)"

@@ -1,8 +1,9 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from riverlab_api import __version__
@@ -10,7 +11,7 @@ from riverlab_api.api import health
 from riverlab_api.api.v1 import router as v1_router
 from riverlab_api.config import get_settings
 from riverlab_api.errors import install_error_handlers
-from riverlab_api.services import compute, play
+from riverlab_api.services import activity, compute, play
 from riverlab_api.services.local_solver import BACKEND_NAME, LocalSolverBackend, fail_interrupted_jobs
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,14 @@ def create_app() -> FastAPI:
         docs_url=None if settings.env == "production" else "/docs",
         lifespan=lifespan,
     )
+
+    @app.middleware("http")
+    async def track_activity(request: Request, call_next: Any) -> Any:
+        # User requests count as activity; health checks and background polling do not.
+        if not request.url.path.startswith("/health") and request.headers.get("x-riverlab-poll") != "1":
+            activity.touch()
+        return await call_next(request)
+
     if settings.cors_origin_list:
         app.add_middleware(
             CORSMiddleware,
