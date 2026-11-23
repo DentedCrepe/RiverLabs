@@ -25,10 +25,17 @@ if [[ "${PREFIX:-}" != *com.termux* ]]; then
   exit 1
 fi
 echo "RiverLab setup: repository $REPO, data $DATA"
-FREE_MB=$(df -m "$HOME" | awk 'NR==2 {print $4}')
-if [ "${FREE_MB:-0}" -lt 4000 ]; then
-  echo "!! Only ${FREE_MB} MB free. The first build needs about 4 GB; free some space first." >&2
-  exit 1
+# Android's df only knows -k; "Available" is the third column from the end even if a long
+# filesystem name wraps the line.
+FREE_MB=$(df -k "$HOME" 2>/dev/null | tail -n 1 | awk '{print int($(NF-2) / 1024)}' || true)
+if [[ "$FREE_MB" =~ ^[0-9]+$ ]]; then
+  echo "Free space: ${FREE_MB} MB"
+  if [ "$FREE_MB" -lt 4000 ]; then
+    echo "!! Only ${FREE_MB} MB free. The first build needs about 4 GB; free some space first." >&2
+    exit 1
+  fi
+else
+  echo "(Could not read free space; continuing. The first build needs about 4 GB.)"
 fi
 
 step "installing Termux packages"
