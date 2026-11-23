@@ -186,11 +186,89 @@ function TrainerSection() {
   );
 }
 
+type PostflopAnalytics = {
+  total: Summary;
+  by_street: (Summary & { street: string })[];
+  by_position: { oop: Summary; ip: Summary };
+  costliest: (Summary & { hand_class: string; street: string })[];
+};
+
+function PostflopSection() {
+  const { data, error, loading } = useApi<PostflopAnalytics>("/api/v1/analytics/postflop");
+  return (
+    <Card>
+      <CardHeader title="Postflop drills" subtitle="Your answers, graded by EV from the saved solves they came from" />
+      <CardBody className="flex flex-col gap-4">
+        {error ? (
+          <ErrorState message={error.message} />
+        ) : loading && !data ? (
+          <LoadingState label="Loading your answers…" />
+        ) : !data || data.total.answers === 0 ? (
+          <EmptyState title="No answers yet" description="Postflop drills on the Trainer page are counted here." />
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+              <Metric label="Answers" value={String(data.total.answers)} />
+              <Metric
+                label="Correct"
+                value={pctOf(data.total.correct, data.total.answers)}
+                sub={`${data.total.close} close · ${data.total.mistakes} mistakes`}
+              />
+              <Metric label="EV lost / answer" value={perAnswer(data.total)} sub="against the solve" />
+              <Metric label="EV lost in total" value={`${data.total.ev_lost_bb.toFixed(2)}bb`} />
+            </div>
+            <div className="overflow-x-auto">
+              <table className="text-xs text-muted" aria-label="Postflop results by street and position">
+                <thead>
+                  <tr className="text-left">
+                    <th className="pr-3 font-normal" />
+                    <th className="pr-3 font-normal">Answers</th>
+                    <th className="pr-3 font-normal">Correct</th>
+                    <th className="pr-3 font-normal">Mistakes</th>
+                    <th className="font-normal">EV lost / answer</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.by_street
+                    .filter((s) => s.answers > 0)
+                    .map((s) => (
+                      <SummaryRow key={s.street} label={s.street[0].toUpperCase() + s.street.slice(1)} s={s} />
+                    ))}
+                  <SummaryRow label="Out of position" s={data.by_position.oop} />
+                  <SummaryRow label="In position" s={data.by_position.ip} />
+                </tbody>
+              </table>
+            </div>
+            {data.costliest.length > 0 && (
+              <ul
+                className="flex flex-col gap-0.5 font-mono text-xs text-muted tabular"
+                aria-label="Costliest postflop hands"
+              >
+                {data.costliest.map((c) => (
+                  <li key={`${c.hand_class}-${c.street}`} className="flex gap-3">
+                    <span className="w-10 text-fg">{c.hand_class}</span>
+                    <span className="w-10">{c.street}</span>
+                    <span className="w-24">{c.ev_lost_bb.toFixed(2)}bb lost</span>
+                    <span>
+                      {c.mistakes} of {c.answers} wrong
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
 export function Analytics() {
   return (
     <div className="grid gap-6">
       <PlaySection />
       <TrainerSection />
+      <PostflopSection />
     </div>
   );
 }

@@ -10,6 +10,7 @@
 
 pub mod bot;
 pub mod config;
+pub mod drill;
 pub mod judge;
 pub mod model;
 pub mod push_fold;

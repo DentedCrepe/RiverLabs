@@ -349,3 +349,45 @@ def test_three_handed_preflop_is_labelled_approximate(live: TestClient) -> None:
     assert res["positions"] == ["BTN", "SB", "BB"]
     assert res["root"]["actor"] == "BTN"
     assert res["root"]["actions"][0]["kind"] == "fold"
+
+
+def test_postflop_drills_are_dealt_from_saved_solves(live: TestClient, db_engine: Engine) -> None:
+    with db_engine.begin() as conn:
+        conn.execute(text("DELETE FROM postflop_answers"))
+    assert live.post("/api/v1/trainer/postflop/drill", json={}).status_code == 409, "no solves yet"
+    job = wait(
+        live,
+        live.post("/api/v1/solver/jobs", json={"spec": toy_spec()}).json()["id"],
+        {"succeeded", "failed"},
+    )
+    assert job["status"] == "succeeded", job
+    sources = live.get("/api/v1/trainer/postflop/sources").json()
+    assert [s["job_id"] for s in sources] == [job["id"]]
+    # In position: bet the pot or check (the toy spot's out-of-position player can only check).
+    r = live.post("/api/v1/trainer/postflop/drill", json={"job_id": job["id"], "hero": 1, "seed": 5})
+    assert r.status_code == 200, r.json()
+    dealt = r.json()
+    drill = dealt["drill"]
+    assert drill["hero_player"] == 1
+    assert drill["actions"] == ["check", "bet 10bb"]
+    assert drill["hero_class"] in ("KK", "43o")
+    grades = [
+        live.post(
+            "/api/v1/trainer/postflop/answer", json={"job_id": job["id"], "drill": drill, "choice": c}
+        ).json()
+        for c in range(2)
+    ]
+    best = grades[0]["best"]
+    assert grades[best]["verdict"] == "correct"
+    if drill["hero_class"] == "KK":
+        # Kings always value-bet the pot here: checking gives up a lot.
+        assert best == 1
+        assert grades[0]["verdict"] == "mistake"
+    stats = live.get("/api/v1/analytics/postflop").json()
+    assert stats["total"]["answers"] == 2
+    assert stats["by_street"][2]["answers"] == 2  # river
+    assert stats["by_position"]["ip"]["answers"] == 2
+    bad = live.post(
+        "/api/v1/trainer/postflop/answer", json={"job_id": job["id"], "drill": drill, "choice": 7}
+    )
+    assert bad.status_code == 422
