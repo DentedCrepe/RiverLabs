@@ -270,3 +270,13 @@ describe("hand review", () => {
     expect(screen.getByText("You win 5bb (everyone else folded)")).toBeInTheDocument();
   });
 });
+
+describe("table layout", () => {
+  it("seats you at the bottom and the others clockwise", async () => {
+    const { seatAngle } = await import("./TableFelt");
+    expect(seatAngle(0, 6)).toBe(90);
+    expect(seatAngle(1, 6)).toBe(150);
+    expect(seatAngle(3, 6)).toBe(270);
+    expect(seatAngle(1, 2)).toBe(270);
+  });
+});
