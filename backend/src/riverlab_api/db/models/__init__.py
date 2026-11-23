@@ -1,5 +1,14 @@
 """All ORM models. Importing this package registers every table on Base.metadata."""
 
+from riverlab_api.db.models.academy import (
+    AcademyActivity,
+    AcademyAttempt,
+    AcademyBookmark,
+    AcademyLesson,
+    AcademyLessonVersion,
+    AcademyProgress,
+    AcademyQuestion,
+)
 from riverlab_api.db.models.config import GameConfig, Position, RakeConfig, StackConfig
 from riverlab_api.db.models.history import HandHistory, PerformanceStat
 from riverlab_api.db.models.play import PlayHand, PlaySession
@@ -16,6 +25,13 @@ from riverlab_api.db.models.training import TrainingDecision, TrainingSession
 from riverlab_api.db.models.users import User, UserSettings
 
 __all__ = [
+    "AcademyActivity",
+    "AcademyAttempt",
+    "AcademyBookmark",
+    "AcademyLesson",
+    "AcademyLessonVersion",
+    "AcademyProgress",
+    "AcademyQuestion",
     "GameConfig",
     "HandHistory",
     "JobStatus",

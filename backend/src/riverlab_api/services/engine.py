@@ -248,3 +248,8 @@ def play_call(fn: Callable[..., str], *args: Any) -> Any:
 def play_report(records: list[dict[str, Any]], tournament: bool) -> dict[str, Any]:
     result: dict[str, Any] = _call(_engine.play_report, json.dumps(records), tournament)
     return result
+
+
+def theory(kind: str, params: dict[str, Any]) -> Any:
+    """Academy theory calculations (engine `poker-theory`)."""
+    return _call(_engine.theory, kind, json.dumps(params))

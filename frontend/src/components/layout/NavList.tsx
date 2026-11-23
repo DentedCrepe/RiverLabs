@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Suspense } from "react";
 import { NAV_ITEMS, isActive } from "@/lib/nav";
 import { cn } from "@/components/ui/cn";
 
@@ -14,12 +15,27 @@ const DOT: Record<string, string> = {
   planned: "bg-subtle",
 };
 
+/**
+ * The current path is request data; reading it inside Suspense lets dynamic routes (e.g.
+ * /academy/[slug]) prerender, with no item highlighted until it streams in.
+ */
 export function NavList({ onNavigate }: { onNavigate?: () => void }) {
-  const pathname = usePathname();
+  return (
+    <Suspense fallback={<NavItems pathname={null} onNavigate={onNavigate} />}>
+      <ActiveNavList onNavigate={onNavigate} />
+    </Suspense>
+  );
+}
+
+function ActiveNavList({ onNavigate }: { onNavigate?: () => void }) {
+  return <NavItems pathname={usePathname()} onNavigate={onNavigate} />;
+}
+
+function NavItems({ pathname, onNavigate }: { pathname: string | null; onNavigate?: () => void }) {
   return (
     <ul className="flex flex-col gap-0.5">
       {NAV_ITEMS.map((item) => {
-        const active = isActive(pathname, item.href);
+        const active = pathname !== null && isActive(pathname, item.href);
         const Icon = item.icon;
         return (
           <li key={item.href}>

@@ -1,0 +1,9 @@
+{
+  "pot-odds": "Pot odds calculator. Props: pot_bb (pot before the bet), bet_bb.",
+  "outs": "Outs calculator: exact next-card and two-card chances vs the rule of 2 and 4. Props: outs, unseen.",
+  "combos": "Combination counter with card removal (range engine). Props: range, dead.",
+  "bet-math": "Alpha, MDF and bluff ratio for one bet, with EV lines. Props: pot_bb, bet_bb.",
+  "regret-matching": "Regret matching on rock-paper-scissors (toy game). Props: iterations, start_regrets.",
+  "equity": "Equity of two hands or ranges (equity engine). Props: hands (list), board.",
+  "question": "Embeds one of the lesson's knowledge-check questions. Props: id."
+}

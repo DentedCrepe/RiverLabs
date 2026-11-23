@@ -18,6 +18,14 @@ RiverLab is a six-max no-limit hold'em theory, solving and training platform. Re
 - **Bots are practice opponents, not solvers.** Their rules and every grading threshold are
   documented in `docs/play.md`; keep that file in sync, and never grade the user against
   invented "typical player" numbers.
+- **Academy content is held to the same standard.**
+  - Every number in a lesson must come from the engine: widgets call the API, and numeric
+    answers use `compute`.
+  - Label every claim as fact, heuristic, approximation or solver result.
+  - Cite only real works.
+  - Bump `version` on any change to a published lesson.
+  - Never mark a lesson `reviewed` unless a person reviewed it.
+  - Run `uv run pytest tests/unit/test_academy_content.py` after editing content.
 - **Changing the GTOpen commit** requires re-running `tools/solver-audit/run.sh` and the
   validation examples (`docs/solver-validation.md`) before updating the pin.
 - **Poker mathematics lives only in `engine/` (Rust).** The backend calls it through
@@ -37,7 +45,8 @@ RiverLab is a six-max no-limit hold'em theory, solving and training platform. Re
 engine/    Rust workspace: poker-core, hand-evaluator, range-engine, equity-engine,
            solver-interface (traits/config), solver-validation (independent best response,
            exact push/fold), solver-gtopen (GTOpen adapter), play-engine (games against bots,
-           docs/play.md), riverlab-py (PyO3 riverlab_engine)
+           docs/play.md), poker-theory (Academy formulas), riverlab-py (PyO3 riverlab_engine)
+content/   Academy curriculum and lessons (TOML front matter + Markdown; docs/academy.md)
 backend/   FastAPI (package riverlab_api), SQLAlchemy models, Alembic migrations, pytest
 frontend/  Next.js 16 App Router, React 19, Tailwind 4, Vitest
 tests/validation/  differential tests vs independent evaluators (phevaluator, pokerkit)

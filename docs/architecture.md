@@ -26,9 +26,12 @@ Status: Milestone 1 (foundation). Last updated 2026-11-22.
 │   ├── solver-interface/    traits + specs (SolveSpec, PreflopSpec, SolverConfig)
 │   ├── solver-validation/   independent best response / exploitability; exact HU push/fold
 │   ├── solver-gtopen/       adapter to GTOpen (pinned): postflop solves, preflop model
+│   ├── play-engine/         games against bots: sessions, bots, records, reports (docs/play.md)
+│   ├── poker-theory/        closed-form theory for the Academy (docs/academy.md)
 │   └── riverlab-py/         PyO3 bindings → Python module `riverlab_engine`
 ├── backend/                 FastAPI + Pydantic + SQLAlchemy + Alembic (package `riverlab_api`)
 ├── frontend/                Next.js (App Router) + React + TypeScript + Tailwind
+├── content/academy/         Academy curriculum and lessons (data; synced into the DB)
 ├── infrastructure/docker/   Dockerfiles
 ├── tests/validation/        cross-implementation checks (Rust engine vs independent evaluator)
 ├── scripts/                 dev / test / validation entry points

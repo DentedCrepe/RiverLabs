@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 import { NAV_ITEMS, isActive } from "./nav";
 
 describe("navigation", () => {
-  it("contains the ten product areas in order", () => {
+  it("contains the eleven product areas in order", () => {
     expect(NAV_ITEMS.map((i) => i.label)).toEqual([
       "Dashboard",
       "Preflop",
       "Postflop",
       "Solver",
+      "Academy",
       "Play",
       "Trainer",
       "Hand Analysis",
@@ -15,7 +16,7 @@ describe("navigation", () => {
       "Solution Library",
       "Settings",
     ]);
-    expect(new Set(NAV_ITEMS.map((i) => i.href)).size).toBe(10);
+    expect(new Set(NAV_ITEMS.map((i) => i.href)).size).toBe(11);
   });
 
   it("labels partial and planned features honestly", () => {

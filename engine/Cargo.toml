@@ -9,6 +9,7 @@ members = [
     "solver-validation",
     "solver-gtopen",
     "play-engine",
+    "poker-theory",
     "riverlab-py",
 ]
 

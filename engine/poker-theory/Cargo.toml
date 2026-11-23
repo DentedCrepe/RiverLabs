@@ -1,0 +1,18 @@
+[package]
+name = "poker-theory"
+description = "Closed-form poker theory used by RiverLab Academy (pot odds, MDF, bluff ratios, EV, outs) and toy-game demonstrations (regret matching)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

@@ -10,6 +10,7 @@ import {
   Layers,
   Settings,
   Swords,
+  Target,
 } from "lucide-react";
 
 /** Implementation status shown next to navigation items and on pages. */
@@ -53,6 +54,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     description: "Heads-up postflop solving (GTOpen); multiway planned",
   },
   {
+    href: "/academy",
+    label: "Academy",
+    icon: GraduationCap,
+    status: "partial",
+    description: "Poker and game theory lessons with interactive tools and knowledge checks",
+  },
+  {
     href: "/play",
     label: "Play",
     icon: Swords,
@@ -62,7 +70,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   {
     href: "/trainer",
     label: "Trainer",
-    icon: GraduationCap,
+    icon: Target,
     status: "planned",
     description: "Drills graded against validated solutions",
   },

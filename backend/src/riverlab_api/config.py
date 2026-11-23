@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     # termux-wake-unlock on Android). Empty = do nothing.
     wake_lock_command: str = ""
     wake_unlock_command: str = ""
+    # Academy lesson files (see docs/academy.md); synced into the database at startup.
+    academy_content_dir: str = "../content/academy"
+    academy_sync_on_startup: bool = True
 
     @model_validator(mode="after")
     def _no_placeholder_credentials_in_production(self) -> "Settings":
