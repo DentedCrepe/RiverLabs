@@ -1,0 +1,17 @@
+[package]
+name = "solver-validation"
+description = "Independent validation of solver output: best response and exploitability computed with RiverLab's own evaluator."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+poker-core.workspace = true
+hand-evaluator.workspace = true
+range-engine.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

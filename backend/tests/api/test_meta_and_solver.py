@@ -11,10 +11,11 @@ def _spec(client: TestClient) -> dict[str, Any]:
         "starting_pot_mbb": 6_500,
         "effective_stack_mbb": 97_500,
         "tree": {
-            "bet_sizes_pct_pot": [[33, 75], [75], [75]],
-            "raise_sizes_pct_pot": [[100], [100], [100]],
+            "oop": {"bet_pct_pot": [[33, 75], [75], [75]], "raise_pct_pot": [[100], [100], [100]]},
+            "ip": {"bet_pct_pot": [[33, 75], [75], [75]], "raise_pct_pot": [[100], [100], [100]]},
             "max_raises_per_street": 3,
-            "all_in_threshold_pct_pot": 67,
+            "all_in_threshold_pct_stack": 85,
+            "add_all_in": False,
         },
         "solver": {
             "schema_version": 1,

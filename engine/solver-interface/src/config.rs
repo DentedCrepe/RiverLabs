@@ -137,28 +137,44 @@ impl SolverConfig {
     }
 }
 
-/// Bet-size abstraction for building a hold'em game tree (used from Milestone 3).
+/// One player's bet sizes per postflop street (`[flop, turn, river]`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlayerSizing {
+    /// Bets as percentages of the pot.
+    pub bet_pct_pot: [Vec<u32>; 3],
+    /// Raises as percentages of the pot after calling.
+    pub raise_pct_pot: [Vec<u32>; 3],
+}
+
+/// Bet-size abstraction for building a hold'em game tree.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TreeAbstraction {
-    /// Bet sizes as percentages of the pot, per postflop street (flop, turn, river).
-    pub bet_sizes_pct_pot: [Vec<u32>; 3],
-    /// Raise sizes as percentages of the pot after calling, per street.
-    pub raise_sizes_pct_pot: [Vec<u32>; 3],
+    pub oop: PlayerSizing,
+    pub ip: PlayerSizing,
     pub max_raises_per_street: u8,
-    /// Bets leaving less than this percentage of the pot behind become all-in.
-    pub all_in_threshold_pct_pot: u32,
+    /// A bet or raise that would commit at least this percentage of the player's stack
+    /// (including chips already bet on the street) becomes all-in. 100 = only exact all-ins.
+    pub all_in_threshold_pct_stack: u32,
+    /// Always offer an all-in in addition to the configured sizes.
+    pub add_all_in: bool,
 }
 
 impl TreeAbstraction {
     pub fn validate(&self) -> Result<(), SolverError> {
-        for street in self.bet_sizes_pct_pot.iter().chain(&self.raise_sizes_pct_pot) {
-            if street.iter().any(|&p| p == 0 || p > 10_000) {
-                return invalid("bet and raise sizes must be between 1% and 10000% of the pot");
+        for p in [&self.oop, &self.ip] {
+            for street in p.bet_pct_pot.iter().chain(&p.raise_pct_pot) {
+                if street.iter().any(|&x| x == 0 || x > 10_000) {
+                    return invalid("bet and raise sizes must be between 1% and 10000% of the pot");
+                }
             }
         }
         if self.max_raises_per_street > 10 {
             return invalid("max_raises_per_street must be at most 10");
+        }
+        if !(1..=100).contains(&self.all_in_threshold_pct_stack) {
+            return invalid("all_in_threshold_pct_stack must be between 1 and 100");
         }
         Ok(())
     }

@@ -1,0 +1,28 @@
+[package]
+name = "solver-gtopen"
+description = "Adapter: runs RiverLab SolveSpecs on the GTOpen postflop solver (Apache-2.0, pinned commit)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+poker-core.workspace = true
+range-engine.workspace = true
+solver-interface.workspace = true
+solver-validation.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+rayon.workspace = true
+# GTOpen, pinned to the audited commit (docs/solver-comparison.md). Apache-2.0; see
+# THIRD_PARTY_NOTICES.md. Change the rev only after re-running tools/solver-audit/run.sh.
+gtopen = { package = "solver", git = "https://github.com/MatthewPDingle/GTOpen.git", rev = "eb5ccd671223293527f36d219cfe33baf0b0475c" }
+
+[dev-dependencies]
+serde_json.workspace = true
+# Only to read the algorithm name in a test.
+gtopen = { package = "solver", git = "https://github.com/MatthewPDingle/GTOpen.git", rev = "eb5ccd671223293527f36d219cfe33baf0b0475c" }
+
+[lints]
+workspace = true

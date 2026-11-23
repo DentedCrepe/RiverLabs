@@ -29,7 +29,7 @@ exact.
 | OOP call frequency | 50.00% | 50.01% | 50.01% | 50.01% |
 | IP pot share | 3.0000 | 3.0000 | 3.0000 | 3.0000 |
 
-**With 5% uncapped rake.** Theory: bluff 10/18.5 × 3 ÷ 12 = 13.51%, call 10/19.5 = 48.72%.
+**With 5% uncapped rake.** Theory, with the uncalled bet returned before rake: bluff 10/18.5 × 3 ÷ 12 = 13.51%; call 9.5/19.5 = 48.72%, from IP's air indifference c·(−15) + (1−c)·4.5 = −5.
 
 | | Theory | b-inary | ucsandman | GTOpen |
 |---|---|---|---|---|
