@@ -3,7 +3,7 @@ slug = "combinatorics"
 title = "Combinatorics: counting hands"
 level = 2
 order = 6
-version = 1
+version = 2
 status = "published"
 summary = "Why there are 1,326 starting hands but 169 hand classes, and how the cards you see remove combinations from a range."
 estimated_minutes = 20
@@ -55,7 +55,7 @@ compute = { kind = "range", params = { notation = "AKo", dead = "" }, field = "l
 [[questions]]
 id = "removal-ak"
 type = "numeric"
-prompt = "The board is K♥ 7♦ 2♣. How many AK combinations (suited and offsuit) can your opponent still hold?"
+prompt = "The board is K♥ 7♦ 2♣. Ignoring your own cards, how many AK combinations (suited and offsuit) can your opponent still hold?"
 answer = 12
 tolerance = 0
 explanation = "Only 3 kings are left: 4 aces × 3 kings = 12."
@@ -65,7 +65,7 @@ compute = { kind = "range", params = { notation = "AK", dead = "Kh7d2c" }, field
 [[questions]]
 id = "removal-sets"
 type = "numeric"
-prompt = "On K♥ 7♦ 2♣, how many combinations of a set of kings (KK) remain?"
+prompt = "The board is K♥ 7♦ 2♣. Ignoring your own cards, how many combinations of pocket kings (a set of kings) can your opponent still hold?"
 answer = 3
 tolerance = 0
 explanation = "Choose 2 of the 3 remaining kings: C(3, 2) = 3."
@@ -75,7 +75,7 @@ compute = { kind = "range", params = { notation = "KK", dead = "Kh7d2c" }, field
 [[questions]]
 id = "which-more"
 type = "multiple_choice"
-prompt = "Before the flop, which is more likely to be dealt to a given player: any pocket pair, or any AK?"
+prompt = "Before any cards are seen, is a player more likely to be dealt a pocket pair (any pair) or AK (suited or offsuit)?"
 options = ["Any pocket pair (78 combinations)", "AK (16 combinations)", "They are equally likely"]
 answer = 0
 explanation = "13 pairs × 6 = 78 combinations against 16 for AK."

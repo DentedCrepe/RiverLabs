@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { COMPONENTS } from "./registry";
@@ -54,5 +54,45 @@ describe("academy components", () => {
     expect(screen.getByText(/computed by RiverLab/)).toBeInTheDocument();
     const body = JSON.parse(String((fetchSpy.mock.calls[0][1] as RequestInit).body));
     expect(body).toMatchObject({ answer: 25, confidence: 4 });
+  });
+});
+
+describe("question scenes", () => {
+  it("puts you at the table: your seat at the bottom, the bet in front of the bettor, the board and pot", () => {
+    render(
+      <QuestionCard
+        question={{
+          id: "half-pot",
+          kind: "numeric",
+          prompt: "River. The pot is 20bb and the button bets 10bb.",
+          options: null,
+          unit: "%",
+          concepts: [],
+          scene: {
+            players: 6,
+            seats: ["UTG", "HJ", "CO", "BTN", "SB", "BB"],
+            hero: "BB",
+            hero_cards: ["Qh", "Qc"],
+            board: ["Ks", "7d", "2c", "8h", "3s"],
+            pot_mbb: 20000,
+            bets_mbb: { BTN: 10000 },
+            stacks_mbb: {},
+            folded: ["UTG", "HJ", "CO", "SB"],
+            actions: { BTN: "bets 10bb" },
+          },
+        }}
+      />,
+    );
+    const spot = screen.getByLabelText("The spot");
+    const seats = within(spot).getAllByTestId("seat");
+    // You first (bottom), then clockwise: UTG, HJ, CO, BTN, SB.
+    expect(seats[0]).toHaveTextContent("You");
+    expect(seats[0]).toHaveTextContent("BB");
+    expect(seats[4]).toHaveTextContent("BTN");
+    expect(within(spot).getByLabelText("BTN last action")).toHaveTextContent("bets 10bb");
+    expect(within(spot).getByLabelText("UTG last action")).toHaveTextContent("folded");
+    expect(within(spot).getByText("Pot 20bb")).toBeInTheDocument();
+    expect(within(spot).getByText("10bb")).toBeInTheDocument();
+    expect(within(spot).getByLabelText("Dealer button")).toBeInTheDocument();
   });
 });

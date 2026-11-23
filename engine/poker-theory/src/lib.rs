@@ -91,6 +91,103 @@ pub fn ev_bluff(fold_frequency: f64, pot_mbb: u64, bet_mbb: u64) -> Result<f64> 
     Ok(fold_frequency * pot_mbb as f64 - (1.0 - fold_frequency) * bet_mbb as f64)
 }
 
+/// Implied odds for a call with a drawing hand. Model: you call `to_call` into `pot` (everything
+/// in the middle, the bet included). With probability `equity` you hit and win the pot plus
+/// `W` more from later bets; otherwise you give up and lose the call.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ImpliedOdds {
+    /// What the call needs with no later winnings: to_call / (pot + to_call).
+    pub required_equity: f64,
+    /// Smallest later winnings (mbb) that make the call break even: (1 − e)·call / e − pot, or 0
+    /// if the call is already profitable on the current pot.
+    pub needed_future_mbb: f64,
+    /// EV of calling (mbb) with no later winnings: e·(pot + call) − call.
+    pub ev_without_future_mbb: f64,
+}
+
+pub fn implied_odds(pot_mbb: u64, to_call_mbb: u64, equity: f64) -> Result<ImpliedOdds> {
+    if to_call_mbb == 0 {
+        return invalid("there is nothing to call");
+    }
+    if !(equity > 0.0 && equity <= 1.0) {
+        return invalid("equity must be above 0 and at most 1");
+    }
+    let (p, c) = (pot_mbb as f64, to_call_mbb as f64);
+    Ok(ImpliedOdds {
+        required_equity: c / (p + c),
+        needed_future_mbb: ((1.0 - equity) * c / equity - p).max(0.0),
+        ev_without_future_mbb: equity * (p + c) - c,
+    })
+}
+
+/// A bet of `bet` into `pot` (before the bet) by a hand that wins `equity` of the final pot when
+/// called, with no later action. Folding opponents give up the pot.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SemiBluff {
+    /// EV of betting versus checking and giving up (0), in mbb:
+    /// f·pot + (1 − f)·(e·(pot + 2·bet) − bet).
+    pub ev_mbb: f64,
+    /// EV when called: e·(pot + 2·bet) − bet.
+    pub ev_when_called_mbb: f64,
+    /// Fold frequency at which the bet breaks even (0 if it profits even when always called).
+    pub break_even_fold: f64,
+}
+
+pub fn semi_bluff(pot_mbb: u64, bet_mbb: u64, fold_frequency: f64, equity: f64) -> Result<SemiBluff> {
+    if pot_mbb == 0 || bet_mbb == 0 {
+        return invalid("pot and bet must be positive");
+    }
+    if !(0.0..=1.0).contains(&fold_frequency) || !(0.0..=1.0).contains(&equity) {
+        return invalid("fold frequency and equity must be between 0 and 1");
+    }
+    let (p, b) = (pot_mbb as f64, bet_mbb as f64);
+    let called = equity * (p + 2.0 * b) - b;
+    Ok(SemiBluff {
+        ev_mbb: fold_frequency * p + (1.0 - fold_frequency) * called,
+        ev_when_called_mbb: called,
+        break_even_fold: if called >= 0.0 { 0.0 } else { -called / (p - called) },
+    })
+}
+
+/// A two-player zero-sum game with two actions each. `payoff[i][j]` is what the row player wins
+/// (and the column player loses) when row plays `i` and column plays `j`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ZeroSum2x2 {
+    /// Equilibrium probability of the row player's first action.
+    pub row_first: f64,
+    /// Equilibrium probability of the column player's first action.
+    pub column_first: f64,
+    /// The game's value to the row player.
+    pub value: f64,
+    /// True when the equilibrium is a pure-strategy saddle point.
+    pub pure: bool,
+}
+
+pub fn zero_sum_2x2(payoff: [[f64; 2]; 2]) -> Result<ZeroSum2x2> {
+    if payoff.iter().flatten().any(|x| !x.is_finite()) {
+        return invalid("payoffs must be finite numbers");
+    }
+    let [[a, b], [c, d]] = payoff;
+    // A saddle point: an entry that is the minimum of its row and the maximum of its column.
+    for (i, row) in payoff.iter().enumerate() {
+        for (j, &v) in row.iter().enumerate() {
+            let row_min = row[0].min(row[1]);
+            let col_max = payoff[0][j].max(payoff[1][j]);
+            if v == row_min && v == col_max {
+                return Ok(ZeroSum2x2 {
+                    row_first: if i == 0 { 1.0 } else { 0.0 },
+                    column_first: if j == 0 { 1.0 } else { 0.0 },
+                    value: v,
+                    pure: true,
+                });
+            }
+        }
+    }
+    // No saddle point: each player mixes to make the other indifferent.
+    let den = a - b - c + d;
+    Ok(ZeroSum2x2 { row_first: (d - c) / den, column_first: (d - b) / den, value: (a * d - b * c) / den, pure: false })
+}
+
 /// Probability of hitting one of `outs` with the next card(s), with `unseen` cards left.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Outs {
@@ -236,5 +333,44 @@ mod tests {
         let plus = regret_matching_rps(5_000, [3.0, 0.0, 0.0], true).unwrap();
         assert!(plus.last().unwrap().regrets.iter().all(|r| *r >= 0.0));
         assert!(regret_matching_rps(0, [0.0; 3], false).is_err());
+    }
+
+    #[test]
+    fn implied_odds_and_semi_bluffs() {
+        // Flush draw on the turn: 9 outs of 46, calling 5bb into 15bb (bet included).
+        let e = 9.0 / 46.0;
+        let io = implied_odds(15_000, 5_000, e).unwrap();
+        assert!((io.required_equity - 0.25).abs() < 1e-12);
+        // Need (1 - e)·5 / e − 15 = 37·5/9 − 15 bb.
+        assert!((io.needed_future_mbb - (37.0 * 5_000.0 / 9.0 - 15_000.0)).abs() < 1e-6);
+        assert_eq!(implied_odds(15_000, 5_000, 0.5).unwrap().needed_future_mbb, 0.0);
+        assert!(implied_odds(15_000, 0, 0.5).is_err() && implied_odds(15_000, 5_000, 0.0).is_err());
+
+        // With no equity a semi-bluff is a pure bluff: same EV as ev_bluff, alpha as break-even.
+        let pure = semi_bluff(10_000, 10_000, 0.6, 0.0).unwrap();
+        assert!((pure.ev_mbb - ev_bluff(0.6, 10_000, 10_000).unwrap()).abs() < 1e-9);
+        assert!((pure.break_even_fold - 0.5).abs() < 1e-12);
+        // Pot-sized bet with 30% equity when called: EV called = 0.3·3P − P = −0.1P.
+        let s = semi_bluff(10_000, 10_000, 0.0, 0.3).unwrap();
+        assert!((s.ev_when_called_mbb + 1_000.0).abs() < 1e-9);
+        assert!((s.break_even_fold - 1_000.0 / 11_000.0).abs() < 1e-12);
+        assert_eq!(semi_bluff(10_000, 5_000, 0.0, 0.6).unwrap().break_even_fold, 0.0);
+    }
+
+    #[test]
+    fn two_by_two_zero_sum_games() {
+        // Matching pennies: mix 50/50, value 0.
+        let g = zero_sum_2x2([[1.0, -1.0], [-1.0, 1.0]]).unwrap();
+        assert!(!g.pure && (g.row_first - 0.5).abs() < 1e-12 && (g.column_first - 0.5).abs() < 1e-12);
+        assert!(g.value.abs() < 1e-12);
+        // A saddle point at row 1, column 2 (value 2).
+        let s = zero_sum_2x2([[3.0, 2.0], [1.0, 0.0]]).unwrap();
+        assert!(s.pure && s.row_first == 1.0 && s.column_first == 0.0 && s.value == 2.0);
+        // Indifference holds at the mixed equilibrium.
+        let m = zero_sum_2x2([[4.0, -2.0], [-1.0, 3.0]]).unwrap();
+        let row_vs_col1 = m.row_first * 4.0 - (1.0 - m.row_first);
+        let row_vs_col2 = m.row_first * -2.0 + (1.0 - m.row_first) * 3.0;
+        assert!((row_vs_col1 - row_vs_col2).abs() < 1e-12 && (row_vs_col1 - m.value).abs() < 1e-12);
+        assert!(zero_sum_2x2([[f64::NAN, 0.0], [0.0, 0.0]]).is_err());
     }
 }

@@ -9,7 +9,17 @@ from riverlab_api.services import engine
 
 router = APIRouter(prefix="/theory", tags=["theory"])
 
-Kind = Literal["pot_odds", "bet_math", "ev_call", "ev_bluff", "outs", "regret_matching"]
+Kind = Literal[
+    "pot_odds",
+    "bet_math",
+    "ev_call",
+    "ev_bluff",
+    "outs",
+    "regret_matching",
+    "implied_odds",
+    "semi_bluff",
+    "zero_sum_2x2",
+]
 
 
 @router.post("/{kind}")

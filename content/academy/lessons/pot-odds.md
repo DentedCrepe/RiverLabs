@@ -3,7 +3,7 @@ slug = "pot-odds"
 title = "Pot odds and break-even equity"
 level = 1
 order = 5
-version = 1
+version = 2
 status = "published"
 summary = "How much equity a call needs, and why the answer depends only on the price you are offered."
 estimated_minutes = 15
@@ -40,7 +40,7 @@ note = "Part I covers pot odds and expectation in depth."
 [[questions]]
 id = "half-pot"
 type = "numeric"
-prompt = "The pot is 20bb and your opponent bets 10bb. What equity (in %) does a call need to break even, assuming no more betting?"
+prompt = "River. The pot is 20bb and the button bets 10bb; everyone else has folded. You are in the big blind. What equity (in %) does a call need to break even? (No more betting can follow on the river.)"
 answer = 25.0
 tolerance = 0.5
 unit = "%"
@@ -48,22 +48,46 @@ explanation = "You call 10bb to win a final pot of 20 + 10 + 10 = 40bb, so you n
 concepts = ["pot-odds"]
 compute = { kind = "pot_odds", params = { pot_mbb = 30000, to_call_mbb = 10000 }, field = "required_equity", scale = 100.0 }
 
+[questions.scene]
+players = 6
+hero = "BB"
+hero_cards = ["Qh", "Qc"]
+board = ["Ks", "7d", "2c", "8h", "3s"]
+pot_bb = "20"
+bets_bb = { BTN = "10" }
+folded = ["UTG", "HJ", "CO", "SB"]
+actions = { BTN = "bets 10bb" }
+
 [[questions]]
 id = "pot-bet"
 type = "numeric"
-prompt = "Your opponent bets the size of the pot. What equity (in %) does a call need?"
+prompt = "River. The pot is 12bb and your opponent bets 12bb, the size of the pot. What equity (in %) does a call need to break even?"
 answer = 33.33
 tolerance = 0.5
 unit = "%"
 explanation = "Pot P, bet P: you call P to win a final pot of 3P, so you need 1/3 ≈ 33.3%."
 concepts = ["pot-odds"]
-compute = { kind = "pot_odds", params = { pot_mbb = 20000, to_call_mbb = 10000 }, field = "required_equity", scale = 100.0 }
+compute = { kind = "pot_odds", params = { pot_mbb = 24000, to_call_mbb = 12000 }, field = "required_equity", scale = 100.0 }
+
+[questions.scene]
+players = 6
+hero = "BTN"
+hero_cards = ["Jd", "Js"]
+board = ["Ah", "9c", "6d", "4s", "2h"]
+pot_bb = "12"
+bets_bb = { BB = "12" }
+folded = ["UTG", "HJ", "CO", "SB"]
+actions = { BB = "bets 12bb" }
 
 [[questions]]
 id = "river-decision"
 type = "decision"
-prompt = "On the river you face a half-pot bet. Against the hands your opponent bets here you estimate 30% equity. Ignoring rake, what is the better decision?"
-options = ["Fold: 30% is less than half", "Call: 30% is more than the 25% the price requires", "It makes no difference"]
+prompt = "River. Your opponent bets half the pot. You estimate that against the hands they would bet this way your equity is 30%. Ignoring rake, should you call or fold?"
+options = [
+  "Fold, because 30% is less than 50%",
+  "Call, because 30% is more than the 25% a half-pot bet requires",
+  "It makes no difference",
+]
 answer = 1
 explanation = "A half-pot bet needs 25% equity. With 30% the call wins more than it costs on average: EV = 0.30 × (final pot) − call > 0."
 concepts = ["pot-odds", "expected-value"]
@@ -71,7 +95,7 @@ concepts = ["pot-odds", "expected-value"]
 [[questions]]
 id = "which-equity"
 type = "multiple_choice"
-prompt = "Which equity should you compare with your pot odds?"
+prompt = "Facing a bet, which equity should you compare with the equity the price requires?"
 options = [
   "Your equity against a random hand",
   "Your equity against the hands your opponent would bet this way",

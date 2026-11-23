@@ -1,6 +1,8 @@
 "use client";
 
 import { CircleCheck, CircleX } from "lucide-react";
+import { sceneToTable } from "@/lib/scene";
+import { TableFelt } from "@/components/play/TableFelt";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import type { AttemptResult, Question } from "@/lib/academy";
@@ -63,6 +65,11 @@ export function QuestionCard({
       className="flex flex-col gap-2 rounded-md border border-line p-3"
       aria-label="Knowledge check"
     >
+      {question.scene && (
+        <div className="w-full max-w-xl self-center" aria-label="The spot">
+          <TableFelt t={sceneToTable(question.scene)} showAll={false} hideStacks />
+        </div>
+      )}
       <Markdown text={question.prompt} />
       {question.options ? (
         <div role="radiogroup" className="flex flex-col gap-1">

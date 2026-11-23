@@ -8,11 +8,11 @@ title = "Poker Foundations"
 summary = "The rules, the vocabulary and the first pieces of arithmetic every decision uses."
 topics = [
   { slug = "terminology", title = "Poker terminology" },
-  { slug = "hand-rankings", title = "Hand rankings" },
-  { slug = "positions", title = "Positions" },
+  { slug = "hand-rankings", title = "Hand rankings", lesson = "hand-rankings" },
+  { slug = "positions", title = "Positions", lesson = "positions" },
   { slug = "preflop-fundamentals", title = "Preflop fundamentals" },
   { slug = "pot-odds", title = "Pot odds", lesson = "pot-odds" },
-  { slug = "equity", title = "Equity" },
+  { slug = "equity", title = "Equity", lesson = "equity" },
   { slug = "outs-and-draws", title = "Outs and draws", lesson = "outs-and-draws" },
   { slug = "starting-hands", title = "Starting hand selection" },
 ]
@@ -22,13 +22,13 @@ number = 2
 title = "Mathematical Foundations"
 summary = "Expected value and the counting that turns hands into ranges."
 topics = [
-  { slug = "expected-value", title = "Expected value" },
+  { slug = "expected-value", title = "Expected value", lesson = "expected-value" },
   { slug = "equity-realisation", title = "Equity realisation" },
-  { slug = "fold-equity", title = "Fold equity" },
-  { slug = "implied-odds", title = "Implied odds" },
-  { slug = "reverse-implied-odds", title = "Reverse implied odds" },
+  { slug = "fold-equity", title = "Fold equity", lesson = "fold-equity" },
+  { slug = "implied-odds", title = "Implied odds", lesson = "implied-odds" },
+  { slug = "reverse-implied-odds", title = "Reverse implied odds", lesson = "implied-odds" },
   { slug = "combinatorics", title = "Combinatorics", lesson = "combinatorics" },
-  { slug = "blockers", title = "Blockers" },
+  { slug = "blockers", title = "Blockers", lesson = "blockers" },
   { slug = "range-construction", title = "Range construction" },
 ]
 
@@ -37,12 +37,12 @@ number = 3
 title = "GTO Fundamentals"
 summary = "What an equilibrium is, why mixing happens, and the indifference arithmetic behind it."
 topics = [
-  { slug = "game-theory-optimal", title = "Game Theory Optimal" },
-  { slug = "nash-equilibrium", title = "Nash equilibrium" },
-  { slug = "zero-sum-games", title = "Zero-sum games" },
-  { slug = "mixed-strategies", title = "Mixed strategies" },
-  { slug = "indifference", title = "Indifference" },
-  { slug = "exploitability", title = "Exploitability" },
+  { slug = "game-theory-optimal", title = "Game Theory Optimal", lesson = "exploitability" },
+  { slug = "nash-equilibrium", title = "Nash equilibrium", lesson = "equilibrium" },
+  { slug = "zero-sum-games", title = "Zero-sum games", lesson = "equilibrium" },
+  { slug = "mixed-strategies", title = "Mixed strategies", lesson = "equilibrium" },
+  { slug = "indifference", title = "Indifference", lesson = "equilibrium" },
+  { slug = "exploitability", title = "Exploitability", lesson = "exploitability" },
   { slug = "minimum-defence-frequency", title = "Minimum defence frequency", lesson = "mdf-and-bluff-ratios" },
   { slug = "bluff-to-value-ratios", title = "Bluff-to-value ratios", lesson = "mdf-and-bluff-ratios" },
 ]
@@ -69,16 +69,16 @@ number = 5
 title = "Solver Theory"
 summary = "How solvers find approximate equilibria, and how to read what they produce."
 topics = [
-  { slug = "game-trees", title = "Game trees" },
-  { slug = "cfr", title = "Counterfactual regret minimisation" },
-  { slug = "cfr-plus", title = "CFR+" },
-  { slug = "discounted-cfr", title = "Discounted CFR" },
+  { slug = "game-trees", title = "Game trees", lesson = "game-trees" },
+  { slug = "cfr", title = "Counterfactual regret minimisation", lesson = "cfr" },
+  { slug = "cfr-plus", title = "CFR+", lesson = "cfr" },
+  { slug = "discounted-cfr", title = "Discounted CFR", lesson = "cfr" },
   { slug = "regret-matching", title = "Regret matching", lesson = "regret-matching" },
   { slug = "strategy-averaging", title = "Strategy averaging", lesson = "regret-matching" },
-  { slug = "counterfactual-values", title = "Counterfactual values" },
-  { slug = "convergence", title = "Convergence" },
-  { slug = "solver-exploitability", title = "Exploitability in solvers" },
-  { slug = "abstraction", title = "Abstraction" },
+  { slug = "counterfactual-values", title = "Counterfactual values", lesson = "cfr" },
+  { slug = "convergence", title = "Convergence", lesson = "cfr" },
+  { slug = "solver-exploitability", title = "Exploitability in solvers", lesson = "exploitability" },
+  { slug = "abstraction", title = "Abstraction", lesson = "game-trees" },
 ]
 
 [[levels]]

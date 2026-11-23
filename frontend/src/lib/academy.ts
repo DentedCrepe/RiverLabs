@@ -1,4 +1,5 @@
 /** RiverLab Academy: API types and the explanation-level rules (docs/academy.md). */
+import type { Scene } from "./scene";
 
 export const LEVELS = ["simple", "intermediate", "advanced", "math"] as const;
 export type ExplanationLevel = (typeof LEVELS)[number];
@@ -20,6 +21,8 @@ export type Question = {
   prompt: string;
   options: string[] | null;
   unit: string | null;
+  /** A table to show above the prompt (lib/scene.ts). */
+  scene?: Scene | null;
   concepts: string[];
 };
 export type AttemptResult = {
