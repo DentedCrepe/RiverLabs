@@ -4,11 +4,13 @@ import uuid
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Response
+from pydantic import Field
 from sqlalchemy.orm import Session
 
 from riverlab_api.db.models import PlaySession
 from riverlab_api.db.session import get_db
 from riverlab_api.errors import NotFoundError
+from riverlab_api.schemas.common import StrictModel
 from riverlab_api.schemas.play import PlayAction, PlaySessionCreate, PlaySessionOut, PlayState, RevealIn
 from riverlab_api.services import hand_review, play
 
@@ -117,6 +119,22 @@ def start_review(session_id: uuid.UUID, hand_no: int, db: DbSession) -> dict[str
     """Solver review of the whole hand: one chained postflop solve per street, in the background."""
     reviewer = hand_review.require()
     return hand_review.review_out(reviewer.start(db, session_id, hand_no), db)
+
+
+class BatchIn(StrictModel):
+    scope: Literal["recent", "flagged", "biggest"] = "recent"
+    limit: int = Field(default=10, ge=1, le=30)
+
+
+@router.post("/reviews/batch", status_code=202)
+def batch_reviews(body: BatchIn, db: DbSession) -> dict[str, Any]:
+    """Queues solver reviews for several of your hands; they run one after another."""
+    return hand_review.require().batch(db, body.scope, body.limit)
+
+
+@router.get("/reviews/status")
+def reviews_status(db: DbSession) -> dict[str, Any]:
+    return hand_review.require().status(db)
 
 
 @router.get("/sessions/{session_id}/hands/{hand_no}/review")

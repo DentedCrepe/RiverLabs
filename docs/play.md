@@ -188,6 +188,19 @@ decisions, and each street's solve can be opened at any of your decisions (follo
 line) or from its start. Postflop drills dealt from these solves also show the real hand up to
 that street. A review interrupted by a restart is marked as such and can be started again.
 
+## Solver leaks
+Analytics → **Solver leaks** queues solver reviews for several hands at once: those with a flagged
+or unusual decision, the most recent, or your biggest wins and losses (5 to 30 hands; hands
+already reviewed and hands with nothing to solve are skipped). Reviews run one at a time in the
+background; one you start from a hand jumps the queue.
+
+It then adds up the engine's per-decision results from every finished review
+(`services/leaks.py`): decisions reviewed, EV lost, and **leaks**, decisions losing more than 1% of
+their street's starting pot (the postflop drills' threshold). Leaks are grouped by kind of
+mistake (your action against the solver's best one, e.g. "Called when folding was better" or
+"Bet the wrong size"), by street and by position, and the costliest decisions can be flicked
+through with their full replays. The Today card recommends your biggest leak.
+
 ## Persistence and limits
 - A game lives in the API process while you play. Every finished hand is stored in
   `play_hands` immediately, so reports survive a restart. The game itself does not: it is

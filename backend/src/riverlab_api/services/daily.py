@@ -3,8 +3,8 @@
 A day counts towards the streak when you play at least `hands_target` hands against the bots and
 complete at least `study_target` study items (Academy questions answered, push/fold and postflop
 drills). Days follow this device's local time. The plan recommends what to study from your own
-data: your most frequent weakness at the tables, your Academy revision queue, and your weakest
-trainer area. Nothing is recommended from data you do not have.
+data: your biggest leak in solver-reviewed hands, your most frequent weakness at the tables, your
+Academy revision queue, and your weakest trainer area. Nothing is recommended from data you do not have.
 """
 
 from collections import Counter
@@ -21,7 +21,7 @@ from riverlab_api.db.models import (
     PostflopAnswer,
     PushFoldAnswer,
 )
-from riverlab_api.services import academy, engine
+from riverlab_api.services import academy, engine, leaks
 
 HISTORY_DAYS = 400
 RECENT_HANDS = 300
@@ -156,6 +156,20 @@ def plan(db: Session) -> dict[str, Any]:
     met = {d for d in set(hands) | set(study) if hands[d] >= g.hands_target and study[d] >= g.study_target}
     current, best = _streaks(met, today)
     recs: list[dict[str, Any]] = []
+    biggest = leaks.summary(db)["by_category"]
+    if biggest:
+        b = biggest[0]
+        recs.append(
+            {
+                "kind": "leak",
+                "title": f"Your biggest solver leak: {b['category'].lower()}",
+                "reason": (
+                    f"{b['leaks']} decision{'s' if b['leaks'] != 1 else ''} in your solver-reviewed hands, "
+                    f"{b['ev_lost_bb']:.2f}bb lost against the solutions."
+                ),
+                "href": "/analytics",
+            }
+        )
     if w := _weakness(db):
         recs.append(w)
     rev = academy.revision(db)

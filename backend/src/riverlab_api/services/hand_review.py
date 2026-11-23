@@ -11,11 +11,12 @@ import logging
 import threading
 import time
 import uuid
+from collections import deque
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from riverlab_api.db.models import HandReview, PlayHand, PlaySession, SolverJob, SolverResult
@@ -53,21 +54,54 @@ def review_out(row: HandReview, db: Session) -> dict[str, Any]:
     }
 
 
+def _pot_size(h: PlayHand) -> float:
+    """How much you won or lost in the hand, in big blinds."""
+    r = h.record
+    hero = next((i for i, s in enumerate(r.get("seats", [])) if s.get("is_hero")), 0)
+    net = r.get("net", [0])
+    return float(abs(net[hero] if hero < len(net) else 0)) / float(max(1, r.get("big_blind", 1)))
+
+
 class HandReviewer:
     def __init__(self, session_factory: SessionFactory, max_bytes: int) -> None:
         self._sessions = session_factory
         self._max_bytes = max_bytes
         self._stop = threading.Event()
+        # One review runs at a time, in order; reviews you start yourself go to the front.
+        self._queue: deque[uuid.UUID] = deque()
+        self._wake = threading.Condition()
+        self._worker = threading.Thread(target=self._loop, name="hand-reviews", daemon=True)
+        self._worker.start()
 
     def shutdown(self) -> None:
         self._stop.set()
+        with self._wake:
+            self._wake.notify_all()
+
+    def _loop(self) -> None:
+        while not self._stop.is_set():
+            with self._wake:
+                while not self._queue and not self._stop.is_set():
+                    self._wake.wait(timeout=5)
+                if self._stop.is_set():
+                    return
+                review_id = self._queue.popleft()
+            self._run(review_id)
+
+    def _enqueue(self, review_id: uuid.UUID, front: bool) -> None:
+        with self._wake:
+            if front:
+                self._queue.appendleft(review_id)
+            else:
+                self._queue.append(review_id)
+            self._wake.notify()
 
     def get(self, db: Session, session_id: uuid.UUID, hand_no: int) -> HandReview | None:
         return db.scalar(
             select(HandReview).where(HandReview.session_id == session_id, HandReview.hand_no == hand_no)
         )
 
-    def start(self, db: Session, session_id: uuid.UUID, hand_no: int) -> HandReview:
+    def start(self, db: Session, session_id: uuid.UUID, hand_no: int, front: bool = True) -> HandReview:
         hand = db.scalar(
             select(PlayHand).where(PlayHand.session_id == session_id, PlayHand.hand_no == hand_no)
         )
@@ -93,8 +127,51 @@ class HandReviewer:
         )
         db.add(row)
         db.commit()
-        threading.Thread(target=self._run, args=(row.id,), name=f"hand-review-{row.id}", daemon=True).start()
+        self._enqueue(row.id, front)
         return row
+
+    def batch(self, db: Session, scope: str, limit: int) -> dict[str, Any]:
+        """Queues reviews for up to `limit` of your hands that have something to solve and no
+        review yet: the most recent, those with a flagged or unusual decision, or the biggest pots."""
+        rows = list(db.scalars(select(PlayHand).order_by(PlayHand.created_at.desc()).limit(2000)))
+        reviewed = {
+            (r.session_id, r.hand_no)
+            for r in db.scalars(
+                select(HandReview).where(HandReview.status.in_(["queued", "running", "done"]))
+            )
+        }
+
+        def flagged(h: PlayHand) -> bool:
+            return any(
+                (d.get("feedback") or {}).get("verdict") in ("mistake", "rare")
+                for d in h.record.get("hero_decisions", [])
+            )
+
+        if scope == "flagged":
+            rows = [h for h in rows if flagged(h)]
+        elif scope == "biggest":
+            rows.sort(key=_pot_size, reverse=True)
+        queued: list[dict[str, Any]] = []
+        for h in rows:
+            if len(queued) >= limit:
+                break
+            if (h.session_id, h.hand_no) in reviewed:
+                continue
+            if not any(s["solvable"] for s in engine.review_streets(h.record)):
+                continue
+            self.start(db, h.session_id, h.hand_no, front=False)
+            queued.append({"session_id": h.session_id, "hand_no": h.hand_no})
+        return {"queued": queued, **self.status(db)}
+
+    def status(self, db: Session) -> dict[str, Any]:
+        counts = dict(
+            db.execute(select(HandReview.status, func.count(HandReview.id)).group_by(HandReview.status)).all()
+        )
+        return {
+            "reviews": {
+                k: int(counts.get(k, 0)) for k in ("queued", "running", "done", "failed", "interrupted")
+            }
+        }
 
     # ---- background ----
 

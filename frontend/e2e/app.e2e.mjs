@@ -146,6 +146,8 @@ describe("RiverLab end to end", () => {
   it("shows analytics and flicks through a weakness when one was found", async () => {
     await page.goto(`${URL}/analytics`);
     await page.getByText("Games against the bots").waitFor();
+    await page.getByText("Solver leaks").waitFor();
+    await page.getByRole("button", { name: "Review with the solver" }).waitFor();
     await page
       .getByText(/Push\/fold trainer|Postflop drills/)
       .first()

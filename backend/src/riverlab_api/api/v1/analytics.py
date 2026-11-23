@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from riverlab_api.db.models import PlayHand, PlaySession, PostflopAnswer, PushFoldAnswer
 from riverlab_api.db.session import get_db
-from riverlab_api.services import engine
+from riverlab_api.services import engine, leaks
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 DbSession = Annotated[Session, Depends(get_db)]
@@ -159,3 +159,9 @@ def postflop(db: DbSession) -> dict[str, Any]:
         "by_position": by_position,
         "costliest": [{"hand_class": r[0], "street": r[1], **_summary(r[2:])} for r in costly],
     }
+
+
+@router.get("/leaks")
+def leaks_summary(db: DbSession) -> dict[str, Any]:
+    """EV lost at your decisions across every finished solver review of your hands."""
+    return leaks.summary(db)
