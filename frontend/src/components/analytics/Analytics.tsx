@@ -5,6 +5,7 @@ import { type PlayReport, amount } from "@/lib/play";
 import { formatBb } from "@/lib/units";
 import { useApi } from "@/lib/useApi";
 import { ReportView } from "@/components/play/PlayReport";
+import { LeaksSection } from "./Leaks";
 import { Metric } from "@/components/solver/ResultView";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/States";
@@ -267,6 +268,7 @@ export function Analytics() {
   return (
     <div className="grid gap-6">
       <PlaySection />
+      <LeaksSection />
       <TrainerSection />
       <PostflopSection />
     </div>

@@ -140,6 +140,23 @@ def test_a_hand_is_reviewed_street_by_street(live: TestClient) -> None:
         "decisions"
     ]
     assert client.get(f"/api/v1/play/sessions/{sid}/hands/{hand_no}").json()["hand_no"] == hand_no
+    # The leak summary adds up the engine's per-decision EV losses from finished reviews.
+    leaks = client.get("/api/v1/analytics/leaks").json()
+    decisions = [d for st in review["streets"] if st.get("review") for d in st["review"]["decisions"]]
+    assert leaks["reviews"] == 1
+    assert leaks["total"]["decisions"] == len(decisions)
+    assert abs(leaks["total"]["ev_lost_bb"] - sum(d["ev_loss_bb"] for d in decisions)) < 1e-9
+    assert sum(s["decisions"] for s in leaks["by_street"]) == len(decisions)
+    for c in leaks["costliest"]:
+        assert c["ev_loss_pct_pot"] > leaks["threshold_pct_pot"]
+        assert c["session_id"] == sid
+    # A batch queues the other hands that have something to solve, one after another.
+    batch = client.post("/api/v1/play/reviews/batch", json={"scope": "recent", "limit": 2}).json()
+    assert len(batch["queued"]) <= 2
+    assert all(q["hand_no"] != hand_no for q in batch["queued"]), "already reviewed hands are skipped"
+    assert client.post("/api/v1/play/reviews/batch", json={"scope": "nope"}).status_code == 422
+    status = client.get("/api/v1/play/reviews/status").json()["reviews"]
+    assert status["done"] >= 1
     # A drill dealt from one of these solves carries the real hand.
     dealt = client.post(
         "/api/v1/trainer/postflop/drill", json={"job_id": by["river"]["job_id"], "seed": 3}
