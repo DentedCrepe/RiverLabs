@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     result_storage_dir: str = "data/solver-results"
     # Solved trees kept loaded in memory for browsing.
     result_cache_size: int = Field(default=2, ge=1, le=16)
+    # Academy lesson files (see docs/academy.md); synced into the database at startup.
+    academy_content_dir: str = "../content/academy"
+    academy_sync_on_startup: bool = True
 
     @model_validator(mode="after")
     def _no_placeholder_credentials_in_production(self) -> "Settings":

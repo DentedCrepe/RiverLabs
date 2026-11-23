@@ -1,0 +1,97 @@
+# RiverLab Academy curriculum: six levels of topics. A topic with `lesson` set links to a lesson
+# file in lessons/; topics without one are planned and shown as such. Topic slugs are what
+# lessons list as prerequisites. See docs/academy.md.
+
+[[levels]]
+number = 1
+title = "Poker Foundations"
+summary = "The rules, the vocabulary and the first pieces of arithmetic every decision uses."
+topics = [
+  { slug = "terminology", title = "Poker terminology" },
+  { slug = "hand-rankings", title = "Hand rankings" },
+  { slug = "positions", title = "Positions" },
+  { slug = "preflop-fundamentals", title = "Preflop fundamentals" },
+  { slug = "pot-odds", title = "Pot odds", lesson = "pot-odds" },
+  { slug = "equity", title = "Equity" },
+  { slug = "outs-and-draws", title = "Outs and draws", lesson = "outs-and-draws" },
+  { slug = "starting-hands", title = "Starting hand selection" },
+]
+
+[[levels]]
+number = 2
+title = "Mathematical Foundations"
+summary = "Expected value and the counting that turns hands into ranges."
+topics = [
+  { slug = "expected-value", title = "Expected value" },
+  { slug = "equity-realisation", title = "Equity realisation" },
+  { slug = "fold-equity", title = "Fold equity" },
+  { slug = "implied-odds", title = "Implied odds" },
+  { slug = "reverse-implied-odds", title = "Reverse implied odds" },
+  { slug = "combinatorics", title = "Combinatorics", lesson = "combinatorics" },
+  { slug = "blockers", title = "Blockers" },
+  { slug = "range-construction", title = "Range construction" },
+]
+
+[[levels]]
+number = 3
+title = "GTO Fundamentals"
+summary = "What an equilibrium is, why mixing happens, and the indifference arithmetic behind it."
+topics = [
+  { slug = "game-theory-optimal", title = "Game Theory Optimal" },
+  { slug = "nash-equilibrium", title = "Nash equilibrium" },
+  { slug = "zero-sum-games", title = "Zero-sum games" },
+  { slug = "mixed-strategies", title = "Mixed strategies" },
+  { slug = "indifference", title = "Indifference" },
+  { slug = "exploitability", title = "Exploitability" },
+  { slug = "minimum-defence-frequency", title = "Minimum defence frequency", lesson = "mdf-and-bluff-ratios" },
+  { slug = "bluff-to-value-ratios", title = "Bluff-to-value ratios", lesson = "mdf-and-bluff-ratios" },
+]
+
+[[levels]]
+number = 4
+title = "Advanced Strategy"
+summary = "How ranges interact with boards, and how that shapes betting."
+topics = [
+  { slug = "range-advantage", title = "Range advantage" },
+  { slug = "nut-advantage", title = "Nut advantage" },
+  { slug = "board-textures", title = "Board textures" },
+  { slug = "polarised-ranges", title = "Polarised ranges" },
+  { slug = "merged-ranges", title = "Merged ranges" },
+  { slug = "range-checking", title = "Range checking" },
+  { slug = "bet-sizing-theory", title = "Bet sizing theory" },
+  { slug = "overbets", title = "Overbets" },
+  { slug = "check-raises", title = "Check-raises" },
+  { slug = "turn-and-river-strategy", title = "Turn and river strategy" },
+]
+
+[[levels]]
+number = 5
+title = "Solver Theory"
+summary = "How solvers find approximate equilibria, and how to read what they produce."
+topics = [
+  { slug = "game-trees", title = "Game trees" },
+  { slug = "cfr", title = "Counterfactual regret minimisation" },
+  { slug = "cfr-plus", title = "CFR+" },
+  { slug = "discounted-cfr", title = "Discounted CFR" },
+  { slug = "regret-matching", title = "Regret matching", lesson = "regret-matching" },
+  { slug = "strategy-averaging", title = "Strategy averaging", lesson = "regret-matching" },
+  { slug = "counterfactual-values", title = "Counterfactual values" },
+  { slug = "convergence", title = "Convergence" },
+  { slug = "solver-exploitability", title = "Exploitability in solvers" },
+  { slug = "abstraction", title = "Abstraction" },
+]
+
+[[levels]]
+number = 6
+title = "Advanced Theoretical Applications"
+summary = "Beyond two-player equilibria: multiway games, subgames, locking and exploitation."
+topics = [
+  { slug = "multiway-game-theory", title = "Multiway game theory" },
+  { slug = "subgame-solving", title = "Subgame solving" },
+  { slug = "node-locking", title = "Node locking" },
+  { slug = "exploitative-adjustments", title = "Exploitative adjustments" },
+  { slug = "population-tendencies", title = "Population tendencies" },
+  { slug = "equilibrium-refinements", title = "Equilibrium refinements" },
+  { slug = "advanced-range-construction", title = "Advanced range construction" },
+  { slug = "tournament-theory-icm", title = "Tournament theory and ICM (future)" },
+]

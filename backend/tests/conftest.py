@@ -22,6 +22,7 @@ os.environ.setdefault("RIVERLAB_ENV", "test")
 # The app's own solver backend is off in tests; tests/db/test_local_solver.py registers one
 # explicitly against the test database.
 os.environ["RIVERLAB_SOLVER_ENABLED"] = "false"
+os.environ["RIVERLAB_ACADEMY_SYNC_ON_STARTUP"] = "false"
 
 from fastapi.testclient import TestClient  # noqa: E402
 

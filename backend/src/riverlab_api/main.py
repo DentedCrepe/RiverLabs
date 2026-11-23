@@ -16,9 +16,25 @@ from riverlab_api.services.local_solver import BACKEND_NAME, LocalSolverBackend,
 logger = logging.getLogger(__name__)
 
 
+def _sync_academy(content_dir: str) -> None:
+    from pathlib import Path
+
+    from riverlab_api.db.session import get_sessionmaker
+    from riverlab_api.services import academy
+
+    try:
+        with get_sessionmaker()() as session:
+            report = academy.sync(session, Path(content_dir))
+        logger.info("academy: %d lesson(s) synced, %d error(s)", len(report.lessons), len(report.errors))
+    except Exception:
+        logger.exception("could not sync Academy content (database unavailable?)")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+    if settings.academy_sync_on_startup:
+        _sync_academy(settings.academy_content_dir)
     backend: LocalSolverBackend | None = None
     if settings.solver_enabled and not any(b.name == BACKEND_NAME for b in compute.registry.backends):
         from riverlab_api.db.session import get_sessionmaker

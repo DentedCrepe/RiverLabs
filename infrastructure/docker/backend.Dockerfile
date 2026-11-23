@@ -23,6 +23,9 @@ RUN pip install -r /wheels/requirements.txt && pip install /wheels/riverlab_engi
 COPY backend/pyproject.toml backend/alembic.ini ./
 COPY backend/alembic/ alembic/
 COPY backend/src/ src/
+# Academy lessons (data, not code): synced into the database at startup.
+COPY content/academy/ /app/content/academy/
+ENV RIVERLAB_ACADEMY_CONTENT_DIR=/app/content/academy
 RUN pip install --no-deps . && rm -rf /wheels
 RUN useradd --system --uid 10001 riverlab && mkdir -p /app/data/solver-results && chown -R riverlab /app/data
 USER riverlab

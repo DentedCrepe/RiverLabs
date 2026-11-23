@@ -607,6 +607,41 @@ fn play_report(py: Python<'_>, records_json: &str, tournament: bool) -> PyResult
     to_json(&report)
 }
 
+/// Academy theory calculations. `kind`: pot_odds, bet_math, ev_call, ev_bluff, outs or
+/// regret_matching; `params_json` holds that calculation's inputs. Returns JSON.
+#[pyfunction]
+fn theory(kind: &str, params_json: &str) -> PyResult<String> {
+    use poker_theory as t;
+    let p: serde_json::Value = serde_json::from_str(params_json).map_err(err)?;
+    let u = |k: &str| -> PyResult<u64> {
+        p.get(k).and_then(serde_json::Value::as_u64).ok_or_else(|| err(format!("missing whole-number field '{k}'")))
+    };
+    let f = |k: &str| -> PyResult<f64> {
+        p.get(k).and_then(serde_json::Value::as_f64).ok_or_else(|| err(format!("missing number field '{k}'")))
+    };
+    let small = |k: &str| -> PyResult<u32> { u32::try_from(u(k)?).map_err(|_| err(format!("'{k}' is too large"))) };
+    let out = match kind {
+        "pot_odds" => serde_json::to_value(t::pot_odds(u("pot_mbb")?, u("to_call_mbb")?).map_err(err)?),
+        "bet_math" => serde_json::to_value(t::bet_math(u("pot_mbb")?, u("bet_mbb")?).map_err(err)?),
+        "ev_call" => serde_json::to_value(t::ev_call(f("equity")?, u("pot_mbb")?, u("to_call_mbb")?).map_err(err)?),
+        "ev_bluff" => {
+            serde_json::to_value(t::ev_bluff(f("fold_frequency")?, u("pot_mbb")?, u("bet_mbb")?).map_err(err)?)
+        }
+        "outs" => serde_json::to_value(t::outs(small("outs")?, small("unseen")?).map_err(err)?),
+        "regret_matching" => {
+            let start: Vec<f64> = p
+                .get("start_regrets")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .ok_or_else(|| err("missing 'start_regrets' (three numbers)"))?;
+            let start: [f64; 3] = start.try_into().map_err(|_| err("'start_regrets' must have three numbers"))?;
+            let plus = p.get("plus").and_then(serde_json::Value::as_bool).unwrap_or(false);
+            serde_json::to_value(t::regret_matching_rps(small("iterations")?, start, plus).map_err(err)?)
+        }
+        other => return Err(err(format!("unknown theory calculation '{other}'"))),
+    };
+    to_json(&out.map_err(err)?)
+}
+
 #[pymodule]
 fn riverlab_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(engine_version, m)?)?;
@@ -632,6 +667,7 @@ fn riverlab_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(load_preflop, m)?)?;
     m.add_class::<PreflopGame>()?;
     m.add_class::<PlaySession>()?;
+    m.add_function(wrap_pyfunction!(theory, m)?)?;
     m.add_function(wrap_pyfunction!(validate_table_config, m)?)?;
     m.add_function(wrap_pyfunction!(play_report, m)?)?;
     Ok(())
