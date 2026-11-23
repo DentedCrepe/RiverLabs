@@ -4,6 +4,7 @@ import { ChevronRight, CircleAlert, CircleCheck, TriangleAlert } from "lucide-re
 import { useState } from "react";
 import type { PreflopNode, PreflopResult } from "@/lib/types";
 import { useApi } from "@/lib/useApi";
+import { GLOSSARY } from "@/lib/glossary";
 import { formatBb } from "@/lib/units";
 import { Button } from "@/components/ui/Button";
 import { ErrorState, LoadingState } from "@/components/ui/States";
@@ -155,6 +156,7 @@ export function PreflopResultView({ jobId }: { jobId: string }) {
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         <Metric
           label="Model gap"
+          info={GLOSSARY.modelGap}
           value={`${r.model_gap_mbb.toFixed(2)} mbb/hand`}
           sub="Best-response gain summed over players, inside the model"
         />

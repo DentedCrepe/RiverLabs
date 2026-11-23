@@ -103,8 +103,24 @@ def test_heads_up_cash_game_is_played_recorded_and_reported(
         bad = client.post(f"/api/v1/play/sessions/{sid}/act", json={"action": {"type": "raise", "to": 1}})
         assert bad.status_code == 422
 
+    # Feedback on each decision and a result line for the hand.
+    last = client.get(f"/api/v1/play/sessions/{sid}").json()["table"]
+    assert last["summary"]
+    assert all(" win" in line for line in last["summary"])
+    revealed = client.post(f"/api/v1/play/sessions/{sid}/reveal", json={"on": True}).json()
+    assert revealed["table"]["reveal"] is True
+    state = play_hand(client, sid)
+    assert state["table"]["feedback"], "each of your decisions gets feedback"
+    assert {f["feedback"]["verdict"] for f in state["table"]["feedback"]} <= {
+        "mistake",
+        "rare",
+        "ok",
+        "not_graded",
+    }
+
     report = client.get(f"/api/v1/play/sessions/{sid}/report").json()
-    assert report["hands"] >= 6
+    assert report["hands"] >= 7
+    assert any("revealed" in c for c in report["caveats"])
     assert report["stats"]["vpip"]["opportunities"] == report["hands"]
     assert any("small sample" in c for c in report["caveats"])
     assert all(f["measured_against"] for f in report["findings"])

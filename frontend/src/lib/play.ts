@@ -22,6 +22,14 @@ export type SeatView = {
   finish: number | null;
   cards: string[] | null;
   in_hand: boolean;
+  last_action: string | null;
+  hidden_cards: string[] | null;
+};
+export type Feedback = {
+  verdict: "mistake" | "rare" | "ok" | "not_graded";
+  headline: string;
+  detail: string;
+  reference: string | null;
 };
 export type TableView = {
   status: "awaiting_hero" | "hand_over" | "session_over";
@@ -48,6 +56,9 @@ export type TableView = {
   last_hand_net: number | null;
   hero_total_net: number;
   notes: string[];
+  reveal: boolean;
+  feedback: { street: string; action: string; feedback: Feedback }[];
+  summary: string[];
 };
 export type PlaySessionInfo = {
   id: string;

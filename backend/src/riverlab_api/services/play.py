@@ -119,6 +119,12 @@ class PlayManager:
             self._sync(db, row, game, view)
         return view
 
+    def set_reveal(self, db: Session, session_id: uuid.UUID, on: bool) -> dict[str, Any]:
+        _, game, lock = self._game(db, session_id)
+        with lock:
+            view: dict[str, Any] = engine.play_call(game.set_reveal, on)
+        return view
+
     def leave(self, db: Session, session_id: uuid.UUID) -> dict[str, Any] | None:
         row = self.get(db, session_id)
         with self._lock:

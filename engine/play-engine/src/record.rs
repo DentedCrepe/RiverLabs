@@ -58,6 +58,9 @@ pub struct HeroDecision {
     pub model: Option<ModelCheck>,
     /// Calling would put you all-in (no later betting, so pot odds are the whole story).
     pub all_in_call: bool,
+    /// Shown to you straight after the decision (same rules as the report; see judge.rs).
+    #[serde(default)]
+    pub feedback: Option<crate::judge::Feedback>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -91,6 +94,12 @@ pub struct HandRecord {
     /// Stack bucket of the bots' preflop model, when one was used.
     pub model_stack_bb: Option<u64>,
     pub notes: Vec<String>,
+    /// The bots' cards were revealed to you during this hand (practice mode).
+    #[serde(default)]
+    pub revealed: bool,
+    /// Who won what, e.g. "Bot 2 wins 12.5bb with Two Pair, Kings and Sevens".
+    #[serde(default)]
+    pub summary: Vec<String>,
 }
 
 impl HandRecord {

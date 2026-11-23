@@ -2,6 +2,7 @@
 //! (the preflop model's frequencies, and pot odds against the bots' tracked ranges). Nothing
 //! here compares you with invented "typical player" numbers.
 
+use crate::judge::judge;
 use crate::record::HandRecord;
 use poker_core::game::Action;
 use serde::Serialize;
@@ -110,13 +111,6 @@ pub struct Report {
 fn is_aggressive(a: &Action) -> bool {
     matches!(a, Action::Bet { .. } | Action::Raise { .. })
 }
-
-/// Thresholds for findings. They are choices about what to point out, not poker claims:
-/// a model frequency at or below `RARE` means "the model almost never does this".
-const RARE: f64 = 0.10;
-/// Equity margin beyond the break-even point before a call or fold is flagged.
-const MARGIN_STRICT: f64 = 0.05;
-const MARGIN_LOOSE: f64 = 0.15;
 
 pub fn build(records: &[HandRecord], tournament: bool) -> Report {
     let mut stats = Stats::default();
@@ -236,128 +230,17 @@ pub fn build(records: &[HandRecord], tournament: bool) -> Report {
         }
 
         for d in &r.hero_decisions {
-            let ex = |text: String| Some(Example { hand_no: r.hand_no, street: d.street.clone(), text });
-            if let Some(m) = &d.model {
-                let fold = m.actions.iter().position(|a| a.eq_ignore_ascii_case("fold"));
-                let fold_f = fold.map_or(0.0, |i| m.frequencies[i]);
-                let raise_f: f64 = m
-                    .actions
-                    .iter()
-                    .zip(&m.frequencies)
-                    .filter(|(a, _)| {
-                        let a = a.to_ascii_lowercase();
-                        a.starts_with("raise") || a.starts_with("all-in") || a.starts_with("bet")
-                    })
-                    .map(|(_, f)| f)
-                    .sum();
-                let you_vol = !matches!(d.action, Action::Fold | Action::Check);
+            let j = judge(d, &r.seats[h].position, |x| fmt_amount(x, r));
+            if let Some(m) = j.model {
                 cmp.0 += 1;
-                cmp.1 += f64::from(u8::from(you_vol));
-                cmp.2 += 1.0
-                    - fold_f
-                    - m.actions.iter().position(|a| a.eq_ignore_ascii_case("check")).map_or(0.0, |i| m.frequencies[i]);
-                cmp.3 += f64::from(u8::from(is_aggressive(&d.action)));
-                cmp.4 += raise_f;
-                if let Some(t) = m.taken {
-                    let f = m.frequencies[t];
-                    let pos = &r.seats[h].position;
-                    let spot = m.spot.replace('_', " ");
-                    let text = format!(
-                        "{pos} {spot} with {}: you chose {} (model {:.0}%; model fold {:.0}%)",
-                        m.class,
-                        m.actions[t],
-                        f * 100.0,
-                        fold_f * 100.0
-                    );
-                    let against = "GTOpen's preflop model for this table (an approximate model)";
-                    if you_vol && fold_f >= 1.0 - RARE {
-                        add(
-                            "preflop_too_loose",
-                            "Played hands the model folds",
-                            "You put money in with hands the model folds at least 90% of the time in that spot.",
-                            against,
-                            true,
-                            ex(text.clone()),
-                        );
-                    } else if you_vol {
-                        add(
-                            "preflop_too_loose",
-                            "Played hands the model folds",
-                            "You put money in with hands the model folds at least 90% of the time in that spot.",
-                            against,
-                            false,
-                            None,
-                        );
-                    }
-                    if d.action == Action::Fold {
-                        add(
-                            "preflop_too_tight",
-                            "Folded hands the model plays",
-                            "You folded hands the model plays at least 90% of the time in that spot.",
-                            against,
-                            fold_f <= RARE,
-                            if fold_f <= RARE { ex(text.clone()) } else { None },
-                        );
-                    }
-                    if d.action == Action::Call && raise_f >= 1.0 - RARE {
-                        add(
-                            "preflop_passive",
-                            "Called where the model raises",
-                            "You called with hands the model raises at least 90% of the time.",
-                            against,
-                            true,
-                            ex(text),
-                        );
-                    }
-                }
+                cmp.1 += f64::from(u8::from(m.you_voluntary));
+                cmp.2 += m.model_voluntary;
+                cmp.3 += f64::from(u8::from(m.you_raise));
+                cmp.4 += m.model_raise;
             }
-            // Preflop calls are judged against the model above; pot odds alone ignore position and
-            // the play after the flop, so they only grade preflop calls that are all-in.
-            let graded = d.street != "preflop" || d.all_in_call;
-            if let (true, Some(req), Some(eq)) = (graded, d.required_equity, d.equity_vs_ranges) {
-                let strict = d.all_in_call || d.street == "river";
-                let margin = if strict { MARGIN_STRICT } else { MARGIN_LOOSE };
-                let text = format!(
-                    "{} facing {} into {}: needed {:.0}% equity, had {:.0}% vs the range{}",
-                    d.street,
-                    fmt_amount(d.to_call, r),
-                    fmt_amount(d.pot, r),
-                    req * 100.0,
-                    eq * 100.0,
-                    if d.opponents > 1 { "s" } else { "" }
-                );
-                let against = if strict {
-                    "Pot odds vs your equity against the bots' actual ranges (river or all-in: no later betting)"
-                } else {
-                    "Pot odds vs your equity against the bots' actual ranges (flop/turn: ignores later betting, so only large gaps are flagged)"
-                };
-                match d.action {
-                    Action::Fold => add(
-                        if strict { "folded_with_odds" } else { "folded_with_odds_early" },
-                        if strict {
-                            "Folded with enough equity (river/all-in)"
-                        } else {
-                            "Folded with much more equity than needed (flop/turn)"
-                        },
-                        "Your equity against the range you faced was above what the pot odds required.",
-                        against,
-                        eq >= req + margin,
-                        ex(text.clone()),
-                    ),
-                    Action::Call => add(
-                        if strict { "called_without_odds" } else { "called_without_odds_early" },
-                        if strict {
-                            "Called without enough equity (river/all-in)"
-                        } else {
-                            "Called with much less equity than needed (flop/turn)"
-                        },
-                        "Your equity against the range you faced was below what the pot odds required.",
-                        against,
-                        eq <= req - margin,
-                        ex(text),
-                    ),
-                    _ => {}
-                }
+            for c in j.checks {
+                let example = c.hit.then(|| Example { hand_no: r.hand_no, street: d.street.clone(), text: c.text });
+                add(c.key, c.title, c.detail, c.reference, c.hit, example);
             }
         }
     }
@@ -374,6 +257,12 @@ pub fn build(records: &[HandRecord], tournament: bool) -> Report {
     if hands < 200 {
         caveats.push(format!(
             "{hands} hands is a small sample: results (and bb/100) swing a lot from luck. Use the all-in line to see some of it."
+        ));
+    }
+    let revealed = records.iter().filter(|r| r.revealed).count();
+    if revealed > 0 {
+        caveats.push(format!(
+            "{revealed} of {hands} hands were played with the bots' cards revealed; decisions in them were easier than normal."
         ));
     }
     if tournament {

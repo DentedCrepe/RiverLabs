@@ -62,6 +62,8 @@ pub struct Session {
     hand: Option<Hand>,
     records: Vec<HandRecord>,
     status: SessionStatus,
+    /// Practice mode: show the bots' cards during hands (hands are flagged in the report).
+    reveal: bool,
     /// Model notes for the view (e.g. which preflop model the bots use).
     notes: Vec<String>,
 }
@@ -99,6 +101,7 @@ impl Session {
             records: Vec::new(),
             status: SessionStatus::HandOver,
             notes: Vec::new(),
+            reveal: false,
         })
     }
 
@@ -263,6 +266,8 @@ impl Session {
             hero_all_in_ev: None,
             model_stack_bb: model.as_ref().map(|_| shape.stack_bb),
             notes: model_note.into_iter().collect(),
+            revealed: self.reveal,
+            summary: vec![],
         };
         self.hand = Some(Hand {
             state,
@@ -289,10 +294,17 @@ impl Session {
         let Phase::Betting { to_act } = hand.state.phase() else {
             return Err(PlayError::State("no betting in progress".into()));
         };
-        let decision = hero_decision(hand, to_act, action);
+        let mut decision = hero_decision(hand, to_act, action);
         let before = hand.state.clone();
         hand.state.apply(action).map_err(|e| PlayError::IllegalAction(e.to_string()))?;
+        let tournament = hand.record.tournament;
+        let amount = |x: u64| if tournament { x.to_string() } else { Chips(x).to_string() };
+        let judgement = crate::judge::judge(&decision, &hand.record.seats[to_act].position, amount);
+        decision.feedback = Some(crate::judge::feedback(&decision, &judgement));
         hand.record.hero_decisions.push(decision);
+        if self.reveal {
+            hand.record.revealed = true;
+        }
         let model_action = translate(hand, &before, to_act, action);
         after_action(hand, &before, to_act, action, model_action);
         self.status = SessionStatus::HandOver; // until `run` decides otherwise
@@ -350,20 +362,25 @@ impl Session {
                     for (k, s) in hand.record.seats.iter_mut().enumerate() {
                         s.shown = values[k].is_some();
                     }
-                    return self.finish_hand(settlement);
+                    return self.finish_hand(settlement, Some(values));
                 }
                 Phase::Uncontested { .. } => {
                     let settlement = hand.state.settle_uncontested()?;
-                    return self.finish_hand(settlement);
+                    return self.finish_hand(settlement, None);
                 }
             }
         }
     }
 
-    fn finish_hand(&mut self, settlement: poker_core::game::Settlement) -> Result<()> {
+    fn finish_hand(
+        &mut self,
+        settlement: poker_core::game::Settlement,
+        values: Option<Vec<Option<hand_evaluator::HandStrength>>>,
+    ) -> Result<()> {
         let mut hand = self.hand.take().expect("hand");
         hand.record.board = hand.state.board().cards().iter().map(|c| c.to_string()).collect();
         hand.record.net = settlement.net.clone();
+        hand.record.summary = summary(&hand.record, &settlement, values.as_deref());
         if let Some(snap) = &hand.record.all_in {
             hand.record.hero_all_in_ev = crate::record::all_in_ev(&hand.record, snap, &settlement);
         }
@@ -439,10 +456,23 @@ impl Session {
                 state: &h.state,
                 seat_player: &h.seat_player,
                 hole: &h.hole,
-                log: &h.record.actions,
+                record: &h.record,
             }),
             &self.notes,
         )
+    }
+
+    /// Practice mode: show the bots' cards during hands. Hands played with it on are flagged.
+    pub fn set_reveal(&mut self, on: bool) {
+        self.reveal = on;
+        if on {
+            if let Some(h) = self.hand.as_mut() {
+                h.record.revealed = true;
+            }
+        }
+    }
+    pub fn reveal(&self) -> bool {
+        self.reveal
     }
 
     pub fn button(&self) -> usize {
@@ -457,6 +487,37 @@ impl Session {
             _ => None,
         }
     }
+}
+
+/// "Bot 2 wins 12.5bb with Two Pair, Kings and Sevens" for each pot.
+fn summary(
+    record: &HandRecord,
+    settlement: &poker_core::game::Settlement,
+    values: Option<&[Option<hand_evaluator::HandStrength>]>,
+) -> Vec<String> {
+    let amount = |x: u64| if record.tournament { format!("{x} chips") } else { Chips(x).to_string() };
+    let side = settlement.pots.len() > 1;
+    settlement
+        .pots
+        .iter()
+        .enumerate()
+        .flat_map(|(i, pot)| {
+            let label = match (side, i) {
+                (false, _) => String::new(),
+                (true, 0) => " the main pot".to_string(),
+                (true, n) => format!(" side pot {n}"),
+            };
+            pot.winners.iter().zip(&pot.shares).map(move |(&w, share)| {
+                let how = match values.and_then(|v| v[w]) {
+                    Some(h) => format!(" with {}", h.describe()),
+                    None => " (everyone else folded)".to_string(),
+                };
+                let (who, verb) =
+                    if record.seats[w].is_hero { ("You", "win") } else { (record.seats[w].name.as_str(), "wins") };
+                format!("{who} {verb} {}{label}{how}", amount(share.mbb()))
+            })
+        })
+        .collect()
 }
 
 pub fn difficulty_name(d: Difficulty) -> &'static str {
@@ -619,6 +680,7 @@ fn hero_decision(hand: &mut Hand, seat: usize, action: Action) -> HeroDecision {
         opponents: opponents.len(),
         model: model_check,
         all_in_call: legal.and_then(|l| l.call).is_some_and(|c| c == state.players()[seat].stack),
+        feedback: None,
     }
 }
 

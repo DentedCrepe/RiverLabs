@@ -3,7 +3,9 @@
 import { CircleAlert, CircleCheck } from "lucide-react";
 import type { SolverResult } from "@/lib/types";
 import { useApi } from "@/lib/useApi";
+import { GLOSSARY } from "@/lib/glossary";
 import { formatBb } from "@/lib/units";
+import { InfoTip } from "@/components/ui/InfoTip";
 import { ErrorState, LoadingState } from "@/components/ui/States";
 import { CardRow } from "@/components/poker/CardText";
 import { NodeBrowser } from "./NodeBrowser";
@@ -11,10 +13,13 @@ import { StrategyMatrix } from "./StrategyMatrix";
 
 const bb = (mbb: number) => `${mbb >= 0 ? "+" : "−"}${formatBb(Math.round(Math.abs(mbb)))}bb`;
 
-export function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
+export function Metric({ label, value, sub, info }: { label: string; value: string; sub?: string; info?: string }) {
   return (
     <div className="rounded-md border border-line bg-surface-2/60 px-3 py-2">
-      <p className="label-caps">{label}</p>
+      <p className="label-caps flex items-center gap-1">
+        {label}
+        {info && <InfoTip label={label}>{info}</InfoTip>}
+      </p>
       <p className="mt-0.5 font-mono text-sm text-fg tabular">{value}</p>
       {sub && <p className="text-xs text-subtle">{sub}</p>}
     </div>
@@ -33,15 +38,22 @@ export function ResultView({ jobId }: { jobId: string }) {
         by at most the figure below; it is not a full-game solution.
       </p>
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        <Metric label="OOP value" value={bb(r.values_mbb[0])} sub="per hand, net of half the pot" />
-        <Metric label="IP value" value={bb(r.values_mbb[1])} />
+        <Metric
+          label="OOP value"
+          value={bb(r.values_mbb[0])}
+          sub="per hand, net of half the pot"
+          info={GLOSSARY.solverValue}
+        />
+        <Metric label="IP value" value={bb(r.values_mbb[1])} info={GLOSSARY.solverValue} />
         <Metric
           label="Exploitability (GTOpen)"
+          info={GLOSSARY.exploitability}
           value={`${r.exploitability_pct_pot.toFixed(4)}% pot`}
           sub={`${r.exploitability_mbb.toFixed(2)} mbb · ${r.iterations.toLocaleString()} it · ${r.stop_reason.replaceAll("_", " ")}`}
         />
         <Metric
           label="Independent check"
+          info={GLOSSARY.independentCheck}
           value={
             check.performed && check.exploitability_mbb !== null
               ? `${check.exploitability_mbb.toFixed(2)} mbb`

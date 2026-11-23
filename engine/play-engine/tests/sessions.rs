@@ -104,3 +104,47 @@ fn sit_and_go_ends_with_places() {
     let report = play_engine::report::build(s.records(), true);
     assert!(report.caveats.iter().any(|c| c.contains("ICM")));
 }
+
+#[test]
+fn every_decision_gets_feedback_and_reveal_is_flagged() {
+    let models = cache();
+    let cfg = TableConfig {
+        format: Format::Cash { game: GameConfig { players: 3, ..GameConfig::default() }, auto_rebuy: true },
+        opponents: vec![Difficulty::Hard, Difficulty::Easy],
+        seed: 21,
+    };
+    let mut s = Session::new(cfg).unwrap();
+    let mut rng = ChaCha8Rng::seed_from_u64(4);
+    let mut graded = 0;
+    for hand in 0..12 {
+        s.set_reveal(hand >= 10);
+        s.start_hand(&models).unwrap();
+        if s.reveal() && s.status() == SessionStatus::AwaitingHero {
+            let v = s.view();
+            assert!(v.seats.iter().all(|seat| !seat.in_hand || seat.cards.is_some()), "all cards shown in reveal mode");
+        }
+        while s.status() == SessionStatus::AwaitingHero {
+            let before = s.view().feedback.len();
+            let a = hero_action(&s, &mut rng);
+            s.act(a).unwrap();
+            let fb = s.view().feedback;
+            assert_eq!(fb.len(), before + 1, "feedback appears straight after each decision");
+            let f = &fb.last().unwrap().feedback;
+            assert!(["mistake", "rare", "ok", "not_graded"].contains(&f.verdict.as_str()));
+            graded += usize::from(f.verdict != "not_graded");
+            if f.verdict != "not_graded" {
+                assert!(f.reference.is_some(), "graded feedback names its reference");
+            }
+        }
+        let r = s.records().last().unwrap();
+        assert!(!r.summary.is_empty(), "the hand has a result line");
+        assert!(r.summary.iter().all(|l| l.contains(" wins ") || l.starts_with("You win ")));
+        assert_eq!(r.revealed, hand >= 10);
+        let v = s.view();
+        // After the hand, cards nobody showed can still be revealed on request.
+        assert!(v.seats.iter().filter(|x| x.in_hand).all(|x| x.cards.is_some() || x.hidden_cards.is_some()));
+    }
+    assert!(graded > 0);
+    let report = play_engine::report::build(s.records(), false);
+    assert!(report.caveats.iter().any(|c| c.contains("revealed")));
+}

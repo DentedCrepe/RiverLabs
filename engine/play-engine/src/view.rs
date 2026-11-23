@@ -1,7 +1,6 @@
 //! What the table UI shows. Bots' cards appear only after a showdown they reached.
 
 use crate::config::Format;
-use crate::record::RecordAction;
 use crate::session::{Session, SessionStatus, street_name};
 use poker_core::HoleCards;
 use poker_core::game::{GameState, Phase};
@@ -22,6 +21,17 @@ pub struct SeatView {
     pub finish: Option<u8>,
     pub cards: Option<Vec<String>>,
     pub in_hand: bool,
+    /// The seat's latest action this hand, e.g. "raises to 2.5bb".
+    pub last_action: Option<String>,
+    /// After a hand: cards of players who didn't show them, for an optional "show all hands".
+    pub hidden_cards: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DecisionFeedback {
+    pub street: String,
+    pub action: String,
+    pub feedback: crate::judge::Feedback,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -63,6 +73,12 @@ pub struct TableView {
     pub last_hand_net: Option<i64>,
     pub hero_total_net: i64,
     pub notes: Vec<String>,
+    /// Practice mode: the bots' cards are shown during hands.
+    pub reveal: bool,
+    /// Feedback on each of your decisions in the current (or just finished) hand.
+    pub feedback: Vec<DecisionFeedback>,
+    /// Result lines of the finished hand.
+    pub summary: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -70,11 +86,23 @@ pub struct HandRef<'a> {
     pub state: &'a GameState,
     pub seat_player: &'a [usize],
     pub hole: &'a [HoleCards],
-    pub log: &'a [RecordAction],
+    pub record: &'a crate::record::HandRecord,
 }
 
 fn amount(units_chips: bool, x: u64) -> String {
     if units_chips { x.to_string() } else { poker_core::Chips(x).to_string() }
+}
+
+/// Your own action, in the second person ("call", "raise to 7.5bb").
+pub fn describe_yours(a: &poker_core::game::Action, chips: bool) -> String {
+    use poker_core::game::Action::*;
+    match a {
+        Fold => "fold".into(),
+        Check => "check".into(),
+        Call => "call".into(),
+        Bet { to } => format!("bet {}", amount(chips, to.mbb())),
+        Raise { to } => format!("raise to {}", amount(chips, to.mbb())),
+    }
 }
 
 pub fn describe(a: &poker_core::game::Action, chips: bool, all_in: bool) -> String {
@@ -118,6 +146,8 @@ pub fn build(s: &Session, hand: Option<HandRef>, notes: &[String]) -> TableView 
             finish: p.finish,
             cards: None,
             in_hand: false,
+            last_action: None,
+            hidden_cards: None,
         })
         .collect();
     let mut view = TableView {
@@ -139,6 +169,26 @@ pub fn build(s: &Session, hand: Option<HandRef>, notes: &[String]) -> TableView 
         last_hand_net: None,
         hero_total_net,
         notes: notes.to_vec(),
+        reveal: s.reveal(),
+        feedback: vec![],
+        summary: vec![],
+    };
+    let feedback_of = |r: &crate::record::HandRecord| -> Vec<DecisionFeedback> {
+        r.hero_decisions
+            .iter()
+            .filter_map(|d| {
+                d.feedback.clone().map(|feedback| DecisionFeedback {
+                    street: d.street.clone(),
+                    action: describe_yours(&d.action, chips),
+                    feedback,
+                })
+            })
+            .collect()
+    };
+    let last_actions = |r: &crate::record::HandRecord| -> Vec<Option<String>> {
+        (0..r.seats.len())
+            .map(|k| r.actions.iter().rev().find(|a| a.seat == k).map(|a| describe(&a.action, chips, a.all_in)))
+            .collect()
     };
     match hand {
         Some(h) => {
@@ -156,10 +206,12 @@ pub fn build(s: &Session, hand: Option<HandRef>, notes: &[String]) -> TableView 
                 seat.folded = ps.folded;
                 seat.all_in = ps.all_in;
                 seat.in_hand = true;
-                if p == 0 {
+                if p == 0 || s.reveal() {
                     seat.cards = Some(h.hole[k].cards().iter().map(|c| c.to_string()).collect());
                 }
+                seat.last_action = last_actions(h.record)[k].clone();
             }
+            view.feedback = feedback_of(h.record);
             if let Phase::Betting { to_act } = st.phase() {
                 view.to_act = Some(h.seat_player[to_act]);
                 if h.seat_player[to_act] == 0 {
@@ -175,7 +227,8 @@ pub fn build(s: &Session, hand: Option<HandRef>, notes: &[String]) -> TableView 
                 }
             }
             view.log = h
-                .log
+                .record
+                .actions
                 .iter()
                 .map(|r| LogLine {
                     street: r.street.clone(),
@@ -188,6 +241,9 @@ pub fn build(s: &Session, hand: Option<HandRef>, notes: &[String]) -> TableView 
             if let Some(r) = last {
                 view.board = r.board.clone();
                 view.last_hand_net = Some(r.net[r.hero_seat()]);
+                view.feedback = feedback_of(r);
+                view.summary = r.summary.clone();
+                let acts = last_actions(r);
                 view.log = r
                     .actions
                     .iter()
@@ -206,7 +262,10 @@ pub fn build(s: &Session, hand: Option<HandRef>, notes: &[String]) -> TableView 
                         seat.in_hand = true;
                         if rs.is_hero || (r.showdown && rs.shown) {
                             seat.cards = Some(rs.hole_cards.clone());
+                        } else {
+                            seat.hidden_cards = Some(rs.hole_cards.clone());
                         }
+                        seat.last_action = acts[k].clone();
                         let folded =
                             r.actions.iter().any(|a| a.seat == k && a.action == poker_core::game::Action::Fold);
                         seat.folded = folded;

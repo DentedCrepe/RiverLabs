@@ -2,20 +2,22 @@
 
 import { CircleAlert } from "lucide-react";
 import { type PlayReport as Report, type Ratio, pct } from "@/lib/play";
+import { GLOSSARY } from "@/lib/glossary";
 import { useApi } from "@/lib/useApi";
+import { InfoTip } from "@/components/ui/InfoTip";
 import { ErrorState, EmptyState, LoadingState } from "@/components/ui/States";
 import { Metric } from "@/components/solver/ResultView";
 import { cn } from "@/components/ui/cn";
 
 const STATS: [keyof Report["stats"], string, string][] = [
-  ["vpip", "VPIP", "Put money in voluntarily preflop"],
-  ["pfr", "PFR", "Raised preflop"],
-  ["three_bet", "3-bet", "Re-raised when facing one raise"],
-  ["fold_to_three_bet", "Fold to 3-bet", "After opening"],
-  ["cbet", "C-bet", "Bet the flop as the preflop raiser"],
-  ["fold_to_cbet", "Fold to c-bet", "Facing a bot's continuation bet"],
-  ["went_to_showdown", "Went to showdown", "Of hands where you saw the flop"],
-  ["won_at_showdown", "Won at showdown", "Of your showdowns"],
+  ["vpip", "VPIP", GLOSSARY.vpip],
+  ["pfr", "PFR", GLOSSARY.pfr],
+  ["three_bet", "3-bet", GLOSSARY.threeBet],
+  ["fold_to_three_bet", "Fold to 3-bet", GLOSSARY.foldToThreeBet],
+  ["cbet", "C-bet", GLOSSARY.cbet],
+  ["fold_to_cbet", "Fold to c-bet", GLOSSARY.foldToCbet],
+  ["went_to_showdown", "Went to showdown", GLOSSARY.wtsd],
+  ["won_at_showdown", "Won at showdown", GLOSSARY.wsd],
 ];
 
 const signed = (x: number, d = 1) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toFixed(d)}`;
@@ -25,15 +27,21 @@ export function ReportView({ report: r }: { report: Report }) {
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        <Metric label="Hands" value={r.hands.toLocaleString()} />
+        <Metric label="Hands" value={r.hands.toLocaleString()} info={GLOSSARY.hands} />
         <Metric
           label="Result"
+          info={GLOSSARY.result}
           value={`${signed(r.net_bb)}bb`}
           sub={r.units === "chips" ? `${signed(r.net, 0)} chips` : undefined}
         />
-        <Metric label="bb / 100 hands" value={r.bb_per_100 === null ? "—" : signed(r.bb_per_100)} />
+        <Metric
+          label="bb / 100 hands"
+          value={r.bb_per_100 === null ? "—" : signed(r.bb_per_100)}
+          info={GLOSSARY.bb100}
+        />
         <Metric
           label="All-in luck"
+          info={GLOSSARY.allInLuck}
           value={r.all_in ? `${signed(r.all_in.actual_bb - r.all_in.expected_bb)}bb` : "—"}
           sub={
             r.all_in
@@ -49,8 +57,11 @@ export function ReportView({ report: r }: { report: Report }) {
           {STATS.map(([key, label, hint]) => {
             const v = r.stats[key] as Ratio;
             return (
-              <div key={key} title={hint}>
-                <dt className="text-xs text-muted">{label}</dt>
+              <div key={key}>
+                <dt className="flex items-center gap-1 text-xs text-muted">
+                  {label}
+                  <InfoTip label={label}>{hint}</InfoTip>
+                </dt>
                 <dd className="font-mono text-fg tabular">
                   {pct(v)}{" "}
                   <span className="text-xs text-subtle">
@@ -61,12 +72,18 @@ export function ReportView({ report: r }: { report: Report }) {
             );
           })}
           <div>
-            <dt className="text-xs text-muted">Aggression factor</dt>
+            <dt className="flex items-center gap-1 text-xs text-muted">
+              Aggression factor
+              <InfoTip label="aggression factor">{GLOSSARY.aggression}</InfoTip>
+            </dt>
             <dd className="font-mono text-fg tabular">{r.stats.aggression_factor?.toFixed(2) ?? "—"}</dd>
           </div>
         </dl>
         {r.model_comparison && (
           <p className="text-xs text-muted">
+            <InfoTip label="the model comparison" className="mr-1">
+              {GLOSSARY.modelComparison}
+            </InfoTip>
             In {r.model_comparison.decisions} preflop decisions the model could judge, you played (called or raised){" "}
             {(r.model_comparison.voluntary_you * 100).toFixed(0)}% where the model would have played{" "}
             {(r.model_comparison.voluntary_model * 100).toFixed(0)}% of the same hands, and raised{" "}

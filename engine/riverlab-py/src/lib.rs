@@ -571,6 +571,13 @@ impl PlaySession {
         to_json(&self.lock().view())
     }
 
+    /// Practice mode: show the bots' cards during hands (flagged in the report). Returns the view.
+    fn set_reveal(&self, on: bool) -> PyResult<String> {
+        let mut s = self.lock();
+        s.set_reveal(on);
+        to_json(&s.view())
+    }
+
     fn leave(&self) -> PyResult<String> {
         let mut s = self.lock();
         s.leave();

@@ -87,6 +87,27 @@ used.
 Not graded: your bets and raises after the flop (that needs a solver for the exact spot), and
 sit & go decisions beyond chip equity (no ICM yet).
 
+## Instant feedback and practice aids
+- **Feedback after every decision.** Straight after you act, the table shows how the decision
+  compares with the references the report uses. It is computed by the same code
+  (`engine/play-engine/src/judge.rs`), so the two always agree. Verdicts:
+  - **Flagged:** a report finding, e.g. a fold with 15 points more equity than the flop price
+    needs.
+  - **Unusual:** the model takes your action 10% of the time or less, but it isn't a flagged
+    pattern.
+  - **Fine:** not flagged. The feedback states the model's frequency for your action, or the
+    price and your equity.
+  - **Not graded:** no reference applies. Examples: bets and raises after the flop, and spots
+    off the model tree.
+
+  Preflop feedback lists the model's whole mix for your hand class in that spot.
+- **Reveal bots' cards** (practice mode) shows their cards during hands. Hands played with it
+  on are flagged, and the report says how many there were.
+- **Show all hands** after a hand reveals cards that weren't shown at showdown, without
+  flagging anything.
+- **Auto-deal** deals the next hand after a short pause. It stops after a flagged or unusual
+  decision so you can read the feedback.
+
 ## Persistence and limits
 - A game lives in the API process while you play. Every finished hand is stored in
   `play_hands` immediately, so reports survive a restart. The game itself does not: it is

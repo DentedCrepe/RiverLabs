@@ -15,6 +15,10 @@ class PlayAction(StrictModel):
     action: dict[str, Any]
 
 
+class RevealIn(StrictModel):
+    on: bool
+
+
 class PlaySessionOut(StrictModel):
     id: UUID
     format: str

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from riverlab_api.db.models import PlaySession
 from riverlab_api.db.session import get_db
-from riverlab_api.schemas.play import PlayAction, PlaySessionCreate, PlaySessionOut, PlayState
+from riverlab_api.schemas.play import PlayAction, PlaySessionCreate, PlaySessionOut, PlayState, RevealIn
 from riverlab_api.services import play
 
 router = APIRouter(prefix="/play", tags=["play"])
@@ -61,6 +61,12 @@ def next_hand(session_id: uuid.UUID, db: DbSession) -> PlayState:
 @router.post("/sessions/{session_id}/act", response_model=PlayState)
 def act(session_id: uuid.UUID, body: PlayAction, db: DbSession) -> PlayState:
     return _state(db, session_id, play.require().act(db, session_id, body.action))
+
+
+@router.post("/sessions/{session_id}/reveal", response_model=PlayState)
+def reveal(session_id: uuid.UUID, body: RevealIn, db: DbSession) -> PlayState:
+    """Practice mode: show the bots' cards during hands. Hands played with it on are flagged."""
+    return _state(db, session_id, play.require().set_reveal(db, session_id, body.on))
 
 
 @router.post("/sessions/{session_id}/leave", response_model=PlayState)

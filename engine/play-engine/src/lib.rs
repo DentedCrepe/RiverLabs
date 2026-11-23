@@ -10,6 +10,7 @@
 
 pub mod bot;
 pub mod config;
+pub mod judge;
 pub mod model;
 pub mod record;
 pub mod report;
