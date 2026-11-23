@@ -8,7 +8,9 @@ A lesson file is TOML front matter between `+++` lines, then a Markdown body:
 - A code fence with language `riverlab:<component>` and a JSON body embeds an interactive component.
 - Anything else is Markdown shown at every level.
 
-Numeric answers with a `compute` table are recomputed by the engine and must match.
+Numeric answers with a `compute` table are recomputed by the engine and must match. A question
+may set a table `scene` (seats, your cards, the board, the pot and bets); it is checked at sync and
+must agree with the question's pot-odds numbers.
 """
 
 import hashlib
@@ -16,6 +18,7 @@ import json
 import re
 import tomllib
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -163,6 +166,8 @@ def parse_body(body: str, components: set[str], path: str, errors: list[str]) ->
 
 
 def _field(value: Any, path: str) -> Any:
+    if path == "":  # the result itself is the number
+        return value
     for part in path.split("."):
         value = value[int(part)] if isinstance(value, list) else value[part]
     return value
@@ -173,9 +178,132 @@ def compute_answer(spec: dict[str, Any]) -> float:
     kind, params = spec["kind"], spec.get("params", {})
     if kind == "range":
         result: Any = engine.analyze_range(params["notation"], params.get("dead", ""))
+    elif kind == "equity":
+        # Exact enumeration only: an answer key is never a Monte Carlo estimate.
+        result = engine.equity(
+            params["ranges"], params.get("board", ""), params.get("dead", ""), "exact", 0, 0, 10**10
+        )
     else:
         result = engine.theory(kind, params)
     return float(_field(result, spec["field"])) * float(spec.get("scale", 1.0))
+
+
+def _mbb(value: Any, what: str, errors: list[str]) -> int:
+    """An exact bb amount ("2.5") as integer mbb; inexact or invalid input is an error."""
+    try:
+        d = Decimal(str(value)) * 1000
+    except InvalidOperation:
+        errors.append(f"{what}: {value!r} is not a number of bb")
+        return 0
+    if d != d.to_integral_value() or d < 0:
+        errors.append(f"{what}: {value!r} must be a non-negative bb amount with at most 3 decimals")
+        return 0
+    return int(d)
+
+
+def validate_scene(where: str, scene: Any, q: dict[str, Any], errors: list[str]) -> dict[str, Any] | None:
+    """Checks a question's table scene and returns it with amounts in mbb (format: docs/academy.md)."""
+    if not isinstance(scene, dict):
+        errors.append(f"{where}: scene must be a table")
+        return None
+    allowed = {
+        "players",
+        "hero",
+        "hero_cards",
+        "board",
+        "pot_bb",
+        "bets_bb",
+        "stacks_bb",
+        "folded",
+        "actions",
+        "shown",
+    }
+    if unknown := set(scene) - allowed:
+        errors.append(f"{where}: unknown scene fields {sorted(unknown)}")
+    players = scene.get("players", 6)
+    try:
+        seats = [p["code"] for p in engine.positions(players)]
+    except Exception as exc:
+        errors.append(f"{where}: scene players: {exc}")
+        return None
+    hero = scene.get("hero")
+    if hero not in seats:
+        errors.append(f"{where}: scene hero must be one of {seats}")
+        return None
+    folded = scene.get("folded", [])
+    shown = scene.get("shown", {})
+    named = [
+        *folded,
+        *scene.get("bets_bb", {}),
+        *scene.get("stacks_bb", {}),
+        *scene.get("actions", {}),
+        *shown,
+    ]
+    if bad := [s for s in named if s not in seats]:
+        errors.append(
+            f"{where}: scene names seats that are not at a {players}-player table: {sorted(set(bad))}"
+        )
+    if hero in folded:
+        errors.append(f"{where}: you cannot have folded")
+    hero_cards, board = scene.get("hero_cards", []), scene.get("board", [])
+    if len(hero_cards) not in (0, 2) or len(board) not in (0, 3, 4, 5):
+        errors.append(f"{where}: scene needs 0 or 2 hole cards and a board of 0, 3, 4 or 5 cards")
+    if hero in shown or any(len(c) != 2 for c in shown.values()):
+        errors.append(f"{where}: scene shown cards are two cards per opponent")
+    cards = [*hero_cards, *board, *(c for pair in shown.values() for c in pair)]
+    if len({c.lower() for c in cards}) != len(cards):
+        errors.append(f"{where}: scene repeats a card")
+    elif cards:
+        try:  # the engine rejects anything that is not a card
+            engine.analyze_range("AA", "".join(cards))
+        except Exception as exc:
+            errors.append(f"{where}: scene cards: {exc}")
+    pot = _mbb(scene.get("pot_bb", 0), f"{where}: scene pot_bb", errors)
+    bets = {k: _mbb(v, f"{where}: scene bet of {k}", errors) for k, v in scene.get("bets_bb", {}).items()}
+    stacks = {
+        k: _mbb(v, f"{where}: scene stack of {k}", errors) for k, v in scene.get("stacks_bb", {}).items()
+    }
+    # The picture must match the numbers in the question.
+    compute = q.get("compute", {})
+    if compute.get("kind") in ("pot_odds", "implied_odds") and bets:
+        facing = max(bets.values()) - bets.get(hero, 0)
+        params = compute.get("params", {})
+        shown = pot + sum(bets.values())
+        if params.get("pot_mbb") != shown or params.get("to_call_mbb") != facing:
+            errors.append(
+                f"{where}: scene shows a pot of {shown} mbb (bets included) and {facing} mbb to call, "
+                f"but compute uses {params.get('pot_mbb')} and {params.get('to_call_mbb')}"
+            )
+    return {
+        "players": players,
+        "seats": seats,
+        "hero": hero,
+        "hero_cards": hero_cards,
+        "board": board,
+        "pot_mbb": pot,
+        "bets_mbb": bets,
+        "stacks_mbb": stacks,
+        "folded": folded,
+        "actions": scene.get("actions", {}),
+        "shown": shown,
+    }
+
+
+SHOWDOWN_OUTCOMES = ("you win", "your opponent wins", "split pot")
+
+
+def check_showdown(where: str, check: Any, answer: Any, errors: list[str]) -> None:
+    """`showdown_check = { board, you, opponent }`: options 0/1/2 must mean you win, your opponent
+    wins, split pot; the evaluator decides which is right."""
+    try:
+        r = engine.compare_hands(check["board"], [check["you"], check["opponent"]])
+    except Exception as exc:
+        errors.append(f"{where}: showdown_check failed ({exc})")
+        return
+    winners = r["winners"]
+    truth = 2 if len(winners) == 2 else winners[0]
+    if answer != truth:
+        errors.append(f"{where}: evaluator says {SHOWDOWN_OUTCOMES[truth]!r}, answer is option {answer}")
 
 
 def validate_questions(lesson: str, questions: list[Any], errors: list[str]) -> list[dict[str, Any]]:
@@ -195,12 +323,16 @@ def validate_questions(lesson: str, questions: list[Any], errors: list[str]) -> 
         if not q.get("prompt") or not q.get("explanation"):
             errors.append(f"{where}: prompt and explanation are required")
         data: dict[str, Any] = {"explanation": q.get("explanation", "")}
+        if "scene" in q:
+            data["scene"] = validate_scene(where, q["scene"], q, errors)
         if kind in ("multiple_choice", "decision"):
             options = q.get("options", [])
             answer = q.get("answer")
             if len(options) < 2 or not isinstance(answer, int) or not 0 <= answer < len(options):
                 errors.append(f"{where}: needs at least two options and an answer index")
             data.update(options=options, answer=answer)
+            if "showdown_check" in q:
+                check_showdown(where, q["showdown_check"], answer, errors)
         else:
             answer, tol = q.get("answer"), q.get("tolerance", 0)
             if not isinstance(answer, int | float) or not isinstance(tol, int | float) or tol < 0:

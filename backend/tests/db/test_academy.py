@@ -35,10 +35,11 @@ def test_sync_is_idempotent_and_requires_a_version_bump(db: Session, tmp_path: P
     errors = academy.sync(db, root).errors
     assert any("bump it to publish" in e for e in errors)
     assert academy.lesson(db, "pot-odds").summary.startswith("How much"), "the old content stays live"
-    lesson.write_text(lesson.read_text().replace("version = 1", "version = 2", 1))
+    old = academy.lesson(db, "pot-odds").version
+    lesson.write_text(lesson.read_text().replace(f"version = {old}", f"version = {old + 1}", 1))
     assert academy.sync(db, root).errors == []
     row = academy.lesson(db, "pot-odds")
-    assert row.version == 2
+    assert row.version == old + 1
     assert row.summary.startswith("What equity")
 
 
@@ -74,9 +75,9 @@ def test_lessons_hide_answers_and_grade_attempts(synced: Session, db_client: Tes
 
 def test_progress_bookmarks_and_dashboard(synced: Session, db_client: TestClient) -> None:
     dash = db_client.get("/api/v1/academy/dashboard").json()
-    assert dash["lessons_published"] == 5
-    assert dash["recommended"]["slug"] == "pot-odds", (
-        "level 1 first; prerequisites without lessons don't block"
+    assert dash["lessons_published"] == len(list((CONTENT / "lessons").glob("*.md")))
+    assert dash["recommended"]["slug"] == "hand-rankings", (
+        "level 1 in order; its prerequisite topic (terminology) has no lesson, so it doesn't block"
     )
     assert dash["current_level"] == 1
     r = db_client.post(
@@ -98,14 +99,16 @@ def test_progress_bookmarks_and_dashboard(synced: Session, db_client: TestClient
     )
     dash = db_client.get("/api/v1/academy/dashboard").json()
     assert dash["lessons_completed"] == 1
-    assert dash["recommended"]["slug"] == "outs-and-draws", "its prerequisite pot-odds is now complete"
+    assert dash["recommended"]["slug"] == "hand-rankings", "still the first unfinished lesson in order"
+    db_client.post("/api/v1/academy/lessons/hand-rankings/progress", json={"completed": True})
+    assert db_client.get("/api/v1/academy/dashboard").json()["recommended"]["slug"] == "positions"
     assert dash["saved"] == [{"slug": "pot-odds", "title": "Pot odds and break-even equity"}]
     assert dash["bookmarks"][0]["section"] == "break-even"
     assert dash["streak_days"] >= 1
     curriculum = db_client.get("/api/v1/academy/curriculum").json()
     topic = next(t for t in curriculum[0]["topics"] if t["slug"] == "pot-odds")
     assert topic["status"] == "completed"
-    assert next(t for t in curriculum[0]["topics"] if t["slug"] == "positions")["status"] == "planned"
+    assert next(t for t in curriculum[0]["topics"] if t["slug"] == "starting-hands")["status"] == "planned"
     lesson = db_client.get("/api/v1/academy/lessons/pot-odds").json()
     assert lesson["explanation_level"] == "math"
     assert lesson["progress"]["last_section"] == "assumptions"

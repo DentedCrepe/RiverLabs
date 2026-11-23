@@ -3,7 +3,7 @@ slug = "mdf-and-bluff-ratios"
 title = "Minimum defence frequency and bluff-to-value ratios"
 level = 3
 order = 7
-version = 1
+version = 2
 status = "published"
 summary = "The indifference arithmetic of a single river bet: how often a defender must continue, and how often a polarised bettor should bluff."
 estimated_minutes = 25
@@ -40,7 +40,7 @@ note = "The clairvoyance game and its solution (Part III)."
 [[questions]]
 id = "mdf-half"
 type = "numeric"
-prompt = "Your opponent bets half the pot on the river. In the single-bet model, what is the minimum defence frequency (in %)?"
+prompt = "River. Your opponent bets half the pot. In the single-bet model, what share of your range (in %) must you continue with so that a pure bluff cannot profit? (This is the minimum defence frequency.)"
 answer = 66.67
 tolerance = 0.5
 unit = "%"
@@ -51,7 +51,7 @@ compute = { kind = "bet_math", params = { pot_mbb = 10000, bet_mbb = 5000 }, fie
 [[questions]]
 id = "alpha-pot"
 type = "numeric"
-prompt = "How often (in %) must a pot-sized pure bluff get a fold to break even?"
+prompt = "River. You bet the size of the pot with a hand that always loses if called. How often (in %) must your opponent fold for the bluff to break even?"
 answer = 50.0
 tolerance = 0.5
 unit = "%"
@@ -62,7 +62,7 @@ compute = { kind = "bet_math", params = { pot_mbb = 10000, bet_mbb = 10000 }, fi
 [[questions]]
 id = "bluff-share-pot"
 type = "numeric"
-prompt = "A polarised bettor bets the pot. What share of its bets (in %) should be bluffs to make a bluff-catcher indifferent?"
+prompt = "River. A player whose range holds only very strong hands and bluffs bets the size of the pot. What share of their bets (in %) must be bluffs for a bluff-catcher to be indifferent between calling and folding?"
 answer = 33.33
 tolerance = 0.5
 unit = "%"

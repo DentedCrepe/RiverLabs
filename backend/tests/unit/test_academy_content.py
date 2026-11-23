@@ -118,3 +118,89 @@ def test_questions_are_checked_against_the_engine() -> None:
         errors,
     )
     assert any("at least two options" in e for e in errors)
+
+
+def _pot_odds_question(**scene: object) -> dict[str, object]:
+    return {
+        "id": "q",
+        "type": "numeric",
+        "prompt": "p",
+        "explanation": "e",
+        "answer": 25.0,
+        "tolerance": 0.5,
+        "compute": {
+            "kind": "pot_odds",
+            "params": {"pot_mbb": 30000, "to_call_mbb": 10000},
+            "field": "required_equity",
+            "scale": 100.0,
+        },
+        "scene": {"players": 6, "hero": "BB", **scene},
+    }
+
+
+def test_scenes_are_checked_and_must_match_the_numbers() -> None:
+    errors: list[str] = []
+    good = _pot_odds_question(
+        hero_cards=["Qh", "Qc"], board=["Ks", "7d", "2c"], pot_bb="20", bets_bb={"BTN": "10"}, folded=["UTG"]
+    )
+    out = validate_questions("l", [good], errors)
+    assert errors == []
+    scene = out[0]["data"]["scene"]
+    assert scene["pot_mbb"] == 20000
+    assert scene["bets_mbb"] == {"BTN": 10000}
+    assert scene["seats"] == ["UTG", "HJ", "CO", "BTN", "SB", "BB"]
+    # A picture that disagrees with the computed price is rejected.
+    validate_questions("l", [_pot_odds_question(pot_bb="15", bets_bb={"BTN": "10"})], errors)
+    assert any("scene shows a pot of 25000" in e for e in errors), errors
+    for bad, message in [
+        ({"hero": "XX"}, "hero must be one of"),
+        ({"hero_cards": ["Ah", "Ah"]}, "repeats a card"),
+        ({"hero_cards": ["Zz", "Ah"]}, "scene cards"),
+        ({"board": ["Ks", "7d"]}, "board of 0, 3, 4 or 5"),
+        ({"pot_bb": "1.0005"}, "at most 3 decimals"),
+        ({"folded": ["BB"]}, "cannot have folded"),
+        ({"bets_bb": {"UTG2": "1"}}, "not at a 6-player table"),
+        ({"stack": "1"}, "unknown scene fields"),
+    ]:
+        errors.clear()
+        validate_questions("l", [_pot_odds_question(**bad)], errors)
+        assert any(message in e for e in errors), (bad, errors)
+
+
+def test_showdown_answers_and_equity_are_checked_by_the_engine() -> None:
+    q = {
+        "id": "s",
+        "type": "decision",
+        "prompt": "p",
+        "explanation": "e",
+        "options": ["You win", "Your opponent wins", "Split pot"],
+        "answer": 0,
+        "showdown_check": {"board": "KsKd7c7h2s", "you": "Ac3d", "opponent": "QsQd"},
+    }
+    errors: list[str] = []
+    validate_questions("l", [q], errors)
+    assert any("your opponent wins" in e for e in errors), errors
+    errors.clear()
+    validate_questions("l", [{**q, "answer": 1}], errors)
+    assert errors == []
+    split = {**q, "answer": 2, "showdown_check": {"board": "5h6d7c8s9h", "you": "Ac2d", "opponent": "Kh3s"}}
+    validate_questions("l", [split], errors)
+    assert errors == []
+    equity = {
+        "id": "e",
+        "type": "numeric",
+        "prompt": "p",
+        "explanation": "e",
+        "answer": 82.64,
+        "tolerance": 0.01,
+        "compute": {
+            "kind": "equity",
+            "params": {"ranges": ["AsAh", "KsKh"]},
+            "field": "equity.0",
+            "scale": 100.0,
+        },
+    }
+    validate_questions("l", [equity], errors)
+    assert errors == []
+    validate_questions("l", [{**equity, "answer": 80.0}], errors)
+    assert any("disagrees with the engine (82.6" in e for e in errors), errors

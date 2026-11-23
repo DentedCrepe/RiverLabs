@@ -128,6 +128,7 @@ def public_question(q: AcademyQuestion) -> dict[str, Any]:
         "prompt": q.prompt,
         "options": d.get("options"),
         "unit": d.get("unit"),
+        "scene": d.get("scene"),
         "concepts": q.concepts,
     }
 

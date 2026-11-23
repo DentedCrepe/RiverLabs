@@ -705,6 +705,19 @@ fn theory(kind: &str, params_json: &str) -> PyResult<String> {
             serde_json::to_value(t::ev_bluff(f("fold_frequency")?, u("pot_mbb")?, u("bet_mbb")?).map_err(err)?)
         }
         "outs" => serde_json::to_value(t::outs(small("outs")?, small("unseen")?).map_err(err)?),
+        "implied_odds" => {
+            serde_json::to_value(t::implied_odds(u("pot_mbb")?, u("to_call_mbb")?, f("equity")?).map_err(err)?)
+        }
+        "semi_bluff" => serde_json::to_value(
+            t::semi_bluff(u("pot_mbb")?, u("bet_mbb")?, f("fold_frequency")?, f("equity")?).map_err(err)?,
+        ),
+        "zero_sum_2x2" => {
+            let m: [[f64; 2]; 2] = p
+                .get("payoff")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .ok_or_else(|| err("missing 'payoff' (a 2×2 list of numbers)"))?;
+            serde_json::to_value(t::zero_sum_2x2(m).map_err(err)?)
+        }
         "regret_matching" => {
             let start: Vec<f64> = p
                 .get("start_regrets")

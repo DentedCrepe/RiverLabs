@@ -3,7 +3,7 @@ slug = "outs-and-draws"
 title = "Outs and drawing odds"
 level = 1
 order = 7
-version = 1
+version = 2
 status = "published"
 summary = "Count the cards that improve you, turn them into exact probabilities, and know when the rule of 2 and 4 is close enough."
 estimated_minutes = 15
@@ -35,7 +35,7 @@ note = "Probability foundations in Part I."
 [[questions]]
 id = "flush-draw-next"
 type = "numeric"
-prompt = "On the flop you hold a flush draw (9 outs; 47 cards unseen). What is the exact chance (in %) the turn completes it?"
+prompt = "Flop. You hold A♥ T♥ on K♠ 7♥ 2♥: a flush draw with 9 outs and 47 unseen cards. What is the exact chance (in %) that the turn card completes your flush?"
 answer = 19.15
 tolerance = 0.1
 unit = "%"
@@ -43,10 +43,18 @@ explanation = "9 of the 47 unseen cards help: 9 / 47 ≈ 19.15%."
 concepts = ["outs-and-draws"]
 compute = { kind = "outs", params = { outs = 9, unseen = 47 }, field = "next_card", scale = 100.0 }
 
+[questions.scene]
+players = 6
+hero = "BTN"
+hero_cards = ["Ah", "Th"]
+board = ["Ks", "7h", "2h"]
+pot_bb = "6.5"
+folded = ["UTG", "HJ", "CO", "SB"]
+
 [[questions]]
 id = "flush-draw-river"
 type = "numeric"
-prompt = "Same flush draw, all-in on the flop so you see both the turn and the river. What is the exact chance (in %) of making the flush?"
+prompt = "Flop. You hold A♥ T♥ on K♠ 7♥ 2♥ (9 outs, 47 unseen cards) and the money is all in, so you will see both the turn and the river. What is the exact chance (in %) that you make the flush by the river?"
 answer = 34.97
 tolerance = 0.1
 unit = "%"
@@ -54,10 +62,18 @@ explanation = "Miss both cards: (38/47) × (37/46) ≈ 65.03%, so you hit with 1
 concepts = ["outs-and-draws"]
 compute = { kind = "outs", params = { outs = 9, unseen = 47 }, field = "two_cards", scale = 100.0 }
 
+[questions.scene]
+players = 6
+hero = "BTN"
+hero_cards = ["Ah", "Th"]
+board = ["Ks", "7h", "2h"]
+actions = { BTN = "all-in", BB = "calls all-in" }
+folded = ["UTG", "HJ", "CO", "SB"]
+
 [[questions]]
 id = "gutshot"
 type = "numeric"
-prompt = "A gutshot straight draw has 4 outs. On the turn (46 unseen cards), what is the chance (in %) the river completes it?"
+prompt = "Turn. You hold 9♣ 8♣ on Q♦ J♥ 5♠ 2♣: only a ten makes your straight, so you have 4 outs among 46 unseen cards. What is the exact chance (in %) that the river is a ten?"
 answer = 8.70
 tolerance = 0.1
 unit = "%"
@@ -65,10 +81,18 @@ explanation = "4 / 46 ≈ 8.70%."
 concepts = ["outs-and-draws"]
 compute = { kind = "outs", params = { outs = 4, unseen = 46 }, field = "next_card", scale = 100.0 }
 
+[questions.scene]
+players = 6
+hero = "CO"
+hero_cards = ["9c", "8c"]
+board = ["Qd", "Jh", "5s", "2c"]
+pot_bb = "12"
+folded = ["UTG", "HJ", "BTN", "SB"]
+
 [[questions]]
 id = "rule-of-four-when"
 type = "multiple_choice"
-prompt = "When is the 'rule of 4' (outs × 4%) meant to be used?"
+prompt = "The 'rule of 4' estimates your chance of hitting as outs × 4%. When is it meant to be used?"
 options = [
   "For the next card only",
   "On the flop, when you will see both the turn and the river (e.g. all-in)",

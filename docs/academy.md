@@ -95,13 +95,46 @@ compute = { kind = "pot_odds", params = { pot_mbb = 30000, to_call_mbb = 10000 }
 Choice questions use `options = [...]` and `answer = <index>`. The answer key never leaves
 the server until the learner has answered.
 
+**Showdowns.** A choice question about who wins can set
+`showdown_check = { board = "KsKd7c7h2s", you = "Ac3d", opponent = "QsQd" }`. Its options must
+mean, in order, you win, your opponent wins, and split pot; the sync asks the hand evaluator which
+is right and refuses a wrong answer.
+
+**Table scenes.** A question can show the spot on a poker table, drawn like the Play table (you at
+the bottom, the others clockwise):
+
+```toml
+[questions.scene]
+players = 6                       # 2–6; seats are the engine's positions for that size
+hero = "BB"                       # your seat
+hero_cards = ["Qh", "Qc"]         # optional
+board = ["Ks", "7d", "2c", "8h", "3s"]   # 0, 3, 4 or 5 cards
+pot_bb = "20"                     # chips in the middle from earlier streets (exact bb)
+bets_bb = { BTN = "10" }          # chips in front of players on this street
+stacks_bb = { BTN = "7.5" }       # optional; seats without one show no stack
+folded = ["UTG", "HJ", "CO", "SB"]
+actions = { BTN = "bets 10bb" }   # the label under a seat
+shown = { BB = ["Ks", "Kh"] }     # opponents' cards shown face up
+```
+
+The sync checks the seats, cards (valid, none repeated) and amounts (exact to 0.001bb). When the
+question computes `pot_odds` or `implied_odds`, the scene's pot plus bets and the amount you face
+must equal the computed `pot_mbb` and `to_call_mbb`, so the picture cannot disagree with the
+answer.
+
+**Wording.** Every question must make sense on its own, because revision asks questions out of
+order: never refer to "the previous question" or "the same spot". State the street, the pot, the
+bet and any assumption (no more betting, who folded) in the prompt itself.
+
 **`compute`** recomputes a numeric answer. `kind` is one of:
 - a `/theory` calculation: `pot_odds`, `bet_math`, `ev_call`, `ev_bluff`, `outs`,
-  `regret_matching`;
-- `range`, which uses the range engine with `notation` and `dead`.
+  `regret_matching`, `implied_odds`, `semi_bluff`, `zero_sum_2x2`;
+- `range`, which uses the range engine with `notation` and `dead`;
+- `equity`, an exact enumeration by the equity engine with `ranges` (a list of hands or ranges)
+  and `board`. Monte Carlo is never used for an answer key.
 
-`field` is a dotted path into the result (list indexes allowed, e.g. `0.current.0`). `scale`
-multiplies it. The stated `answer` must agree within `tolerance`. Use `compute` for every
+`field` is a dotted path into the result (list indexes allowed, e.g. `0.current.0`); an empty
+`field` means the result is the number itself. `scale` multiplies it. The stated `answer` must agree within `tolerance`. Use `compute` for every
 numeric answer the engine can produce.
 
 ### Body
@@ -163,8 +196,10 @@ A labelled callout.
    reviewed by a person". Any later change to a published lesson must bump `version`. The sync
    refuses silent edits and keeps every version in `academy_lesson_versions`.
 
-The five demonstration lessons were drafted with AI assistance. They are published with
+All current lessons were drafted with AI assistance. They are published with
 `review.status = "pending"` and are labelled that way in the app until a person reviews them.
+Every numeric answer is computed by the engine and every showdown answer is checked by the
+evaluator at each sync; the prose still needs a person's review.
 
 ## Assessment and revision
 - **Question types:** numeric (with tolerance), multiple choice, and decision scenarios

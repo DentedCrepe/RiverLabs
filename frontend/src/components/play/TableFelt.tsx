@@ -67,11 +67,13 @@ function SeatPod({
   units,
   toAct,
   showAll,
+  hideStack,
 }: {
   seat: SeatView;
   units: TableView["units"];
   toAct: boolean;
   showAll: boolean;
+  hideStack?: boolean;
 }) {
   const out = seat.folded || seat.busted;
   return (
@@ -92,8 +94,10 @@ function SeatPod({
           {seat.name}
         </p>
         <p className="flex items-center justify-center gap-1 font-mono text-[11px] text-white/80 tabular sm:text-xs">
-          {seat.position && <span className="text-white/55">{seat.position}</span>}
-          <span>{seat.busted ? `out${seat.finish ? ` (${seat.finish})` : ""}` : amount(seat.stack, units)}</span>
+          {seat.position && seat.position !== seat.name && <span className="text-white/55">{seat.position}</span>}
+          {!hideStack && (
+            <span>{seat.busted ? `out${seat.finish ? ` (${seat.finish})` : ""}` : amount(seat.stack, units)}</span>
+          )}
         </p>
       </div>
       <p
@@ -117,9 +121,12 @@ function Bet({ value, units }: { value: number; units: TableView["units"] }) {
 }
 
 /** The oval table: seats, bets, dealer button, board and pot. */
-export function TableFelt({ t, showAll }: { t: TableView; showAll: boolean }) {
+/** `hideStacks`: seats without a stack (e.g. an Academy question that does not give stacks). */
+export function TableFelt({ t, showAll, hideStacks }: { t: TableView; showAll: boolean; hideStacks?: boolean }) {
   const n = t.seats.length;
   const slots = Array.from({ length: 5 }, (_, i) => t.board[i] ?? null);
+  // `t.pot` counts this street's bets; the middle shows the pot without them (they sit in front).
+  const bets = t.seats.reduce((sum, s) => sum + s.street_commit, 0);
   return (
     <div className="relative mx-auto w-full max-w-3xl px-1 pt-6 pb-10 sm:px-10 sm:pt-10 sm:pb-12">
       <div
@@ -144,8 +151,15 @@ export function TableFelt({ t, showAll }: { t: TableView; showAll: boolean }) {
             )}
           </div>
           {t.status === "awaiting_hero" && t.pot > 0 && (
-            <span className="rounded-full bg-black/45 px-2.5 py-0.5 font-mono text-xs text-white tabular">
-              Pot {amount(t.pot, t.units)}
+            <span className="flex flex-col items-center gap-0.5">
+              <span className="rounded-full bg-black/45 px-2.5 py-0.5 font-mono text-xs text-white tabular">
+                Pot {amount(t.pot - bets, t.units)}
+              </span>
+              {bets > 0 && (
+                <span className="font-mono text-[10px] text-white/70 tabular">
+                  total {amount(t.pot, t.units)} with bets
+                </span>
+              )}
             </span>
           )}
           {t.status === "hand_over" && t.last_hand_net !== null && (
@@ -167,7 +181,13 @@ export function TableFelt({ t, showAll }: { t: TableView; showAll: boolean }) {
           return (
             <div key={s.name} className="contents">
               <div className="absolute z-10 -translate-x-1/2 -translate-y-1/2" style={seatPos}>
-                <SeatPod seat={s} units={t.units} toAct={t.to_act === k} showAll={showAll} />
+                <SeatPod
+                  seat={s}
+                  units={t.units}
+                  toAct={t.to_act === k}
+                  showAll={showAll}
+                  hideStack={hideStacks && !(s.stack > 0)}
+                />
               </div>
               {s.street_commit > 0 && (
                 <div className="absolute -translate-x-1/2 -translate-y-1/2" style={betPos}>
