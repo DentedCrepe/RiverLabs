@@ -92,7 +92,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     href: "/library",
     label: "Solution Library",
     icon: BookOpen,
-    status: "planned",
+    status: "available",
     description: "Saved solver results",
   },
   {

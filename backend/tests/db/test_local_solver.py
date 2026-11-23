@@ -154,6 +154,13 @@ def test_raked_solve_lists_its_approximation(live: TestClient) -> None:
     res = live.get(f"/api/v1/solver/jobs/{job['id']}/result").json()
     assert res["values_mbb"][1] == pytest.approx(-2223.1, abs=1)
     assert len(res["approximations"]) == 1
+    # The library lists it with its configuration and quality measures.
+    lib = live.get("/api/v1/solver/library", params={"kind": "postflop"}).json()
+    entry = next(e for e in lib if e["job_id"] == job["id"])
+    assert entry["board"] == toy_spec()["board"]
+    assert entry["exploitability_mbb"] == pytest.approx(res["exploitability_mbb"])
+    assert entry["approximations"] == 1
+    assert entry["solver_version"] == res["solver_version"]
 
 
 def test_jobs_queue_and_running_jobs_cancel(live: TestClient) -> None:
