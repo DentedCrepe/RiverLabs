@@ -1,14 +1,17 @@
 # Solver validation (Milestone 2)
 
 RiverLab does not trust any solver's self-reported results. `engine/solver-validation`
-re-computes, for **any** solver's strategy profile on a river spot:
+re-computes, for **any** solver's strategy profile on a postflop spot (river, turn or flop root,
+with every remaining card dealt by chance nodes):
 - each player's expected value,
 - each player's best-response value,
 - exploitability (`NashConv / 2`).
 
 It uses only RiverLab's own evaluator and combo code (exhaustively validated; see
 `hand-evaluator.md`), so it shares no code with the solver under test. Rules: uncalled bets are
-returned before rake; rake is `min(pot × rate, cap)`.
+returned before rake; rake is `min(pot × rate, cap)`. At a chance node each card is weighted
+`1/(52 − board − 4)` and hands holding it are removed below it. That is exact, because every
+pair of non-overlapping hands is compatible with exactly that many cards.
 
 ## The validator's own tests
 | Test | Result |
@@ -18,6 +21,8 @@ returned before rake; rake is `min(pot × rate, cap)`.
 | OOP always calls → IP's gain from never bluffing | exactly 1.0 chip, as derived by hand |
 | IP never bluffs → OOP's gain from always folding | exactly 1.0 chip |
 | Uncalled bet returned before rake | IP nets 4.5 when OOP folds to a 10-chip bet into 10 |
+| Turn with no betting, weighted ranges and specific combos, two boards | values equal `pot × equity − stake` from the equity engine to 1e-9 |
+| Chance node missing a card / showdown before the river | rejected |
 | Malformed profiles (probabilities not summing to 1, duplicate combos) | rejected |
 
 ## GTOpen through the adapter (`engine/solver-gtopen`)
@@ -29,6 +34,19 @@ returned before rake; rake is `min(pot × rate, cap)`.
 | Hand-solved river, 5% rake | 1573.003 / −2223.104 | 1573.003 / −2223.104 | 0.3732 | 0.3732 |
 | Wide river (173 v 251 combos), no rake | 3672.574 / −3672.574 | 3672.574 / −3672.574 | 0.0250 | 0.0251 |
 | Wide river, 5% rake | −279.530 / −7274.065 | −279.530 / −7274.065 | 0.0326 | 0.0327 |
+
+Turn spots (OOP bets 50% / IP 75% on turn and river; wide ranges; pot 100bb, stacks 1000bb;
+1,000 iterations):
+
+| Spot | Values (mbb, OOP / IP): GTOpen | RiverLab check | Exploitability (mbb): GTOpen | RiverLab check |
+|---|---|---|---|---|
+| Ks7d2c8h (44 river cards), no rake | 6147.755 / −6147.754 | 6147.755 / −6147.755 | 1.7034 | 1.7034 |
+| Ks7d2c8h, 5% rake | 858.265 / −10878.801 | 858.265 / −10878.801 | 1.6932 | 1.6932 |
+| Ks7s2d8d (suit-isomorphic runouts GTOpen copies with suits relabelled) | 4557.233 / −4557.232 | 4557.233 / −4557.233 | 0.8069 | 0.8069 |
+
+A flop spot (Ks7d2c, small ranges, bets on every street) is also checked, through both turn and
+river chance layers. The checks are not vacuous: corrupting a single river decision in the
+exported turn tree is detected as a clear rise in exploitability.
 
 The hand-solved value (IP −2bb) and the wide-river value (OOP +3.6726bb, agreed by three
 independent solvers) also match. These run as automated tests in
@@ -61,9 +79,9 @@ part of GTOpen's preflop. Leaves that continue to the flop use GTOpen's modelled
 remain unvalidated.
 
 ## What is not validated yet
-- Turn and flop solves (chance nodes): the validator handles river trees only. The audit
-  cross-checked turn values between three solvers (`solver-comparison.md`), but RiverLab's own
-  best response does not cover them yet.
+- Full-range **flop** solves: the validator supports them, but its simple O(n²)-per-terminal
+  design is slow on wide ranges, so automated flop coverage uses small ranges. A faster
+  sorted-sweep showdown would allow full-range flop checks.
 - GTOpen's preflop leaves that continue postflop (modelled values; see `solver-comparison.md`).
   Push/fold (all-in) is validated above.
 - Kuhn/Leduc-style toy games for future in-house CFR variants.

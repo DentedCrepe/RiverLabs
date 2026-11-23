@@ -17,7 +17,7 @@ use poker_core::{Card, Chips};
 use range_engine::{Combo, Range};
 use serde::{Deserialize, Serialize};
 use solver_interface::{AveragingScheme, CfrVariant, SolveSpec};
-use solver_validation::{Rake, RiverGame, RiverNode};
+use solver_validation::{GameNode, PostflopGame, Rake};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -349,35 +349,35 @@ impl Solved {
         &self.solver
     }
 
-    /// Exports a solved **river** spot for independent checking with `solver-validation`.
-    /// Ranges and weights come from RiverLab's own parse; only the tree shape, contributions and
-    /// average strategies come from GTOpen.
-    pub fn river_game(&self) -> Result<RiverGame, AdapterError> {
-        let tree = &self.solver.spot.tree;
-        if tree.root_street != 2 {
-            return Err(AdapterError::Unsupported("export is implemented for river spots only".into()));
-        }
-        let board: [Card; 5] = Card::parse_many(&self.prepared.config.board)
-            .map_err(|e| AdapterError::Backend(e.to_string()))?
-            .try_into()
-            .map_err(|_| AdapterError::Backend("river board must have 5 cards".into()))?;
-        // GTOpen hand order -> index into RiverLab's range order.
+    /// Exports the solved game (river, turn or flop root) for independent checking with
+    /// `solver-validation`. Ranges and weights come from RiverLab's own parse; only the tree
+    /// shape, contributions and average strategies come from GTOpen. After `ensure_symmetric`,
+    /// every dealt card has its own fully populated subtree, so suit-isomorphic runouts are
+    /// checked too.
+    pub fn postflop_game(&self) -> Result<PostflopGame, AdapterError> {
+        let board = Card::parse_many(&self.prepared.config.board).map_err(|e| AdapterError::Backend(e.to_string()))?;
         let mut ranges = self.prepared.ranges.clone();
-        let index_maps: [Vec<usize>; 2] = std::array::from_fn(|p| {
-            ranges[p].sort_by_key(|x| x.0);
-            self.solver.spot.hands[p]
-                .iter()
-                .map(|h| {
-                    let c = Combo::new(our_card(h.c1).unwrap(), our_card(h.c2).unwrap()).unwrap();
-                    ranges[p].binary_search_by_key(&c, |x| x.0).expect("checked by check_hands")
-                })
-                .collect()
-        });
+        for r in ranges.iter_mut() {
+            r.sort_by_key(|x| x.0);
+        }
+        // GTOpen hand order -> index into RiverLab's (sorted) range order.
+        let mut maps: [Vec<usize>; 2] = [Vec::new(), Vec::new()];
+        for (p, map) in maps.iter_mut().enumerate() {
+            for h in &self.solver.spot.hands[p] {
+                let c = Combo::new(our_card(h.c1)?, our_card(h.c2)?)
+                    .ok_or_else(|| AdapterError::Backend("bad hand".into()))?;
+                let i = ranges[p]
+                    .binary_search_by_key(&c, |x| x.0)
+                    .map_err(|_| AdapterError::Backend(format!("unknown combo {c}")))?;
+                map.push(i);
+            }
+        }
         let mut nodes = Vec::new();
-        self.export(0, &index_maps, &ranges, &mut nodes)?;
+        let board_mask = board.iter().fold(0u64, |m, c| m | 1 << c.index());
+        self.export(0, &maps, &ranges, board_mask, &mut nodes)?;
         let cfg = &self.prepared.config.tree;
         let rake = Rake { fraction: cfg.rake_pct, cap: (cfg.rake_cap > 0.0).then_some(cfg.rake_cap) };
-        Ok(RiverGame { board, ranges, rake, nodes })
+        Ok(PostflopGame { board, ranges, rake, nodes })
     }
 
     fn export(
@@ -385,36 +385,55 @@ impl Solved {
         idx: u32,
         maps: &[Vec<usize>; 2],
         ranges: &[Vec<(Combo, f64)>; 2],
-        out: &mut Vec<RiverNode>,
+        board: u64,
+        out: &mut Vec<GameNode>,
     ) -> Result<usize, AdapterError> {
         let tree = &self.solver.spot.tree;
         let node = &tree.nodes[idx as usize];
         let me = out.len();
-        match node.kind {
+        out.push(GameNode::Fold { folder: 0, put: [0.0; 2] }); // placeholder, replaced below
+        let filled = match node.kind {
             KIND_ACTION => {
-                out.push(RiverNode::Showdown { put: [0.0; 2] }); // placeholder, replaced below
                 let p = node.player as usize;
                 let n_act = node.num_children as usize;
                 let theirs = self.solver.average_strategy(idx, node);
                 let nh = maps[p].len();
                 let n = ranges[p].len();
-                let mut strategy = vec![0.0; n_act * n];
-                for a in 0..n_act {
-                    for (i, &ours) in maps[p].iter().enumerate() {
+                let mut strategy = vec![1.0 / n_act as f64; n_act * n];
+                for (i, &ours) in maps[p].iter().enumerate() {
+                    // Rows of combos blocked by dealt cards are unreachable; keep them uniform.
+                    if ranges[p][ours].0.card_set().bits() & board != 0 {
+                        continue;
+                    }
+                    for a in 0..n_act {
                         strategy[a * n + ours] = theirs[a * nh + i] as f64;
                     }
                 }
                 let mut children = Vec::with_capacity(n_act);
                 for a in 0..n_act {
                     let child = tree.children[node.children_start as usize + a];
-                    children.push(self.export(child, maps, ranges, out)?);
+                    children.push(self.export(child, maps, ranges, board, out)?);
                 }
-                out[me] = RiverNode::Decision { player: p, children, strategy };
+                GameNode::Decision { player: p, children, strategy }
             }
-            KIND_TERM_FOLD => out.push(RiverNode::Fold { folder: node.player as usize, put: node.put }),
-            KIND_CHANCE => return Err(AdapterError::Unsupported("chance node in a river export".into())),
-            _ => out.push(RiverNode::Showdown { put: node.put }),
-        }
+            KIND_CHANCE => {
+                let mut children = Vec::new();
+                for card in 0..52u8 {
+                    let child = tree.children[node.children_start as usize + card as usize];
+                    if board & (1u64 << card) != 0 {
+                        continue;
+                    }
+                    let ours = Card::from_str(&gtopen::cards::card_to_string(card))
+                        .map_err(|e| AdapterError::Backend(e.to_string()))?;
+                    let bit = 1u64 << ours.index();
+                    children.push((ours, self.export(child, maps, ranges, board | bit, out)?));
+                }
+                GameNode::Chance { children }
+            }
+            KIND_TERM_FOLD => GameNode::Fold { folder: node.player as usize, put: node.put },
+            _ => GameNode::Showdown { put: node.put },
+        };
+        out[me] = filled;
         Ok(me)
     }
 }

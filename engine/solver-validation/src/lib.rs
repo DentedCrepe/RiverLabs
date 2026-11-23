@@ -1,9 +1,10 @@
 //! Independent validation of solver output (Milestone 2).
 //!
-//! Given a river game tree and **any** solver's strategy profile, this crate computes each
-//! player's expected value, best-response value and the profile's exploitability. It uses
-//! only RiverLab's own validated evaluator and combo/card-removal code, so it shares no
-//! code with the solver under test.
+//! Given a postflop game tree (river, turn or flop root, with chance nodes dealing the remaining
+//! cards) and **any** solver's strategy profile, this crate computes each player's expected
+//! value, best-response value and the profile's exploitability. It uses only RiverLab's own
+//! validated evaluator and combo/card-removal code, so it shares no code with the solver under
+//! test.
 //!
 //! Conventions: amounts are in chips (any unit, e.g. mbb). `put[p]` is everything player `p`
 //! has committed, including their half of the starting pot. Any uncalled excess is returned
@@ -11,6 +12,10 @@
 //! net of that stake: the winner nets `pot − rake − m`, the loser `−m`, and a tie pays each
 //! `(pot − rake)/2 − m`. Rake is `min(pot × fraction, cap)` and applies to every terminal
 //! (the flop has been dealt).
+//!
+//! Chance nodes deal one card. For any pair of non-overlapping hands, exactly
+//! `52 − |board| − 4` cards can come, so each card is weighted by that reciprocal and hands
+//! holding the dealt card are removed below it. That is the exact conditional distribution.
 
 pub mod push_fold;
 
@@ -40,30 +45,37 @@ impl Rake {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum RiverNode {
+pub enum GameNode {
     /// `strategy` is action-major: `strategy[a * n + i]` is the probability that the acting
-    /// player's combo `i` (index into its range) takes action `a`; `n` = range length.
+    /// player's combo `i` (index into its range) takes action `a`; `n` = range length. Rows of
+    /// combos blocked by cards dealt on the way to this node are ignored.
     Decision {
         player: usize,
         children: Vec<usize>,
         strategy: Vec<f64>,
     },
+    /// Deals one card. Must have exactly one child per card not yet on the board.
+    Chance {
+        children: Vec<(Card, usize)>,
+    },
     Fold {
         folder: usize,
         put: [f64; 2],
     },
+    /// Only valid once the board has five cards.
     Showdown {
         put: [f64; 2],
     },
 }
 
-/// A complete river game: board, weighted ranges, rake and a tree whose root is `nodes[0]`.
+/// A complete postflop game: starting board (3–5 cards), weighted ranges, rake and a tree whose
+/// root is `nodes[0]`.
 #[derive(Debug, Clone, PartialEq)]
-pub struct RiverGame {
-    pub board: [Card; 5],
+pub struct PostflopGame {
+    pub board: Vec<Card>,
     pub ranges: [Vec<(Combo, f64)>; 2],
     pub rake: Rake,
-    pub nodes: Vec<RiverNode>,
+    pub nodes: Vec<GameNode>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -79,9 +91,8 @@ pub struct Evaluation {
 }
 
 struct Prepared<'a> {
-    game: &'a RiverGame,
+    game: &'a PostflopGame,
     masks: [Vec<u64>; 2],
-    strength: [Vec<u32>; 2],
 }
 
 impl Prepared<'_> {
@@ -89,35 +100,47 @@ impl Prepared<'_> {
         self.masks[p][i] & self.masks[1 - p][j] == 0
     }
 
-    /// Counterfactual values for player `p`'s combos at `node`, given the opponent's reach.
-    fn cfv(&self, node: usize, p: usize, reach_o: &[f64], best: bool) -> Vec<f64> {
+    /// Counterfactual values for player `p`'s combos at `node`, given the opponent's reach and
+    /// the full board so far. Combos blocked by `board` get 0.
+    fn cfv(&self, node: usize, p: usize, reach_o: &[f64], board: u64, best: bool) -> Vec<f64> {
         let n = self.masks[p].len();
         let o = 1 - p;
+        let live = |i: usize| self.masks[p][i] & board == 0;
         match &self.game.nodes[node] {
-            RiverNode::Fold { folder, put } => {
+            GameNode::Fold { folder, put } => {
                 let m = put[0].min(put[1]);
                 let pot = 2.0 * m;
                 let u = if *folder == p { -m } else { pot - self.game.rake.of(pot) - m };
                 (0..n)
-                    .map(|i| u * (0..reach_o.len()).filter(|&j| self.compat(p, i, j)).map(|j| reach_o[j]).sum::<f64>())
+                    .map(|i| {
+                        if !live(i) {
+                            return 0.0;
+                        }
+                        u * (0..reach_o.len()).filter(|&j| self.compat(p, i, j)).map(|j| reach_o[j]).sum::<f64>()
+                    })
                     .collect()
             }
-            RiverNode::Showdown { put } => {
+            GameNode::Showdown { put } => {
                 let m = put[0].min(put[1]);
                 let pot = 2.0 * m;
                 let net = pot - self.game.rake.of(pot);
                 let (win, lose, tie) = (net - m, -m, net / 2.0 - m);
+                let strength = |q: usize, k: usize| evaluate_mask(board | self.masks[q][k]).value();
+                let opp: Vec<u32> =
+                    (0..reach_o.len()).map(|j| if reach_o[j] > 0.0 { strength(o, j) } else { 0 }).collect();
                 (0..n)
                     .map(|i| {
-                        let si = self.strength[p][i];
+                        if !live(i) {
+                            return 0.0;
+                        }
+                        let si = strength(p, i);
                         (0..reach_o.len())
-                            .filter(|&j| self.compat(p, i, j))
+                            .filter(|&j| reach_o[j] > 0.0 && self.compat(p, i, j))
                             .map(|j| {
-                                let sj = self.strength[o][j];
                                 reach_o[j]
-                                    * if si > sj {
+                                    * if si > opp[j] {
                                         win
-                                    } else if si < sj {
+                                    } else if si < opp[j] {
                                         lose
                                     } else {
                                         tie
@@ -127,12 +150,31 @@ impl Prepared<'_> {
                     })
                     .collect()
             }
-            RiverNode::Decision { player, children, strategy } => {
+            GameNode::Chance { children } => {
+                let w = 1.0 / (52 - board.count_ones() as usize - 4) as f64;
+                let mut out = vec![0.0; n];
+                for &(card, child) in children {
+                    let bit = 1u64 << card.index();
+                    let r: Vec<f64> = (0..reach_o.len())
+                        .map(|j| if self.masks[o][j] & bit == 0 { reach_o[j] } else { 0.0 })
+                        .collect();
+                    let v = self.cfv(child, p, &r, board | bit, best);
+                    for i in 0..n {
+                        if self.masks[p][i] & bit == 0 {
+                            out[i] += w * v[i];
+                        }
+                    }
+                }
+                out
+            }
+            GameNode::Decision { player, children, strategy } => {
                 if *player == p {
-                    let vals: Vec<Vec<f64>> = children.iter().map(|&c| self.cfv(c, p, reach_o, best)).collect();
+                    let vals: Vec<Vec<f64>> = children.iter().map(|&c| self.cfv(c, p, reach_o, board, best)).collect();
                     (0..n)
                         .map(|i| {
-                            if best {
+                            if !live(i) {
+                                0.0
+                            } else if best {
                                 vals.iter().map(|v| v[i]).fold(f64::NEG_INFINITY, f64::max)
                             } else {
                                 vals.iter().enumerate().map(|(a, v)| strategy[a * n + i] * v[i]).sum()
@@ -144,7 +186,7 @@ impl Prepared<'_> {
                     let mut out = vec![0.0; n];
                     for (a, &c) in children.iter().enumerate() {
                         let r: Vec<f64> = (0..m).map(|j| reach_o[j] * strategy[a * m + j]).collect();
-                        for (x, v) in out.iter_mut().zip(self.cfv(c, p, &r, best)) {
+                        for (x, v) in out.iter_mut().zip(self.cfv(c, p, &r, board, best)) {
                             *x += v;
                         }
                     }
@@ -155,66 +197,101 @@ impl Prepared<'_> {
     }
 }
 
-fn validate(game: &RiverGame) -> Result<(), ValidationError> {
-    let bad = |m: String| Err(ValidationError::InvalidGame(m));
+fn invalid<T>(m: String) -> Result<T, ValidationError> {
+    Err(ValidationError::InvalidGame(m))
+}
+
+fn validate_node(game: &PostflopGame, masks: &[Vec<u64>; 2], k: usize, board: u64) -> Result<(), ValidationError> {
+    let len = game.nodes.len();
+    match &game.nodes[k] {
+        GameNode::Decision { player, children, strategy } => {
+            let n = game
+                .ranges
+                .get(*player)
+                .ok_or_else(|| ValidationError::InvalidGame(format!("node {k}: bad player")))?
+                .len();
+            if children.is_empty() || children.iter().any(|&c| c <= k || c >= len) {
+                return invalid(format!("node {k}: children must point forward to existing nodes"));
+            }
+            if strategy.len() != children.len() * n {
+                return invalid(format!(
+                    "node {k}: strategy has {} entries, expected {}",
+                    strategy.len(),
+                    children.len() * n
+                ));
+            }
+            for i in (0..n).filter(|&i| masks[*player][i] & board == 0) {
+                let row = (0..children.len()).map(|a| strategy[a * n + i]);
+                let s: f64 = row.clone().sum();
+                if (s - 1.0).abs() > 1e-3 || row.clone().any(|x| !(-1e-9..=1.0 + 1e-9).contains(&x)) {
+                    return invalid(format!("node {k}: combo {i} probabilities sum to {s}"));
+                }
+            }
+            for &c in children {
+                validate_node(game, masks, c, board)?;
+            }
+        }
+        GameNode::Chance { children } => {
+            if board.count_ones() >= 5 {
+                return invalid(format!("node {k}: chance node after the river"));
+            }
+            let mut seen = 0u64;
+            for &(card, child) in children {
+                let bit = 1u64 << card.index();
+                if board & bit != 0 || seen & bit != 0 {
+                    return invalid(format!("node {k}: card {card} dealt twice or already on the board"));
+                }
+                if child <= k || child >= len {
+                    return invalid(format!("node {k}: children must point forward to existing nodes"));
+                }
+                seen |= bit;
+                validate_node(game, masks, child, board | bit)?;
+            }
+            if (seen | board).count_ones() != 52 {
+                return invalid(format!("node {k}: chance node must deal every remaining card"));
+            }
+        }
+        GameNode::Showdown { .. } if board.count_ones() != 5 => {
+            return invalid(format!("node {k}: showdown before the river"));
+        }
+        GameNode::Showdown { .. } | GameNode::Fold { .. } => {}
+    }
+    Ok(())
+}
+
+fn validate(game: &PostflopGame, masks: &[Vec<u64>; 2]) -> Result<u64, ValidationError> {
+    if !(3..=5).contains(&game.board.len()) {
+        return invalid(format!("board must have 3 to 5 cards, got {}", game.board.len()));
+    }
     let board = CardSet::from_distinct(&game.board)
         .map_err(|c| ValidationError::InvalidGame(format!("duplicate board card {c}")))?;
     for (p, range) in game.ranges.iter().enumerate() {
         let mut seen = vec![false; range_engine::COMBO_COUNT];
         for &(c, w) in range {
             if !(w.is_finite() && w > 0.0) {
-                return bad(format!("player {p} combo {c} has weight {w}"));
+                return invalid(format!("player {p} combo {c} has weight {w}"));
             }
             if c.card_set().intersects(board) {
-                return bad(format!("player {p} combo {c} uses a board card"));
+                return invalid(format!("player {p} combo {c} uses a board card"));
             }
             if std::mem::replace(&mut seen[c.index()], true) {
-                return bad(format!("player {p} lists combo {c} twice"));
+                return invalid(format!("player {p} lists combo {c} twice"));
             }
         }
     }
     if game.nodes.is_empty() {
-        return bad("empty tree".into());
+        return invalid("empty tree".into());
     }
-    for (k, node) in game.nodes.iter().enumerate() {
-        if let RiverNode::Decision { player, children, strategy } = node {
-            let n = game
-                .ranges
-                .get(*player)
-                .ok_or_else(|| ValidationError::InvalidGame(format!("node {k}: bad player")))?
-                .len();
-            if children.is_empty() || children.iter().any(|&c| c <= k || c >= game.nodes.len()) {
-                return bad(format!("node {k}: children must point forward to existing nodes"));
-            }
-            if strategy.len() != children.len() * n {
-                return bad(format!(
-                    "node {k}: strategy has {} entries, expected {}",
-                    strategy.len(),
-                    children.len() * n
-                ));
-            }
-            for i in 0..n {
-                let s: f64 = (0..children.len()).map(|a| strategy[a * n + i]).sum();
-                if (s - 1.0).abs() > 1e-3
-                    || (0..children.len()).any(|a| !(0.0..=1.0 + 1e-9).contains(&strategy[a * n + i]))
-                {
-                    return bad(format!("node {k}: combo {i} probabilities sum to {s}"));
-                }
-            }
-        }
-    }
-    Ok(())
+    validate_node(game, masks, 0, board.bits())?;
+    Ok(board.bits())
 }
 
-/// Evaluates a strategy profile on a river game.
-pub fn evaluate(game: &RiverGame) -> Result<Evaluation, ValidationError> {
-    validate(game)?;
-    let board = CardSet::from_cards(game.board).bits();
+/// Evaluates a strategy profile on a postflop game.
+pub fn evaluate(game: &PostflopGame) -> Result<Evaluation, ValidationError> {
     let masks: [Vec<u64>; 2] =
         std::array::from_fn(|p| game.ranges[p].iter().map(|(c, _)| c.card_set().bits()).collect());
-    let strength: [Vec<u32>; 2] =
-        std::array::from_fn(|p| masks[p].iter().map(|&m| evaluate_mask(board | m).value()).collect());
-    let prep = Prepared { game, masks, strength };
+    let board = validate(game, &masks)?;
+    let prep = Prepared { game, masks };
     let weights: [Vec<f64>; 2] = std::array::from_fn(|p| game.ranges[p].iter().map(|&(_, w)| w).collect());
     let z: f64 = (0..weights[0].len())
         .map(|i| {
@@ -222,10 +299,10 @@ pub fn evaluate(game: &RiverGame) -> Result<Evaluation, ValidationError> {
         })
         .sum();
     if z <= 0.0 {
-        return Err(ValidationError::InvalidGame("no compatible pair of hands".into()));
+        return invalid("no compatible pair of hands".into());
     }
     let value = |p: usize, best: bool| -> f64 {
-        let cfv = prep.cfv(0, p, &weights[1 - p], best);
+        let cfv = prep.cfv(0, p, &weights[1 - p], board, best);
         weights[p].iter().zip(&cfv).map(|(w, v)| w * v).sum::<f64>() / z
     };
     let ev = [value(0, false), value(1, false)];
@@ -241,7 +318,7 @@ mod tests {
 
     /// Clairvoyance-style spot solved by hand (docs/solver-comparison.md): board KsQd7h7c2s,
     /// OOP 12 AQ (checks), IP 3 KK + 12 43o; pot 10, IP may bet 10 (all-in); OOP calls/folds.
-    fn toy(bluff: f64, call: f64, rake: Rake) -> RiverGame {
+    fn toy(bluff: f64, call: f64, rake: Rake) -> PostflopGame {
         let board: [Card; 5] = Card::parse_many("KsQd7h7c2s").unwrap().try_into().unwrap();
         let dead = CardSet::from_cards(board);
         let live = |s: &str| -> Vec<(Combo, f64)> { Range::parse(s).unwrap().without_cards(dead).iter().collect() };
@@ -258,17 +335,17 @@ mod tests {
         }
         let n_oop = oop.len();
         let oop_call: Vec<f64> = (0..n_oop).map(|_| 1.0 - call).chain((0..n_oop).map(|_| call)).collect();
-        RiverGame {
-            board,
+        PostflopGame {
+            board: board.to_vec(),
             ranges: [oop.clone(), ip],
             rake,
             nodes: vec![
-                RiverNode::Decision { player: 0, children: vec![1], strategy: vec![1.0; n_oop] },
-                RiverNode::Decision { player: 1, children: vec![2, 3], strategy: ip_strat },
-                RiverNode::Showdown { put: [5.0, 5.0] },
-                RiverNode::Decision { player: 0, children: vec![4, 5], strategy: oop_call },
-                RiverNode::Fold { folder: 0, put: [5.0, 15.0] },
-                RiverNode::Showdown { put: [15.0, 15.0] },
+                GameNode::Decision { player: 0, children: vec![1], strategy: vec![1.0; n_oop] },
+                GameNode::Decision { player: 1, children: vec![2, 3], strategy: ip_strat },
+                GameNode::Showdown { put: [5.0, 5.0] },
+                GameNode::Decision { player: 0, children: vec![4, 5], strategy: oop_call },
+                GameNode::Fold { folder: 0, put: [5.0, 15.0] },
+                GameNode::Showdown { put: [15.0, 15.0] },
             ],
         }
     }
@@ -311,15 +388,67 @@ mod tests {
         g.ranges[1].retain(|(c, _)| c.hole_cards().high().rank() == poker_core::Rank::King);
         let n = g.ranges[1].len();
         g.nodes[1] =
-            RiverNode::Decision { player: 1, children: vec![2, 3], strategy: [vec![0.0; n], vec![1.0; n]].concat() };
+            GameNode::Decision { player: 1, children: vec![2, 3], strategy: [vec![0.0; n], vec![1.0; n]].concat() };
         let e = evaluate(&g).unwrap();
         assert!((e.ev[1] - 4.5).abs() < 1e-12, "{e:?}");
+    }
+
+    /// Turn with no betting: every pair reaches showdown, so values must equal
+    /// `pot × equity − stake`, with equity from the (independently validated) equity engine.
+    fn check_down(board: &str, ranges: [&str; 2]) -> PostflopGame {
+        let board = Card::parse_many(board).unwrap();
+        let dead = CardSet::from_cards(board.iter().copied());
+        let r = |s: &str| -> Vec<(Combo, f64)> { Range::parse(s).unwrap().without_cards(dead).iter().collect() };
+        let remaining: Vec<Card> = Card::all().filter(|c| !dead.contains(*c)).collect();
+        let mut nodes = vec![GameNode::Chance { children: Vec::new() }];
+        let mut children = Vec::new();
+        for c in remaining {
+            children.push((c, nodes.len()));
+            nodes.push(GameNode::Showdown { put: [5.0, 5.0] });
+        }
+        nodes[0] = GameNode::Chance { children };
+        PostflopGame { board, ranges: [r(ranges[0]), r(ranges[1])], rake: Rake::NONE, nodes }
+    }
+
+    #[test]
+    fn chance_nodes_reproduce_exact_equity_with_card_removal() {
+        for (board, ranges) in
+            [("Ks7d2c8h", ["AA,KQ,76s:0.5", "QQ-22,AJs+,KJo+"]), ("Qh7h2s3d", ["AhKh,JhTh,QsJs", "77,22,AQ"])]
+        {
+            let g = check_down(board, ranges);
+            let e = evaluate(&g).unwrap();
+            let rs: Vec<range_engine::Range> = ranges.iter().map(|s| Range::parse(s).unwrap()).collect();
+            let b: poker_core::Board = board.parse().unwrap();
+            let eq = equity_engine::exact(&rs, &b, CardSet::EMPTY, u64::MAX).unwrap();
+            for p in 0..2 {
+                assert!(
+                    (e.ev[p] - (10.0 * eq.equity[p] - 5.0)).abs() < 1e-9,
+                    "{board} p{p}: {} vs {}",
+                    e.ev[p],
+                    eq.equity[p]
+                );
+            }
+            assert!(e.exploitability.abs() < 1e-9, "no decisions, nothing to exploit");
+        }
+    }
+
+    #[test]
+    fn chance_nodes_must_deal_every_remaining_card() {
+        let mut g = check_down("Ks7d2c8h", ["AA", "KK"]);
+        if let GameNode::Chance { children } = &mut g.nodes[0] {
+            children.pop();
+        }
+        assert!(evaluate(&g).is_err());
+        let mut g = check_down("Ks7d2c8h", ["AA", "KK"]);
+        g.nodes.push(GameNode::Showdown { put: [5.0, 5.0] });
+        g.board.pop();
+        assert!(evaluate(&g).is_err(), "showdown on a 4-card board path must be rejected");
     }
 
     #[test]
     fn malformed_profiles_are_rejected() {
         let mut g = toy(0.1, 0.5, Rake::NONE);
-        if let RiverNode::Decision { strategy, .. } = &mut g.nodes[3] {
+        if let GameNode::Decision { strategy, .. } = &mut g.nodes[3] {
             strategy[0] = 0.9;
         }
         assert!(evaluate(&g).is_err());
