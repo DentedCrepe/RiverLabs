@@ -10,6 +10,8 @@ describe("backend proxy", () => {
     expect(isAllowedPath(["api", "v2", "x"])).toBe(false);
     expect(isAllowedPath(["api", "v1", ".."])).toBe(false);
     expect(isAllowedPath(["api", "v1", "a b"])).toBe(false);
+    // Academy question ids contain a colon.
+    expect(isAllowedPath(["api", "v1", "academy", "questions", "pot-odds:half-pot", "attempts"])).toBe(true);
     expect(isAllowedPath([])).toBe(false);
   });
 
@@ -27,6 +29,23 @@ describe("backend proxy", () => {
     expect(init.method).toBe("POST");
     expect(new TextDecoder().decode(init.body)).toBe('{"a":1}');
     expect(init.headers).toEqual({ "content-type": "application/json" });
+  });
+
+  it("forwards Academy answers, whose question ids contain a colon", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(Response.json({ correct: true }));
+    const req = new Request("http://frontend/api/backend/api/v1/academy/questions/pot-odds%3Ahalf-pot/attempts", {
+      method: "POST",
+      body: '{"answer":25}',
+      headers: { "content-type": "application/json" },
+    });
+    const res = await forwardToBackend(
+      req,
+      ["api", "v1", "academy", "questions", "pot-odds:half-pot", "attempts"],
+      "http://b",
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    expect(String(fetchImpl.mock.calls[0][0])).toBe("http://b/api/v1/academy/questions/pot-odds%3Ahalf-pot/attempts");
   });
 
   it("passes on the background-polling marker so polls don't count as activity", async () => {

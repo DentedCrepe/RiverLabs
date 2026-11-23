@@ -1,5 +1,6 @@
 const ALLOWED_PREFIXES = [["health"], ["api", "v1"]];
-const SEGMENT = /^[A-Za-z0-9._-]+$/;
+// Letters, digits, ".", "_", "-", and ":" (Academy question ids are "lesson:question").
+const SEGMENT = /^[A-Za-z0-9._:-]+$/;
 const MAX_BODY_BYTES = 256 * 1024;
 const TIMEOUT_MS = 60_000;
 
@@ -50,7 +51,7 @@ export async function forwardToBackend(
     return errorResponse(404, "not_found", "Unknown API path");
   }
   const incoming = new URL(request.url);
-  const target = new URL(`${baseUrl.replace(/\/+$/, "")}/${path.join("/")}`);
+  const target = new URL(`${baseUrl.replace(/\/+$/, "")}/${path.map(encodeURIComponent).join("/")}`);
   target.search = incoming.search;
 
   let body: Uint8Array<ArrayBuffer> | undefined;
