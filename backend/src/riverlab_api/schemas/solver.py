@@ -77,3 +77,17 @@ class SolverResultOut(StrictModel):
     approximations: list[str]
     independent_check: IndependentCheck
     root: RootStrategy | None
+    tree_available: bool
+
+
+class NodeViewOut(StrictModel):
+    kind: str
+    street: str
+    board: list[str]
+    put_mbb: list[float]
+    player: int | None
+    actions: list[str]
+    cards: list[str]
+    by_class: list[ClassStrategy]
+    reach_fraction: list[float]
+    path: str

@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     solver_max_memory_mb: int = Field(default=2048, ge=16)
     # 0 = use every CPU core.
     solver_threads: int = Field(default=0, ge=0, le=256)
+    # Where solved trees are saved for browsing (each is roughly the solve's memory size).
+    result_storage_dir: str = "data/solver-results"
+    # Solved trees kept loaded in memory for browsing.
+    result_cache_size: int = Field(default=2, ge=1, le=16)
 
     @model_validator(mode="after")
     def _no_placeholder_credentials_in_production(self) -> "Settings":

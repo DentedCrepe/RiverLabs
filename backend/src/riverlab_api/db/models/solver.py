@@ -82,7 +82,10 @@ class SolverJob(UUIDPk, Timestamps, Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    result: Mapped["SolverResult | None"] = relationship(back_populates="job", uselist=False)
+    # Deleting a job deletes its result (and the result's strategy nodes) in the database.
+    result: Mapped["SolverResult | None"] = relationship(
+        back_populates="job", uselist=False, cascade="all, delete-orphan", passive_deletes=True
+    )
 
     __table_args__ = (
         Index("ix_solver_jobs_status_created", "status", "created_at"),

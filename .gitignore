@@ -30,3 +30,7 @@ next-env.d.ts
 .DS_Store
 .idea/
 .vscode/
+
+# Saved solver trees
+backend/data/
+data/

@@ -97,3 +97,45 @@ describe("SolveForm", () => {
     expect(body.spec.game).toEqual(config.config);
   });
 });
+
+describe("NodeBrowser", () => {
+  it("steps through decisions and dealt cards and back via the breadcrumb", async () => {
+    const { NodeBrowser } = await import("./NodeBrowser");
+    const decision = {
+      kind: "decision",
+      street: "turn",
+      board: ["Ks", "7d", "2c", "8h"],
+      put_mbb: [3250, 3250],
+      player: 0,
+      actions: ["check", "bet 2.2bb"],
+      cards: [],
+      by_class: [{ label: "AA", row: 0, col: 0, weight: 6, frequencies: [0.25, 0.75] }],
+      reach_fraction: [1, 1],
+      path: "",
+    };
+    const chance = {
+      ...decision,
+      kind: "chance",
+      player: null,
+      actions: [],
+      by_class: [],
+      cards: ["Ah", "2s"],
+      path: "a0.a0",
+    };
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const path = new URL(String(input), "http://x").searchParams.get("path") ?? "";
+      return Response.json(path === "a0.a0" ? chance : { ...decision, path, player: path === "a0" ? 1 : 0 });
+    });
+    render(<NodeBrowser jobId="j1" />);
+    await userEvent.click(await screen.findByRole("button", { name: /check 25\.0%/ }));
+    expect(await screen.findByText(/IP to act/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /check 25\.0%/ }));
+    expect(await screen.findByText(/Deal the river/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /ace of hearts/i }));
+    await waitFor(() =>
+      expect(fetchSpy).toHaveBeenLastCalledWith(expect.stringContaining("path=a0.a0.cAh"), expect.anything()),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Root" }));
+    expect(await screen.findByText(/OOP to act/)).toBeInTheDocument();
+  });
+});

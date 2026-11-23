@@ -94,6 +94,20 @@ class JobService:
         )
         return job, result, root
 
+    def delete(self, job_id: uuid.UUID) -> None:
+        """Deletes a finished job, its result and any saved tree file."""
+        job = self.get(job_id)
+        if not job.status.is_terminal:
+            raise ConflictError("Cancel the job before deleting it")
+        result = self.db.scalar(select(SolverResult).where(SolverResult.job_id == job_id))
+        if result is not None and result.storage_uri:
+            from riverlab_api.services.trees import forget, path_from_uri
+
+            forget(result.id)
+            path_from_uri(result.storage_uri).unlink(missing_ok=True)
+        self.db.delete(job)
+        self.db.commit()
+
     def list(self, limit: int = 50) -> list[SolverJob]:
         query = select(SolverJob).order_by(SolverJob.created_at.desc(), SolverJob.id).limit(limit)
         return list(self.db.scalars(query))

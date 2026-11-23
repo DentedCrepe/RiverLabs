@@ -124,4 +124,18 @@ export type SolverResult = {
     note: string;
   };
   root: { player: number; street: string; board: string; actions: string[]; by_class: ClassStrategy[] } | null;
+  tree_available: boolean;
+};
+
+export type NodeView = {
+  kind: "decision" | "chance" | "fold" | "showdown";
+  street: string;
+  board: string[];
+  put_mbb: number[];
+  player: number | null;
+  actions: string[];
+  cards: string[];
+  by_class: ClassStrategy[];
+  reach_fraction: number[];
+  path: string;
 };

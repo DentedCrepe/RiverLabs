@@ -12,6 +12,7 @@ import threading
 import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -30,8 +31,17 @@ STREET = {3: "flop", 4: "turn", 5: "river"}
 class LocalSolverBackend:
     name = BACKEND_NAME
 
-    def __init__(self, session_factory: SessionFactory, max_memory_mb: int, threads: int) -> None:
+    def __init__(
+        self,
+        session_factory: SessionFactory,
+        max_memory_mb: int,
+        threads: int,
+        storage_dir: str | None = None,
+    ) -> None:
         self._sessions = session_factory
+        self._storage = Path(storage_dir).resolve() if storage_dir else None
+        if self._storage:
+            self._storage.mkdir(parents=True, exist_ok=True)
         self._max_bytes = max_memory_mb * 1024 * 1024
         self._threads = threads or (os.cpu_count() or 1)
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="riverlab-solver")
@@ -92,8 +102,11 @@ class LocalSolverBackend:
                 if current is not None and current.status == JobStatus.RUNNING:
                     self._service(s).report_progress(job_id, int(p["iterations"]), p)
 
+        save_path = str(self._storage / f"{job_id}.gto") if self._storage else None
         try:
-            outcome = engine.solve_postflop(spec, token, on_progress, self._max_bytes, self._threads)
+            outcome = engine.solve_postflop(
+                spec, token, on_progress, self._max_bytes, self._threads, save_path
+            )
         except engine.SolveRejectedError as exc:
             self._finish(job_id, JobStatus.FAILED, ("solve_rejected", str(exc)))
             return
@@ -104,7 +117,7 @@ class LocalSolverBackend:
             self._finish(job_id, JobStatus.CANCELLED)
             return
         with self._sessions() as session:
-            self._store_result(session, job_id, spec, outcome)
+            self._store_result(session, job_id, spec, outcome, save_path)
             self._service(session).mark_finished(job_id, JobStatus.SUCCEEDED)
 
     def _finish(self, job_id: uuid.UUID, status: JobStatus, error: tuple[str, str] | None = None) -> None:
@@ -116,7 +129,11 @@ class LocalSolverBackend:
 
     @staticmethod
     def _store_result(
-        session: Session, job_id: uuid.UUID, spec: dict[str, Any], outcome: dict[str, Any]
+        session: Session,
+        job_id: uuid.UUID,
+        spec: dict[str, Any],
+        outcome: dict[str, Any],
+        save_path: str | None,
     ) -> None:
         progress = outcome["progress"]
         result = SolverResult(
@@ -136,6 +153,7 @@ class LocalSolverBackend:
             iterations=progress["iterations"],
             exploitability=progress["exploitability_mbb"],
             exploitability_unit="mbb",
+            storage_uri=Path(save_path).as_uri() if save_path else None,
             summary={
                 "stop_reason": outcome["stop_reason"],
                 "values_mbb": outcome["values_mbb"],

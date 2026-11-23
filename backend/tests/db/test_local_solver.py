@@ -3,6 +3,7 @@ database state (the worker thread uses its own sessions)."""
 
 import time
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -26,7 +27,9 @@ def _clean(db_engine: Engine) -> None:
         conn.execute(text("DELETE FROM strategy_nodes; DELETE FROM solver_results; DELETE FROM solver_jobs"))
 
 
-def _start(db_engine: Engine, max_memory_mb: int = 512) -> tuple[TestClient, LocalSolverBackend]:
+def _start(
+    db_engine: Engine, max_memory_mb: int = 512, storage_dir: str | None = None
+) -> tuple[TestClient, LocalSolverBackend]:
     factory = sessionmaker(bind=db_engine, expire_on_commit=False)
     app = create_app()
 
@@ -35,15 +38,15 @@ def _start(db_engine: Engine, max_memory_mb: int = 512) -> tuple[TestClient, Loc
             yield s
 
     app.dependency_overrides[get_db] = real_db
-    backend = LocalSolverBackend(factory, max_memory_mb=max_memory_mb, threads=2)
+    backend = LocalSolverBackend(factory, max_memory_mb=max_memory_mb, threads=2, storage_dir=storage_dir)
     compute.registry.register(backend)
     return TestClient(app), backend
 
 
 @pytest.fixture
-def live(db_engine: Engine) -> Iterator[TestClient]:
+def live(db_engine: Engine, tmp_path: Path) -> Iterator[TestClient]:
     _clean(db_engine)
-    client, backend = _start(db_engine)
+    client, backend = _start(db_engine, storage_dir=str(tmp_path / "results"))
     try:
         yield client
     finally:
@@ -198,3 +201,43 @@ def test_interrupted_jobs_are_failed_on_startup(db_engine: Engine) -> None:
         ]
     finally:
         _clean(db_engine)
+
+
+def test_saved_tree_can_be_browsed_and_deleted(live: TestClient, tmp_path: Path) -> None:
+    job = wait(
+        live,
+        live.post("/api/v1/solver/jobs", json={"spec": toy_spec()}).json()["id"],
+        {"succeeded", "failed"},
+    )
+    assert job["status"] == "succeeded", job
+    res = live.get(f"/api/v1/solver/jobs/{job['id']}/result").json()
+    assert res["tree_available"] is True
+    saved = list((tmp_path / "results").glob("*.gto"))
+    assert len(saved) == 1
+
+    base = f"/api/v1/solver/jobs/{job['id']}/node"
+    root = live.get(base).json()
+    assert root["kind"] == "decision"
+    assert root["player"] == 0
+    assert root["by_class"] == res["root"]["by_class"]
+    ip = live.get(base, params={"path": "a0"}).json()
+    assert ip["player"] == 1
+    assert ip["actions"][0] == "check"
+    assert ip["actions"][1].startswith("bet")
+    # IP bets: OOP faces fold/call with the whole AQ range (it never folded or bet before).
+    facing = live.get(base, params={"path": "a0.a1"}).json()
+    assert facing["player"] == 0
+    assert facing["actions"][0] == "fold"
+    assert facing["actions"][1].startswith("call")
+    call_freq = sum(c["weight"] * c["frequencies"][1] for c in facing["by_class"]) / sum(
+        c["weight"] for c in facing["by_class"]
+    )
+    assert call_freq == pytest.approx(0.5, abs=0.01)  # the hand-derived equilibrium
+    # IP's reach after betting: all 3 KK + 1.5 of 12 air combos => 4.5 / 15.
+    assert facing["reach_fraction"][1] == pytest.approx(4.5 / 15, abs=0.01)
+    assert live.get(f"{base}", params={"path": "a7"}).status_code == 422
+    assert live.get(f"{base}", params={"path": "x1"}).status_code == 422
+
+    assert live.delete(f"/api/v1/solver/jobs/{job['id']}").status_code == 204
+    assert live.get(f"/api/v1/solver/jobs/{job['id']}").status_code == 404
+    assert not saved[0].exists()

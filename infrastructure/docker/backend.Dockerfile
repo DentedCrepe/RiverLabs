@@ -24,7 +24,7 @@ COPY backend/pyproject.toml backend/alembic.ini ./
 COPY backend/alembic/ alembic/
 COPY backend/src/ src/
 RUN pip install --no-deps . && rm -rf /wheels
-RUN useradd --system --uid 10001 riverlab
+RUN useradd --system --uid 10001 riverlab && mkdir -p /app/data/solver-results && chown -R riverlab /app/data
 USER riverlab
 EXPOSE 8000
 # Development convenience: apply migrations, then serve. Production deployments should run

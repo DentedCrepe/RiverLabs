@@ -34,4 +34,10 @@ def solve_postflop(
     progress: Callable[[str], object] | None = None,
     max_bytes: int = 2_147_483_648,
     threads: int | None = None,
+    save_path: str | None = None,
 ) -> str: ...
+
+class SolvedGame:
+    def node(self, path_json: str) -> str: ...
+
+def load_solved(spec_json: str, path: str) -> SolvedGame: ...

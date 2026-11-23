@@ -306,6 +306,37 @@ impl CancelToken {
     }
 }
 
+/// A solved postflop game loaded from storage, for browsing its tree.
+#[pyclass(frozen)]
+struct SolvedGame {
+    inner: std::sync::Mutex<solver_gtopen::Solved>,
+}
+
+#[pymethods]
+impl SolvedGame {
+    /// The node at `path_json` (a JSON list of {"type": "action", "value": i} /
+    /// {"type": "card", "value": "Ah"} steps), as JSON.
+    fn node(&self, py: Python<'_>, path_json: &str) -> PyResult<String> {
+        let path: Vec<solver_gtopen::PathStep> = serde_json::from_str(path_json).map_err(err)?;
+        let view = py.detach(|| {
+            let solved = self.inner.lock().expect("solved game lock");
+            solved.node_view(&path)
+        });
+        to_json(&view.map_err(err)?)
+    }
+}
+
+/// Loads a solve saved with `solve_postflop(..., save_path=...)` (GIL released).
+#[pyfunction]
+fn load_solved(py: Python<'_>, spec_json: &str, path: &str) -> PyResult<SolvedGame> {
+    let spec: SolveSpec = serde_json::from_str(spec_json).map_err(err)?;
+    let solved = py.detach(|| solver_gtopen::load(&spec, path)).map_err(|e| match e {
+        solver_gtopen::AdapterError::Backend(m) => pyo3::exceptions::PyRuntimeError::new_err(m),
+        other => err(other),
+    })?;
+    Ok(SolvedGame { inner: std::sync::Mutex::new(solved) })
+}
+
 /// Description of the available solver backend(s).
 #[pyfunction]
 fn solver_backends() -> PyResult<String> {
@@ -321,7 +352,7 @@ fn solver_backends() -> PyResult<String> {
 /// `progress(json)` is called at each exploitability check. Raises `ValueError` for specs the
 /// backend rejects (invalid, unsupported or too large) and `RuntimeError` for solver failures.
 #[pyfunction]
-#[pyo3(signature = (spec_json, cancel, progress = None, max_bytes = 2u64 << 30, threads = None))]
+#[pyo3(signature = (spec_json, cancel, progress = None, max_bytes = 2u64 << 30, threads = None, save_path = None))]
 fn solve_postflop(
     py: Python<'_>,
     spec_json: &str,
@@ -329,6 +360,7 @@ fn solve_postflop(
     progress: Option<Py<PyAny>>,
     max_bytes: u64,
     threads: Option<u16>,
+    save_path: Option<String>,
 ) -> PyResult<String> {
     use solver_gtopen::AdapterError;
     let mut spec: SolveSpec = serde_json::from_str(spec_json).map_err(err)?;
@@ -351,7 +383,16 @@ fn solve_postflop(
         })
     });
     match result {
-        Ok(solved) => to_json(&solved.outcome),
+        Ok(mut solved) => {
+            if let Some(path) = save_path {
+                if solved.outcome.stop_reason != solver_gtopen::StopReason::Cancelled {
+                    py.detach(|| solved.save(&path)).map_err(|e| {
+                        pyo3::exceptions::PyRuntimeError::new_err(format!("saving the solve failed: {e}"))
+                    })?;
+                }
+            }
+            to_json(&solved.outcome)
+        }
         Err(e @ (AdapterError::InvalidSpec(_) | AdapterError::Unsupported(_) | AdapterError::TooLarge { .. })) => {
             Err(err(e))
         }
@@ -377,5 +418,7 @@ fn riverlab_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solver_backends, m)?)?;
     m.add_function(wrap_pyfunction!(solve_postflop, m)?)?;
     m.add_class::<CancelToken>()?;
+    m.add_class::<SolvedGame>()?;
+    m.add_function(wrap_pyfunction!(load_solved, m)?)?;
     Ok(())
 }

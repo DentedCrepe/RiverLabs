@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleSlash, Eye } from "lucide-react";
+import { CircleSlash, Eye, Trash2 } from "lucide-react";
 import { ApiError, api } from "@/lib/api";
 import type { SolverJob } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
@@ -43,6 +43,14 @@ export function JobList({
     }
   }
 
+  async function remove(id: string) {
+    try {
+      await api.delete(`/api/v1/solver/jobs/${id}`);
+    } finally {
+      onChanged();
+    }
+  }
+
   return (
     <ul className="divide-y divide-line">
       {jobs.map((j) => {
@@ -70,6 +78,15 @@ export function JobList({
                 <Button size="sm" variant="ghost" onClick={() => onSelect(j.id)} icon={<Eye className="size-3.5" />}>
                   View
                 </Button>
+              )}
+              {!active && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label="Delete solve"
+                  onClick={() => remove(j.id)}
+                  icon={<Trash2 className="size-3.5" />}
+                />
               )}
               {active && !j.cancel_requested && (
                 <Button

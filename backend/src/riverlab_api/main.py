@@ -31,7 +31,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 logger.warning("marked %d interrupted solver job(s) as failed", n)
         except Exception:
             logger.exception("could not check for interrupted solver jobs (database unavailable?)")
-        backend = LocalSolverBackend(factory, settings.solver_max_memory_mb, settings.solver_threads)
+        backend = LocalSolverBackend(
+            factory, settings.solver_max_memory_mb, settings.solver_threads, settings.result_storage_dir
+        )
         compute.registry.register(backend)
     try:
         yield

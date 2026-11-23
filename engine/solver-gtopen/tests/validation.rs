@@ -299,3 +299,49 @@ fn class_strategies_are_distributions_and_checks_run_where_supported() {
     assert!(!skipped.outcome.independent_check.performed);
     assert!(skipped.outcome.independent_check.note.contains("Skipped"), "{}", skipped.outcome.independent_check.note);
 }
+
+#[test]
+fn saved_trees_reload_and_can_be_browsed() {
+    use solver_gtopen::{PathStep, load};
+    let spec = turn_spec("Ks7d2c8h", RakeConfig::none(), 200);
+    let mut s = solve(&spec, &AtomicBool::new(false), |_| {}).unwrap();
+    let dir = std::env::temp_dir().join(format!("riverlab-save-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("spot.gto");
+    s.save(path.to_str().unwrap()).unwrap();
+    let loaded = load(&spec, path.to_str().unwrap()).unwrap();
+    for p in 0..2 {
+        assert!((loaded.outcome.values_mbb[p] - s.outcome.values_mbb[p]).abs() < 1e-6);
+    }
+    // Root view = stored root strategy (reach = range weights).
+    let root = loaded.node_view(&[]).unwrap();
+    assert_eq!(root.kind, "decision");
+    assert_eq!(root.by_class, s.outcome.root_by_class);
+    assert_eq!(root.reach_fraction, [1.0, 1.0]);
+    // OOP checks, IP checks, then the river is dealt.
+    let check = root.actions.iter().position(|a| a == "check").unwrap();
+    let ip = loaded.node_view(&[PathStep::Action(check)]).unwrap();
+    assert_eq!(ip.player, Some(1));
+    let ip_check = ip.actions.iter().position(|a| a == "check").unwrap();
+    let chance = loaded.node_view(&[PathStep::Action(check), PathStep::Action(ip_check)]).unwrap();
+    assert_eq!(chance.kind, "chance");
+    assert_eq!(chance.cards.len(), 48);
+    let ah: poker_core::Card = "Ah".parse().unwrap();
+    let river = loaded.node_view(&[PathStep::Action(check), PathStep::Action(ip_check), PathStep::Card(ah)]).unwrap();
+    assert_eq!(river.street, "river");
+    assert_eq!(river.board.last().unwrap(), "Ah");
+    assert!(river.reach_fraction[0] < 1.0 && river.reach_fraction[1] < 1.0);
+    // No class in the river view may contain the dealt card's combos only: AA loses Ah combos.
+    let aa = river.by_class.iter().find(|c| c.label == "AA").unwrap();
+    let aa_root = root.by_class.iter().find(|c| c.label == "AA").unwrap();
+    assert!(aa.weight < aa_root.weight);
+    for c in &river.by_class {
+        assert!((c.frequencies.iter().sum::<f64>() - 1.0).abs() < 1e-4);
+    }
+    // Invalid paths are rejected.
+    assert!(loaded.node_view(&[PathStep::Card(ah)]).is_err());
+    assert!(loaded.node_view(&[PathStep::Action(99)]).is_err());
+    let ks: poker_core::Card = "Ks".parse().unwrap();
+    assert!(loaded.node_view(&[PathStep::Action(check), PathStep::Action(ip_check), PathStep::Card(ks)]).is_err());
+    std::fs::remove_dir_all(&dir).ok();
+}

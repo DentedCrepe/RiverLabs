@@ -105,7 +105,8 @@ defaults, and `docker compose` refuses to start without `POSTGRES_PASSWORD`.
 | `POST /hands/replay` | Replays a hand event by event through the betting engine |
 | `POST /ranges/analyze` | Combos, card removal and the 13×13 matrix for range notation |
 | `POST /equity` | Exact or Monte Carlo equity for 2–6 hands/ranges |
-| `GET /solver/capabilities`, `POST/GET /solver/jobs`, `POST /solver/jobs/{id}/cancel`, `GET /solver/jobs/{id}/result` | Queue, track, cancel and read postflop solves |
+| `GET /solver/capabilities`, `POST/GET /solver/jobs`, `POST /solver/jobs/{id}/cancel`, `GET /solver/jobs/{id}/result`, `DELETE /solver/jobs/{id}` | Queue, track, cancel, read and delete postflop solves |
+| `GET /solver/jobs/{id}/node?path=a0.a1.cAh` | Browse a saved tree: `a<action index>` / `c<dealt card>` steps |
 
 Errors always use `{"error": {"code", "message", "details?"}}`.
 
@@ -127,8 +128,8 @@ docs/              Architecture, ADRs, rules, rake, evaluator, equity, roadmap, 
 - [Third-party solver audit](docs/solver-research.md)
 
 ## Known limitations
-- Solving is heads-up postflop only; the app shows the first decision's strategy (browsing the
-  full tree is next). Solves run one at a time inside the API process and do not survive a
+- Solving is heads-up postflop only. Solved trees are saved to `RIVERLAB_RESULT_STORAGE_DIR`
+  (about the solve's memory size each) for browsing; delete solves you no longer need. Solves run one at a time inside the API process and do not survive a
   restart (they are marked failed).
 - The independent check is skipped (and says so) when it would not fit in the memory limit
   alongside the solve.

@@ -28,6 +28,10 @@ services:
       RIVERLAB_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       RIVERLAB_LOG_LEVEL: ${RIVERLAB_LOG_LEVEL:-INFO}
       RIVERLAB_CORS_ORIGINS: ${RIVERLAB_CORS_ORIGINS:-}
+      RIVERLAB_SOLVER_MAX_MEMORY_MB: ${RIVERLAB_SOLVER_MAX_MEMORY_MB:-2048}
+      RIVERLAB_RESULT_STORAGE_DIR: /app/data/solver-results
+    volumes:
+      - solver-results:/app/data/solver-results
     depends_on:
       postgres:
         condition: service_healthy
@@ -53,3 +57,4 @@ services:
 
 volumes:
   postgres-data:
+  solver-results:

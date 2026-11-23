@@ -463,9 +463,209 @@ fn node_strategy(solver: &Solver, idx: u32) -> Result<NodeStrategy, AdapterError
     Ok(NodeStrategy { player: p, actions, combos, frequencies })
 }
 
+/// One step from a node to a child: an action index at a decision node, or a dealt card.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum PathStep {
+    Action(usize),
+    Card(Card),
+}
+
+/// What the UI needs to show one node of a solved tree.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NodeView {
+    /// "decision", "chance", "fold" or "showdown".
+    pub kind: String,
+    pub street: String,
+    pub board: Vec<String>,
+    /// Chips committed by each player (each includes half the starting pot), in mbb.
+    pub put_mbb: [f64; 2],
+    /// Acting player at a decision node, folder at a fold.
+    pub player: Option<usize>,
+    pub actions: Vec<String>,
+    /// Cards that can be dealt at a chance node.
+    pub cards: Vec<String>,
+    /// The acting player's strategy per hand class, weighted by that player's reach here.
+    pub by_class: Vec<ClassStrategy>,
+    /// Each player's reaching range mass as a fraction of their starting range mass.
+    pub reach_fraction: [f64; 2],
+}
+
+/// Loads a solve saved by [`Solved::save`], re-deriving the spot from the same spec. The spec
+/// must be the one the file was solved from (checked against the saved spot).
+pub fn load(spec: &SolveSpec, path: &str) -> Result<Solved, AdapterError> {
+    let prepared = prepare(spec)?;
+    let mut solver = Solver::load(path).map_err(AdapterError::Backend)?;
+    if solver.spot.config.board.to_lowercase() != prepared.config.board.to_lowercase() {
+        return Err(AdapterError::Backend("saved solve does not match the spec (board)".into()));
+    }
+    check_hands(&solver.spot, &prepared.ranges)?;
+    solver.ensure_symmetric();
+    let ds = solver.spot.tree.data_size;
+    let memory_bytes = 8 * (ds[0] + ds[1]) + solver.spot.tree_bytes();
+    let root = node_strategy(&solver, 0)?;
+    let root_by_class = by_class(&root, &prepared.ranges)?;
+    let outcome = SolveOutcome {
+        backend: BACKEND.into(),
+        backend_repository: GTOPEN_REPOSITORY.into(),
+        backend_commit: GTOPEN_COMMIT.into(),
+        algorithm: prepared.algorithm.name().into(),
+        stop_reason: StopReason::MaxIterations,
+        progress: Progress {
+            iterations: solver.iteration as u64,
+            exploitability_mbb: f64::NAN,
+            exploitability_pct_pot: f64::NAN,
+            elapsed_ms: 0,
+        },
+        values_mbb: values(&solver),
+        approximations: prepared.approximations.clone(),
+        root,
+        root_by_class,
+        memory_bytes,
+        independent_check: IndependentCheck {
+            performed: false,
+            values_mbb: None,
+            exploitability_mbb: None,
+            note: "loaded from storage".into(),
+        },
+    };
+    Ok(Solved { solver, prepared, limits: Limits { max_nodes: usize::MAX, max_bytes: u64::MAX }, outcome })
+}
+
 impl Solved {
     pub fn solver(&self) -> &Solver {
         &self.solver
+    }
+
+    /// Writes the solved spot (GTOpen's format: JSON header + f32 arenas) to `path`.
+    pub fn save(&mut self, path: &str) -> Result<(), AdapterError> {
+        self.solver.save(path).map_err(AdapterError::Backend)
+    }
+
+    /// The node reached from the root by `path`, with reach-weighted class strategies.
+    pub fn node_view(&self, path: &[PathStep]) -> Result<NodeView, AdapterError> {
+        let tree = &self.solver.spot.tree;
+        let hands = &self.solver.spot.hands;
+        let combos: [Vec<Combo>; 2] = std::array::from_fn(|p| {
+            hands[p].iter().map(|h| Combo::new(our_card(h.c1).unwrap(), our_card(h.c2).unwrap()).unwrap()).collect()
+        });
+        let weight_of: [std::collections::HashMap<Combo, f64>; 2] =
+            std::array::from_fn(|p| self.prepared.ranges[p].iter().copied().collect());
+        let mut reach: [Vec<f64>; 2] =
+            std::array::from_fn(|p| combos[p].iter().map(|c| *weight_of[p].get(c).unwrap_or(&0.0)).collect());
+        let start: [f64; 2] = std::array::from_fn(|p| reach[p].iter().sum());
+        let mut board =
+            Card::parse_many(&self.prepared.config.board).map_err(|e| AdapterError::Backend(e.to_string()))?;
+        let bad = |m: String| Err(AdapterError::InvalidSpec(m));
+        let mut idx = 0u32;
+        for (k, step) in path.iter().enumerate() {
+            let node = &tree.nodes[idx as usize];
+            match (node.kind, step) {
+                (KIND_ACTION, PathStep::Action(a)) if *a < node.num_children as usize => {
+                    let p = node.player as usize;
+                    let sigma = self.solver.average_strategy(idx, node);
+                    let nh = hands[p].len();
+                    for (i, r) in reach[p].iter_mut().enumerate() {
+                        *r *= sigma[a * nh + i] as f64;
+                    }
+                    idx = tree.children[node.children_start as usize + a];
+                }
+                (KIND_CHANCE, PathStep::Card(c)) => {
+                    if board.contains(c) {
+                        return bad(format!("step {k}: {c} is already on the board"));
+                    }
+                    let gt = (0..52u8)
+                        .find(|&g| our_card(g).is_ok_and(|x| x == *c))
+                        .ok_or_else(|| AdapterError::Backend("card mapping".into()))?;
+                    let child = tree.children[node.children_start as usize + gt as usize];
+                    if child == u32::MAX {
+                        return bad(format!("step {k}: {c} cannot be dealt here"));
+                    }
+                    for p in 0..2 {
+                        for (i, r) in reach[p].iter_mut().enumerate() {
+                            if combos[p][i].card_set().contains(*c) {
+                                *r = 0.0;
+                            }
+                        }
+                    }
+                    board.push(*c);
+                    idx = child;
+                }
+                _ => return bad(format!("step {k} ({step:?}) does not match the node there")),
+            }
+        }
+        let node = &tree.nodes[idx as usize];
+        let street = match board.len() {
+            3 => "flop",
+            4 => "turn",
+            _ => "river",
+        };
+        let mut view = NodeView {
+            kind: String::new(),
+            street: street.into(),
+            board: board.iter().map(|c| c.to_string()).collect(),
+            put_mbb: node.put,
+            player: None,
+            actions: Vec::new(),
+            cards: Vec::new(),
+            by_class: Vec::new(),
+            reach_fraction: std::array::from_fn(|p| {
+                if start[p] > 0.0 { reach[p].iter().sum::<f64>() / start[p] } else { 0.0 }
+            }),
+        };
+        match node.kind {
+            KIND_ACTION => {
+                let p = node.player as usize;
+                let n_act = node.num_children as usize;
+                view.kind = "decision".into();
+                view.player = Some(p);
+                view.actions =
+                    (0..n_act).map(|a| action_label(&tree.actions[node.actions_start as usize + a])).collect();
+                let sigma = self.solver.average_strategy(idx, node);
+                let nh = hands[p].len();
+                let mut acc: std::collections::BTreeMap<(usize, usize), (String, f64, Vec<f64>)> = Default::default();
+                for i in 0..nh {
+                    let w = reach[p][i];
+                    if w <= 0.0 {
+                        continue;
+                    }
+                    let class = range_engine::HandClass::of(combos[p][i]);
+                    let e =
+                        acc.entry(class.grid_position()).or_insert_with(|| (class.to_string(), 0.0, vec![0.0; n_act]));
+                    e.1 += w;
+                    for a in 0..n_act {
+                        e.2[a] += w * sigma[a * nh + i] as f64;
+                    }
+                }
+                view.by_class = acc
+                    .into_iter()
+                    .map(|((row, col), (label, w, f))| ClassStrategy {
+                        label,
+                        row,
+                        col,
+                        weight: w,
+                        frequencies: f.into_iter().map(|x| x / w).collect(),
+                    })
+                    .collect();
+            }
+            KIND_CHANCE => {
+                view.kind = "chance".into();
+                for g in 0..52u8 {
+                    if tree.children[node.children_start as usize + g as usize] != u32::MAX {
+                        let c = our_card(g)?;
+                        if !board.contains(&c) {
+                            view.cards.push(c.to_string());
+                        }
+                    }
+                }
+            }
+            KIND_TERM_FOLD => {
+                view.kind = "fold".into();
+                view.player = Some(node.player as usize);
+            }
+            _ => view.kind = "showdown".into(),
+        }
+        Ok(view)
     }
 
     /// Recomputes values and exploitability with RiverLab's own validator, if the exported tree

@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from riverlab_api.db.models import SolverJob
@@ -9,6 +9,7 @@ from riverlab_api.db.session import get_db
 from riverlab_api.schemas.solver import (
     ClassStrategy,
     IndependentCheck,
+    NodeViewOut,
     RootStrategy,
     SolverBackendInfo,
     SolverCapabilities,
@@ -16,7 +17,7 @@ from riverlab_api.schemas.solver import (
     SolverJobOut,
     SolverResultOut,
 )
-from riverlab_api.services import compute, engine
+from riverlab_api.services import compute, engine, trees
 
 router = APIRouter(prefix="/solver", tags=["solver"])
 DbSession = Annotated[Session, Depends(get_db)]
@@ -103,4 +104,20 @@ def get_result(job_id: uuid.UUID, db: DbSession) -> SolverResultOut:
         )
         if root
         else None,
+        tree_available=result.storage_uri is not None and trees.path_from_uri(result.storage_uri).exists(),
     )
+
+
+@router.get("/jobs/{job_id}/node", response_model=NodeViewOut)
+def get_node(
+    job_id: uuid.UUID, db: DbSession, path: Annotated[str, Query(max_length=400)] = ""
+) -> NodeViewOut:
+    """A node of the saved tree. `path`: dot-separated steps, `a<action index>` or `c<card>`."""
+    _, result, _ = compute.JobService(db).result(job_id)
+    return NodeViewOut(**trees.node(result, path), path=path)
+
+
+@router.delete("/jobs/{job_id}", status_code=204)
+def delete_job(job_id: uuid.UUID, db: DbSession) -> Response:
+    compute.JobService(db).delete(job_id)
+    return Response(status_code=204)

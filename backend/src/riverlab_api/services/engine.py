@@ -141,6 +141,7 @@ def solve_postflop(
     progress: Callable[[dict[str, Any]], None],
     max_bytes: int,
     threads: int,
+    save_path: str | None = None,
 ) -> dict[str, Any]:
     """Runs a GTOpen solve (blocking; the GIL is released while solving)."""
     try:
@@ -150,10 +151,24 @@ def solve_postflop(
             lambda payload: progress(json.loads(payload)),
             max_bytes=max_bytes,
             threads=threads,
+            save_path=save_path,
         )
     except ValueError as exc:
         raise SolveRejectedError(str(exc)) from exc
     except RuntimeError as exc:
         raise SolveFailedError(str(exc)) from exc
     result: dict[str, Any] = json.loads(raw)
+    return result
+
+
+def load_solved(spec: dict[str, Any], path: str) -> Any:
+    """Loads a saved solve for browsing."""
+    try:
+        return _engine.load_solved(json.dumps(spec), path)
+    except ValueError as exc:
+        raise EngineValidationError(str(exc)) from exc
+
+
+def solved_node(game: Any, path: list[dict[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = _call(game.node, json.dumps(path))
     return result

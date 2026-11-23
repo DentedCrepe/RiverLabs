@@ -6,6 +6,7 @@ import { useApi } from "@/lib/useApi";
 import { formatBb } from "@/lib/units";
 import { ErrorState, LoadingState } from "@/components/ui/States";
 import { CardRow } from "@/components/poker/CardText";
+import { NodeBrowser } from "./NodeBrowser";
 import { StrategyMatrix } from "./StrategyMatrix";
 
 const bb = (mbb: number) => `${mbb >= 0 ? "+" : "−"}${formatBb(Math.round(Math.abs(mbb)))}bb`;
@@ -65,16 +66,23 @@ export function ResultView({ jobId }: { jobId: string }) {
           ))}
         </ul>
       )}
-      {r.root && (
+      {r.tree_available ? (
         <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-3">
-            <h3 className="text-sm font-semibold text-fg">
-              First decision — {r.root.player === 0 ? "out of position" : "in position"}, {r.root.street}
-            </h3>
-            <CardRow cards={r.root.board} size="sm" />
-          </div>
-          <StrategyMatrix actions={r.root.actions} byClass={r.root.by_class} />
+          <h3 className="text-sm font-semibold text-fg">Strategy tree</h3>
+          <NodeBrowser jobId={jobId} />
         </div>
+      ) : (
+        r.root && (
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <h3 className="text-sm font-semibold text-fg">
+                First decision — {r.root.player === 0 ? "out of position" : "in position"}, {r.root.street}
+              </h3>
+              <CardRow cards={r.root.board} size="sm" />
+            </div>
+            <StrategyMatrix actions={r.root.actions} byClass={r.root.by_class} />
+          </div>
+        )
       )}
       <p className="font-mono text-[11px] text-subtle">
         {r.solver_backend}@{r.solver_version.slice(0, 10)} · engine {r.engine_version} ·{" "}
