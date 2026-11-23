@@ -3,10 +3,12 @@
 - **Repository:** https://github.com/ucsandman/postflop
 - **Audited commit:** `5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de` (2026-09-02)
 - **Audit date:** 2026-11-22
-- **Scope:** static review of the engine crate: the CFR core, best response, the showdown/fold
-  payoffs, chance weights, the tree and rake. **Not yet done:** building the code, running
-  its tests, and independent numerical validation. Executing third-party code needs the
-  project owner's approval in this environment (see "Next steps").
+- **Scope:** static review of the engine crate (CFR core, best response, showdown/fold
+  payoffs, chance weights, tree, rake), then — with the project owner's approval —
+  building it, running its tests and checking it independently. **Run results:
+  [solver-comparison.md](solver-comparison.md).** In short: 160 own tests pass; its
+  strategies match a hand-derived equilibrium with and without rake; the rake
+  exploitability defect is **confirmed** (reports −0.649 where the true value is +0.0007).
 
 ## Summary verdict
 **Conditionally suitable as RiverLab's first postflop solver backend, behind our solver
@@ -58,7 +60,8 @@ Adoption is blocked until three things are resolved:
 | **Exploitability under rake** | `nlhe.rs:777`, `br.rs:126` | **Defect.** `zero_sum()` returns `true` whenever there is no ICM, including raked games. Raked utilities sum to −rake(terminal), which varies by terminal, so the game is not constant-sum. The reported value `BR₀ + BR₁` then equals the true exploitability minus the expected rake under the profile. It **under-reports** distance from equilibrium (and can go negative), and `target_exploitability` can stop raked solves early. Likely fix: treat raked games as non-zero-sum (`icm.is_none() && rake.percent == 0`) so the existing NashConv path is used. **Must be fixed and verified before use with RiverLab's default 5% rake.** ❌ |
 | `unsafe` in parallel storage | `cfr.rs:320–430` | Raw pointers hand out `&'static mut` per-node slices to rayon tasks. The safety argument (one subtree per chance outcome, node-disjoint writes) holds for the current tree builder (no in-tree isomorphism), but it is a **fragile invariant**: adding runout isomorphism would make it unsound. Run under `cargo miri` (sequential feature) and keep a test asserting subtree disjointness. ⚠️ |
 | Float precision | throughout | Regrets and strategy sums are `f32`. DCFR discounting limits growth, but long solves should be checked against an `f64` reference on small spots. ⚠️ |
-| Tests (claimed) | `engine/tests`, unit tests | The README claims Kuhn (game value −1/18 ✅ textbook), AKQ closed forms, river indifference checks, bit-identical results across thread counts, and fingerprint locks. **Not yet run by us.** |
+| Tests | `engine/tests`, unit tests | Kuhn (game value −1/18 ✅ textbook), AKQ closed forms, river indifference checks, thread-count determinism and fingerprint locks. **Run 2026-11-23: 160 passed, 3 ignored.** |
+| Donk tables default to empty | `tree.rs:562`, `config.rs:53` | If OOP leads into the previous street's aggressor, the (default empty) donk table is used, which **silently removes OOP's lead** from the tree. Not a maths bug, but a dangerous default; our adapter must always set donk sizes. ⚠️ |
 
 ## Fit with RiverLab
 | Requirement | Fit |

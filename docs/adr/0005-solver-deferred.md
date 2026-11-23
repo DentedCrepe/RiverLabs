@@ -16,3 +16,15 @@ measurement on small games with known solutions, e.g. Kuhn/Leduc) existing first
 The UI shows the solver as "Planned". The first solver milestone starts by implementing
 Kuhn/Leduc poker against the same traits to validate CFR/CFR+/DCFR and exploitability
 computation before any hold'em tree is solved.
+
+## Amendment (2026-11-23): third-party solver backend
+RiverLabs is open source and for private use (the owner and friends), so AGPL obligations
+are acceptable: anyone using a hosted instance must be offered the source, which is public.
+After running both candidates and checking them independently (`docs/solver-comparison.md`):
+- **b-inary/postflop-solver** (AGPL-3.0) is the planned primary heads-up postflop backend,
+  used through a RiverLabs-maintained fork pinned to a commit, behind `solver-interface`.
+  Adopting it means licensing RiverLabs under AGPL-3.0. That is the owner's decision, still to
+  be confirmed.
+- **ucsandman/postflop** (MIT) is kept as an independent cross-check in the validation harness.
+- The original rule stands: no solver output is shown in the app until our Milestone 2
+  validation (independent best response, toy games, exploitability) passes.

@@ -31,8 +31,14 @@ declares 3.10–3.14), `pokerkit` 0.7.8 (MIT, maintained), `treys` 0.1.8 (MIT, u
 2023). Rust evaluator crates (`poker`, `aya_poker`, `rust_poker`) exist but were not needed.
 
 ## Decisions (judgement)
-- **AGPL projects (b-inary, TexasSolver): reference for published algorithms only; no code.**
-  AGPL would force release of the whole hosted service.
+- **Update 2026-11-23:** RiverLabs is open source and used privately, so AGPL is
+  acceptable. **b-inary/postflop-solver is the recommended primary backend** (via a
+  maintained fork), with ucsandman/postflop as an independent cross-check. See
+  [solver-comparison.md](solver-comparison.md) and ADR-0005.
+- **TexasSolver:** still not adopted; its author asks for a commercial licence for
+  network use, and b-inary covers the same ground in Rust.
+- *(Superseded)* AGPL projects (b-inary, TexasSolver): reference for published algorithms only;
+  no code. AGPL would force release of the whole hosted service.
 - **ucsandman/postflop: strongest MIT candidate.** Deep static audit in
   [`solver-audit-ucsandman-postflop.md`](solver-audit-ucsandman-postflop.md): a sound DCFR core,
   but it misreports exploitability under rake. Conditionally suitable as the first heads-up

@@ -1,0 +1,8 @@
+[package]
+name = "harness-binary"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+postflop-solver = { path = "../vendor/b-inary-postflop-solver" }

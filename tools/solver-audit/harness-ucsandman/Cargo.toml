@@ -1,0 +1,11 @@
+[package]
+name = "harness-ucsandman"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+engine = { path = "../vendor/ucsandman-postflop/engine" }
+
+[profile.release]
+debug = false
