@@ -173,11 +173,79 @@ def _field(value: Any, path: str) -> Any:
     return value
 
 
+# Solves run for lesson questions, by spec: several questions can read the same solve.
+_SOLVES: dict[str, dict[str, Any]] = {}
+
+
+def solve_query(params: dict[str, Any]) -> dict[str, Any]:
+    """Runs a small postflop solve (cached) and reads one node of it.
+
+    `params`: `spec` (a SolveSpec), `path` (steps from the root, default the root),
+    `max_exploitability_pct` (default 0.5: the solve must be at least this close to equilibrium,
+    so a lesson can state the bound), `subset` (optional hand-class labels, e.g. the bluffs).
+    Returns `exploitability_pct_pot`, `values_bb` and, at a decision node, `share`: for each
+    action kind ("check", "bet"), label ("bet 15bb") and index ("a3"), the share of the acting
+    player's range (by combination weight) that takes it. With a subset: `subset_share` (the
+    same, within the subset) and `subset_of_action` (for each action, the part of it that comes
+    from the subset).
+    """
+    import tempfile
+
+    spec = params["spec"]
+    key = json.dumps(spec, sort_keys=True)
+    if key not in _SOLVES:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = f"{tmp}/lesson.gto"
+            outcome = engine.solve_postflop(spec, engine.CancelToken(), lambda _: None, 1 << 30, 1, path)
+            _SOLVES[key] = {"outcome": outcome, "game": engine.load_solved(spec, path)}
+    solved = _SOLVES[key]
+    outcome = solved["outcome"]
+    expl = float(outcome["progress"]["exploitability_pct_pot"])
+    bound = float(params.get("max_exploitability_pct", 0.5))
+    if expl > bound:
+        raise ValueError(
+            f"the solve is {expl:.3f}% of the pot exploitable, above the lesson's bound of {bound}%"
+        )
+    node = engine.solved_node(solved["game"], params.get("path", []))
+    subset = set(params.get("subset", []))
+
+    def shares(classes: list[dict[str, Any]]) -> dict[str, float]:
+        out: dict[str, float] = {}
+        total = sum(c["weight"] for c in classes)
+        if node["kind"] != "decision" or total <= 0:
+            return out
+        for a, label in enumerate(node["actions"]):
+            mass = sum(c["weight"] * c["frequencies"][a] for c in classes) / total
+            kind = "raise" if label.startswith("raise") else label.split(" ")[0]
+            out[kind] = out.get(kind, 0.0) + mass
+            out[f"a{a}"] = mass  # by index, for sizes whose labels contain a dot ("bet 3.3bb")
+            if label != kind:
+                out[label] = out.get(label, 0.0) + mass
+        return out
+
+    everyone = shares(node["by_class"])
+    result: dict[str, Any] = {
+        "exploitability_pct_pot": expl,
+        "values_bb": [v / 1000.0 for v in outcome["values_mbb"]],
+        "share": everyone,
+        "actions": node["actions"],
+    }
+    if subset:
+        part = [c for c in node["by_class"] if c["label"] in subset]
+        within = shares(part)
+        frac = sum(c["weight"] for c in part) / max(sum(c["weight"] for c in node["by_class"]), 1e-12)
+        result["subset_share"] = within
+        result["subset_of_action"] = {k: frac * within.get(k, 0.0) / v for k, v in everyone.items() if v > 0}
+    return result
+
+
 def compute_answer(spec: dict[str, Any]) -> float:
     """Runs a question's `compute` table through the engine."""
     kind, params = spec["kind"], spec.get("params", {})
     if kind == "range":
         result: Any = engine.analyze_range(params["notation"], params.get("dead", ""))
+    elif kind == "solve":
+        result = solve_query(params)
     elif kind == "equity":
         # Exact enumeration only: an answer key is never a Monte Carlo estimate.
         result = engine.equity(
@@ -306,7 +374,69 @@ def check_showdown(where: str, check: Any, answer: Any, errors: list[str]) -> No
         errors.append(f"{where}: evaluator says {SHOWDOWN_OUTCOMES[truth]!r}, answer is option {answer}")
 
 
-def validate_questions(lesson: str, questions: list[Any], errors: list[str]) -> list[dict[str, Any]]:
+def lesson_solves(lesson: str, table: Any, errors: list[str]) -> dict[str, dict[str, Any]]:
+    """`[solves.<name>]` in a lesson's front matter: small heads-up spots the lesson's questions
+    solve (compute kind "solve" with `solve = "<name>"`). Fields: `board` (turn or river),
+    `ranges` ([oop, ip]), `pot_bb`, `stack_bb`, `oop_bets`, `ip_bets` (% of pot on the board's
+    street and after), `iterations`. No rake, no raises."""
+    out: dict[str, dict[str, Any]] = {}
+    if not isinstance(table, dict):
+        errors.append(f"{lesson}: solves must be a table of named spots")
+        return out
+    game = engine.default_game_config()
+    game["rake"]["percentage_bps"] = 0
+    for name, sp in table.items():
+        where = f"{lesson}: solve {name!r}"
+        try:
+            board = [sp["board"][i : i + 2] for i in range(0, len(sp["board"]), 2)]
+            first = len(board) - 3
+            if first not in (1, 2):
+                raise ValueError("board must be a turn or a river")
+
+            def sizing(bets: list[int], first: int = first) -> dict[str, Any]:
+                return {
+                    "bet_pct_pot": [list(bets) if i >= first else [] for i in range(3)],
+                    "raise_pct_pot": [[], [], []],
+                }
+
+            iterations = int(sp.get("iterations", 1000))
+            out[name] = {
+                "game": game,
+                "ranges": list(sp["ranges"]),
+                "board": board,
+                "starting_pot_mbb": _mbb(sp["pot_bb"], f"{where} pot_bb", errors),
+                "effective_stack_mbb": _mbb(sp["stack_bb"], f"{where} stack_bb", errors),
+                "tree": {
+                    "oop": sizing(sp.get("oop_bets", [])),
+                    "ip": sizing(sp.get("ip_bets", [])),
+                    "max_raises_per_street": 0,
+                    "all_in_threshold_pct_stack": 100,
+                    "add_all_in": False,
+                },
+                "solver": {
+                    "schema_version": 1,
+                    "variant": {"algorithm": "discounted", "alpha": 1.5, "beta": 0.0, "gamma": 2.0},
+                    "averaging": "quadratic",
+                    "stopping": {
+                        "max_iterations": iterations,
+                        "target_exploitability_pct_pot": None,
+                        "max_seconds": None,
+                        "exploitability_check_interval": iterations,
+                    },
+                    "threads": 1,
+                    "seed": None,
+                },
+            }
+            engine.validate_solve_spec(out[name])
+        except Exception as exc:
+            errors.append(f"{where}: {exc}")
+            out.pop(name, None)
+    return out
+
+
+def validate_questions(
+    lesson: str, questions: list[Any], errors: list[str], solves: dict[str, dict[str, Any]] | None = None
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
     for q in questions:
@@ -340,7 +470,13 @@ def validate_questions(lesson: str, questions: list[Any], errors: list[str]) -> 
                 continue
             if "compute" in q:
                 try:
-                    computed = compute_answer(q["compute"])
+                    c = q["compute"]
+                    if c.get("kind") == "solve" and "solve" in c.get("params", {}):
+                        named = c["params"]["solve"]
+                        if named not in (solves or {}):
+                            raise ValueError(f"no solve named {named!r} in this lesson")
+                        c = {**c, "params": {**c["params"], "spec": (solves or {})[named]}}
+                    computed = compute_answer(c)
                 except Exception as exc:
                     errors.append(f"{where}: compute failed ({exc})")
                 else:
@@ -402,7 +538,8 @@ def read_lesson(
         if not (r.get("title") and r.get("authors") and isinstance(r.get("year"), int)):
             errors.append(f"{rel}: reading entries need title, authors and year")
     sections = parse_body(parts[2], components, rel, errors)
-    questions = validate_questions(slug, fm.get("questions", []), errors)
+    solves = lesson_solves(slug, fm.get("solves", {}), errors)
+    questions = validate_questions(slug, fm.get("questions", []), errors, solves)
     qids = {q["id"] for q in questions}
     for s in sections:
         for b in s["blocks"]:

@@ -3,7 +3,13 @@ content/academy must validate, and every engine-computed answer must agree."""
 
 from pathlib import Path
 
-from riverlab_api.services.academy_content import parse_body, read_content, validate_questions
+from riverlab_api.services.academy_content import (
+    lesson_solves,
+    parse_body,
+    read_content,
+    solve_query,
+    validate_questions,
+)
 
 CONTENT = Path(__file__).resolve().parents[3] / "content" / "academy"
 
@@ -204,3 +210,76 @@ def test_showdown_answers_and_equity_are_checked_by_the_engine() -> None:
     assert errors == []
     validate_questions("l", [{**equity, "answer": 80.0}], errors)
     assert any("disagrees with the engine (82.6" in e for e in errors), errors
+
+
+_SOLVE_TABLE = {
+    "toy": {
+        "board": "KsQd7h7c2s",
+        "ranges": ["AQ,JJ", "KK,43o,TT"],
+        "pot_bb": "10",
+        "stack_bb": "10",
+        "ip_bets": [100],
+        "iterations": 300,
+    }
+}
+
+
+def _solve_question(**params: object) -> dict[str, object]:
+    return {
+        "id": "s",
+        "type": "numeric",
+        "prompt": "p",
+        "explanation": "e",
+        "answer": 0.0,
+        "tolerance": 100.0,
+        "compute": {
+            "kind": "solve",
+            "params": {"solve": "toy", "path": [{"type": "action", "value": 0}], **params},
+            "field": "share.check",
+            "scale": 100.0,
+        },
+    }
+
+
+def test_lesson_solves_build_valid_specs_and_reject_bad_ones() -> None:
+    errors: list[str] = []
+    solves = lesson_solves("l", _SOLVE_TABLE, errors)
+    assert errors == []
+    assert solves["toy"]["starting_pot_mbb"] == 10000
+    assert solves["toy"]["tree"]["ip"]["bet_pct_pot"] == [[], [], [100]]
+    lesson_solves("l", {"bad": {**_SOLVE_TABLE["toy"], "board": "KsQd7h"}}, errors)
+    assert any("turn or a river" in e for e in errors), errors
+    errors.clear()
+    lesson_solves("l", {"bad": {**_SOLVE_TABLE["toy"], "pot_bb": "10.0001"}}, errors)
+    assert errors, "an inexact pot must be rejected"
+
+
+def test_solve_questions_run_the_solver_and_enforce_the_exploitability_bound() -> None:
+    errors: list[str] = []
+    solves = lesson_solves("l", _SOLVE_TABLE, errors)
+    validate_questions("l", [_solve_question()], errors, solves)
+    assert errors == []
+    validate_questions("l", [_solve_question(max_exploitability_pct=0.0)], errors, solves)
+    assert any("above the lesson's bound" in e for e in errors), errors
+    errors.clear()
+    validate_questions(
+        "l",
+        [
+            {
+                **_solve_question(),
+                "compute": {"kind": "solve", "params": {"solve": "missing"}, "field": "share.check"},
+            }
+        ],
+        errors,
+        solves,
+    )
+    assert any("no solve named 'missing'" in e for e in errors), errors
+
+
+def test_solve_query_shares_sum_to_one_and_subset_parts_are_fractions() -> None:
+    solves = lesson_solves("l", _SOLVE_TABLE, [])
+    r = solve_query({"spec": solves["toy"], "path": [{"type": "action", "value": 0}], "subset": ["43o"]})
+    n = len(r["actions"])
+    assert abs(sum(r["share"][f"a{i}"] for i in range(n)) - 1.0) < 1e-6  # strategies are f32
+    for k, v in r["subset_of_action"].items():
+        assert -1e-9 <= v <= 1 + 1e-9, (k, v)

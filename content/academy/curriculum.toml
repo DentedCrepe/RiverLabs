@@ -52,14 +52,14 @@ number = 4
 title = "Advanced Strategy"
 summary = "How ranges interact with boards, and how that shapes betting."
 topics = [
-  { slug = "range-advantage", title = "Range advantage" },
-  { slug = "nut-advantage", title = "Nut advantage" },
-  { slug = "board-textures", title = "Board textures" },
-  { slug = "polarised-ranges", title = "Polarised ranges" },
-  { slug = "merged-ranges", title = "Merged ranges" },
+  { slug = "range-advantage", title = "Range advantage", lesson = "range-advantage" },
+  { slug = "nut-advantage", title = "Nut advantage", lesson = "range-advantage" },
+  { slug = "board-textures", title = "Board textures", lesson = "range-advantage" },
+  { slug = "polarised-ranges", title = "Polarised ranges", lesson = "polarised-ranges" },
+  { slug = "merged-ranges", title = "Merged ranges", lesson = "polarised-ranges" },
   { slug = "range-checking", title = "Range checking" },
-  { slug = "bet-sizing-theory", title = "Bet sizing theory" },
-  { slug = "overbets", title = "Overbets" },
+  { slug = "bet-sizing-theory", title = "Bet sizing theory", lesson = "polarised-ranges" },
+  { slug = "overbets", title = "Overbets", lesson = "polarised-ranges" },
   { slug = "check-raises", title = "Check-raises" },
   { slug = "turn-and-river-strategy", title = "Turn and river strategy" },
 ]

@@ -131,7 +131,34 @@ bet and any assumption (no more betting, who folded) in the prompt itself.
   `regret_matching`, `implied_odds`, `semi_bluff`, `zero_sum_2x2`;
 - `range`, which uses the range engine with `notation` and `dead`;
 - `equity`, an exact enumeration by the equity engine with `ranges` (a list of hands or ranges)
-  and `board`. Monte Carlo is never used for an answer key.
+  and `board`. Monte Carlo is never used for an answer key;
+- `solve`, a small heads-up turn or river spot solved by RiverLab's solver (below).
+
+**Solver-backed questions.** A lesson can declare named spots in its front matter:
+
+~~~toml
+[solves.polar]
+board = "Ks9d5c3h2s"          # turn or river
+ranges = ["KQs,KQo", "99,55,76s,T8s"]   # [out of position, in position]
+pot_bb = "10"                 # exact bb amounts
+stack_bb = "20"
+oop_bets = []                 # % of pot, on the board's street and after; no raises
+ip_bets = [33, 75, 150]
+iterations = 1000
+~~~
+
+A question then uses `compute = { kind = "solve", params = { solve = "polar", path = [...],
+max_exploitability_pct = 0.05 }, field = "share.a3" }`. The spot is solved at every sync (no rake;
+each spec is solved once per process) and the sync fails if the solve is further from equilibrium
+than `max_exploitability_pct` (% of the pot, default 0.5). State that bound in the lesson. `path`
+is a list of steps from the root, as in the solver API. The result has:
+- `share`: the share of the acting player's range taking each action, keyed by kind (`check`,
+  `bet`), by label (`bet 15bb`) and by index (`a0`, `a1`, …; use the index when the label
+  contains a dot);
+- with `subset` (hand-class labels, e.g. `["76s", "T8s"]`): `subset_share` (the same, within the
+  subset) and `subset_of_action` (the part of each action that comes from the subset, e.g. the
+  bluff share of a bet);
+- `exploitability_pct_pot`, `values_bb` and `actions`.
 
 `field` is a dotted path into the result (list indexes allowed, e.g. `0.current.0`); an empty
 `field` means the result is the number itself. `scale` multiplies it. The stated `answer` must agree within `tolerance`. Use `compute` for every
