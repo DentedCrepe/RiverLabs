@@ -177,6 +177,15 @@ class PlayManager:
         row = self.get(db, session_id)
         return engine.play_report(self.records(db, session_id), row.format == "sit_and_go")
 
+    def hand(self, db: Session, session_id: uuid.UUID, hand_no: int) -> dict[str, Any]:
+        self.get(db, session_id)
+        row = db.scalar(
+            select(PlayHand).where(PlayHand.session_id == session_id, PlayHand.hand_no == hand_no)
+        )
+        if row is None:
+            raise NotFoundError(f"Hand {hand_no} not found in this game")
+        return row.record
+
     def spot(self, db: Session, session_id: uuid.UUID, hand_no: int, decision: int) -> dict[str, Any]:
         """The solve for one of your decisions in a stored hand (heads-up, after the flop)."""
         row = self.get(db, session_id)

@@ -132,5 +132,17 @@ def test_a_hand_is_reviewed_street_by_street(live: TestClient) -> None:
     assert by["turn"]["review"]["next_ranges"] is not None
     assert any("subgame re-solving" in n for n in by["river"]["notes"])
     # Each street is an ordinary solve, listed in the library.
-    lib = {e["job_id"] for e in client.get("/api/v1/solver/library").json()}
+    lib = {e["job_id"]: e for e in client.get("/api/v1/solver/library").json()}
     assert by["river"]["job_id"] in lib
+    # ...tagged with the hand it came from, so the library can show the whole hand.
+    assert lib[by["river"]["job_id"]]["hand"] == {"session_id": sid, "hand_no": hand_no, "street": "river"}
+    assert [s["decision"] for s in by["river"]["line"] if s["decision"] is not None] == by["river"][
+        "decisions"
+    ]
+    assert client.get(f"/api/v1/play/sessions/{sid}/hands/{hand_no}").json()["hand_no"] == hand_no
+    # A drill dealt from one of these solves carries the real hand.
+    dealt = client.post(
+        "/api/v1/trainer/postflop/drill", json={"job_id": by["river"]["job_id"], "seed": 3}
+    ).json()
+    assert dealt["hand"]["hand_no"] == hand_no
+    assert dealt["hand"]["record"]["board"] == dealt["drill"]["board"]

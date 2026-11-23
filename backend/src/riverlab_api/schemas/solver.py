@@ -176,3 +176,5 @@ class LibraryEntry(StrictModel):
     positions: list[str] | None = None
     validated_scope: str | None = None
     model_gap_mbb: float | None = None
+    # Set when the solve is one street of a solver review of a hand you played.
+    hand: dict[str, Any] | None = None

@@ -7,6 +7,7 @@ import { useApi } from "@/lib/useApi";
 import { CardRow } from "@/components/poker/CardText";
 import { PreflopResultView } from "@/components/preflop/PreflopResultView";
 import { ResultView } from "@/components/solver/ResultView";
+import { WholeHand } from "./WholeHand";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/States";
 import { cn } from "@/components/ui/cn";
 
@@ -33,7 +34,49 @@ export type LibraryEntry = {
   positions: string[] | null;
   validated_scope: string | null;
   model_gap_mbb: number | null;
+  /** Set when the solve is one street of a solver review of a hand you played. */
+  hand?: { session_id: string; hand_no: number; street: string } | null;
 };
+
+type Row = { kind: "solve"; e: LibraryEntry } | { kind: "hand"; key: string; entries: LibraryEntry[] };
+
+/** Street solves of the same hand become one row; other solves stay as they are. */
+export function libraryRows(data: LibraryEntry[]): Row[] {
+  const rows: Row[] = [];
+  const hands = new Map<string, LibraryEntry[]>();
+  for (const e of data) {
+    if (!e.hand) {
+      rows.push({ kind: "solve", e });
+      continue;
+    }
+    const key = `${e.hand.session_id}:${e.hand.hand_no}`;
+    const group = hands.get(key);
+    if (group) group.push(e);
+    else {
+      const entries = [e];
+      hands.set(key, entries);
+      rows.push({ kind: "hand", key, entries });
+    }
+  }
+  return rows;
+}
+
+const ORDER = ["flop", "turn", "river"];
+
+function HandRow({ entries }: { entries: LibraryEntry[] }) {
+  const sorted = [...entries].sort((a, b) => ORDER.indexOf(a.hand!.street) - ORDER.indexOf(b.hand!.street));
+  const last = sorted[sorted.length - 1];
+  const worst = Math.max(...sorted.map((e) => e.exploitability_pct_pot ?? 0));
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <span className="font-medium text-fg">Hand #{last.hand!.hand_no}</span>
+      {last.board && <CardRow cards={last.board} size="sm" />}
+      <span className="text-muted">
+        {sorted.map((e) => e.hand!.street).join(", ")} solved · up to {worst.toFixed(3)}% pot exploitable
+      </span>
+    </span>
+  );
+}
 
 type Kind = "all" | "postflop" | "preflop";
 
@@ -122,7 +165,33 @@ export function Library() {
         />
       ) : (
         <ul className="divide-y divide-line" aria-label="Saved results">
-          {data.map((e) => {
+          {libraryRows(data).map((row) => {
+            if (row.kind === "hand") {
+              const isOpen = open === row.key;
+              const h = row.entries[0].hand!;
+              return (
+                <li key={row.key} className="py-1.5">
+                  <button
+                    type="button"
+                    aria-expanded={isOpen}
+                    onClick={() => setOpen(isOpen ? null : row.key)}
+                    className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 rounded px-1 py-1.5 text-left text-xs hover:bg-surface-2"
+                  >
+                    <ChevronRight
+                      aria-hidden
+                      className={cn("size-3.5 shrink-0 text-subtle transition-transform", isOpen && "rotate-90")}
+                    />
+                    <HandRow entries={row.entries} />
+                  </button>
+                  {isOpen && (
+                    <div className="mt-2 pb-3 pl-6">
+                      <WholeHand sessionId={h.session_id} handNo={h.hand_no} />
+                    </div>
+                  )}
+                </li>
+              );
+            }
+            const e = row.e;
             const isOpen = open === e.job_id;
             return (
               <li key={e.job_id} className="py-1.5">

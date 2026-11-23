@@ -22,7 +22,7 @@ from riverlab_api.schemas.solver import (
     SolverJobOut,
     SolverResultOut,
 )
-from riverlab_api.services import compute, engine, trees
+from riverlab_api.services import compute, engine, hand_review, trees
 
 router = APIRouter(prefix="/solver", tags=["solver"])
 DbSession = Annotated[Session, Depends(get_db)]
@@ -99,6 +99,7 @@ def library(
     )
     if kind is not None:
         q = q.where(SolverJob.kind == kind)
+    hands = hand_review.hand_of_jobs(db)
     out = []
     for job, result in db.execute(q).all():
         summary, spec = result.summary, job.spec
@@ -112,6 +113,7 @@ def library(
             iterations=result.iterations,
             stop_reason=summary.get("stop_reason"),
             tree_available=_tree_available(result),
+            hand=hands.get(str(job.id)),
         )
         if job.kind == "postflop":
             entry.board = spec.get("board")

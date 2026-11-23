@@ -139,7 +139,16 @@ class HandReviewer:
             with self._sessions() as db:
                 job = compute.JobService(db).submit(spec["spec"])
                 job_id = job.id
-            st.update(status="solving", job_id=str(job_id), notes=spec["notes"])
+            st.update(
+                status="solving",
+                job_id=str(job_id),
+                notes=spec["notes"],
+                # The real line and your hand, so the solve can be opened at each of your decisions.
+                line=spec["line"],
+                hero_player=spec["hero_player"],
+                hero_combo=spec["hero_combo"],
+                hero_class=spec["hero_class"],
+            )
             self._save(review_id, streets=[dict(s) for s in streets])
             job_status, path, canonical = self._wait(job_id)
             if job_status != "succeeded" or path is None:
@@ -192,3 +201,17 @@ def require() -> HandReviewer:
     if reviewer is None:
         raise SolverUnavailableError("Hand reviews need the solver, which is not enabled on this server.")
     return reviewer
+
+
+def hand_of_jobs(db: Session) -> dict[str, dict[str, Any]]:
+    """job id -> {session_id, hand_no, street} for every street solve of a hand review."""
+    out: dict[str, dict[str, Any]] = {}
+    for row in db.scalars(select(HandReview)):
+        for st in row.streets:
+            if st.get("job_id"):
+                out[st["job_id"]] = {
+                    "session_id": row.session_id,
+                    "hand_no": row.hand_no,
+                    "street": st["street"],
+                }
+    return out

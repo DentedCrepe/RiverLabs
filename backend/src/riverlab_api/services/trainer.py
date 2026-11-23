@@ -17,9 +17,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from riverlab_api.config import get_settings
-from riverlab_api.db.models import PostflopAnswer, SolverJob, SolverResult
+from riverlab_api.db.models import PlayHand, PostflopAnswer, SolverJob, SolverResult
 from riverlab_api.errors import ConflictError
-from riverlab_api.services import activity, compute, engine, trees
+from riverlab_api.services import activity, compute, engine, hand_review, trees
 
 logger = logging.getLogger(__name__)
 
@@ -169,11 +169,23 @@ def postflop_drill(db: Session, job_id: uuid.UUID | None, seed: int, hero: int |
         job_id = sources[seed % len(sources)]["job_id"]
     game, spec, result = _solve(db, job_id)
     drill: dict[str, Any] = engine.play_call(game.drill, json.dumps(spec), seed, hero)
+    # A solve from a hand you played: send that hand, so the drill can show what came before.
+    hand = None
+    origin = hand_review.hand_of_jobs(db).get(str(job_id))
+    if origin is not None:
+        row = db.scalar(
+            select(PlayHand).where(
+                PlayHand.session_id == origin["session_id"], PlayHand.hand_no == origin["hand_no"]
+            )
+        )
+        if row is not None:
+            hand = {**origin, "record": row.record}
     return {
         "job_id": job_id,
         "drill": drill,
         "starting_pot_mbb": spec["starting_pot_mbb"],
         "exploitability_pct_pot": result.summary.get("exploitability_pct_pot"),
+        "hand": hand,
     }
 
 

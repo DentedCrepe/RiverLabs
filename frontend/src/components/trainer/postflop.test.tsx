@@ -73,3 +73,37 @@ describe("postflop trainer", () => {
     expect(t.pot).toBe(10000);
   });
 });
+
+describe("drills from a hand you played", () => {
+  it("shows the real hand before the solve's street", async () => {
+    const { HandSoFar } = await import("./PostflopTrainer");
+    const record = {
+      hand_no: 3,
+      tournament: false,
+      board: ["4h", "9h", "Qd", "4d", "2d"],
+      seats: [
+        { name: "Bot 1 (medium)", position: "SB", is_hero: false, hole_cards: [], shown: false },
+        { name: "You", position: "BB", is_hero: true, hole_cards: [], shown: false },
+      ],
+      actions: [
+        {
+          seat: 0,
+          street: "preflop",
+          action: { type: "raise", to: 2500 },
+          added: 2000,
+          street_commit: 2500,
+          all_in: false,
+        },
+        { seat: 1, street: "preflop", action: { type: "call" }, added: 1500, street_commit: 2500, all_in: false },
+        { seat: 1, street: "flop", action: { type: "check" }, added: 0, street_commit: 0, all_in: false },
+        { seat: 1, street: "turn", action: { type: "bet", to: 5000 }, added: 5000, street_commit: 5000, all_in: false },
+      ],
+    } as unknown as Parameters<typeof HandSoFar>[0]["hand"]["record"];
+    render(<HandSoFar hand={{ session_id: "s1", hand_no: 3, street: "turn", record }} />);
+    const box = screen.getByLabelText("The hand so far");
+    expect(box).toHaveTextContent("From hand #3 you played. Before the turn:");
+    expect(box).toHaveTextContent("SB Bot 1 (medium) raises to 2.5bb, You call");
+    expect(box).toHaveTextContent("You check");
+    expect(box).not.toHaveTextContent("You bet");
+  });
+});

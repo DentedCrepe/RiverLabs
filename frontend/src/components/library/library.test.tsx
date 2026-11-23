@@ -72,3 +72,31 @@ describe("Solution Library", () => {
     expect(screen.getByText("KK")).toBeInTheDocument();
   });
 });
+
+describe("whole hands in the library", () => {
+  it("groups the street solves of one hand into one row and keeps other solves", async () => {
+    const { libraryRows } = await import("./Library");
+    const street = (id: string, st: string, board: string[]): LibraryEntry => ({
+      ...base,
+      job_id: id,
+      board,
+      hand: { session_id: "s1", hand_no: 3, street: st },
+    });
+    const rows = libraryRows([
+      street("r", "river", ["4h", "9h", "Qd", "4d", "2d"]),
+      base,
+      street("t", "turn", ["4h", "9h", "Qd", "4d"]),
+      street("f", "flop", ["4h", "9h", "Qd"]),
+    ]);
+    expect(rows.map((r) => r.kind)).toEqual(["hand", "solve"]);
+    expect(rows[0].kind === "hand" && rows[0].entries.map((e) => e.job_id)).toEqual(["r", "t", "f"]);
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+      String(input).includes("/library")
+        ? Response.json([street("r", "river", ["4h", "9h", "Qd", "4d", "2d"]), street("f", "flop", ["4h", "9h", "Qd"])])
+        : Response.json({ error: { code: "x", message: "not mocked" } }, { status: 404 }),
+    );
+    render(<Library />);
+    expect(await screen.findByText("Hand #3")).toBeInTheDocument();
+    expect(screen.getByText(/flop, river solved/)).toBeInTheDocument();
+  });
+});
