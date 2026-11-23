@@ -4,66 +4,13 @@ import { ChevronDown, DoorOpen, Eye, EyeOff, Play } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import { GLOSSARY } from "@/lib/glossary";
-import { type Feedback, type PlayState, type SeatView, type TableView, amount, parseAmount } from "@/lib/play";
+import { type Feedback, type PlayState, type TableView, amount, parseAmount } from "@/lib/play";
 import { Button } from "@/components/ui/Button";
 import { TextInput } from "@/components/ui/Field";
 import { InfoTip } from "@/components/ui/InfoTip";
 import { ErrorState } from "@/components/ui/States";
-import { CardRow } from "@/components/poker/CardText";
 import { cn } from "@/components/ui/cn";
-
-function Seat({
-  seat,
-  units,
-  toAct,
-  showAll,
-}: {
-  seat: SeatView;
-  units: TableView["units"];
-  toAct: boolean;
-  showAll: boolean;
-}) {
-  const cards = seat.cards ?? (showAll ? seat.hidden_cards : null);
-  return (
-    <div
-      data-testid="seat"
-      className={cn(
-        "flex min-w-0 flex-col gap-1 rounded-lg border px-2.5 py-2 text-xs",
-        toAct ? "border-accent bg-accent-dim/40 ring-1 ring-accent/40" : "border-line bg-surface-2/60",
-        seat.is_hero && !toAct && "border-accent/40",
-        (seat.folded || seat.busted) && "opacity-50",
-      )}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className={cn("truncate font-medium", seat.is_hero ? "text-accent-strong" : "text-fg")}>{seat.name}</span>
-        {seat.is_button && (
-          <span aria-label="Dealer button" className="rounded-full bg-fg px-1.5 text-[10px] font-bold text-canvas">
-            D
-          </span>
-        )}
-      </div>
-      <div className="flex items-center justify-between gap-2 font-mono tabular text-muted">
-        <span>{seat.position ?? (seat.busted ? `out${seat.finish ? ` (${seat.finish})` : ""}` : "—")}</span>
-        <span>{amount(seat.stack, units)}</span>
-      </div>
-      <div className="flex min-h-7 items-center justify-between gap-2">
-        {cards ? (
-          <span className={cn(!seat.cards && "opacity-70")} title={!seat.cards ? "Not shown at the table" : undefined}>
-            <CardRow cards={cards} size="sm" />
-          </span>
-        ) : (
-          <span className="text-subtle">{seat.in_hand && !seat.folded ? "🂠🂠" : ""}</span>
-        )}
-        {seat.street_commit > 0 && (
-          <span className="font-mono text-warn tabular">{amount(seat.street_commit, units)}</span>
-        )}
-      </div>
-      <div className="min-h-4 truncate text-[11px] text-muted" aria-label={`${seat.name} last action`}>
-        {seat.all_in ? <span className="font-semibold text-danger uppercase">all-in</span> : seat.last_action}
-      </div>
-    </div>
-  );
-}
+import { TableFelt } from "./TableFelt";
 
 /** Your live equity against the bots' ranges, and the price when facing a bet. */
 function OddsStrip({ equity, required }: { equity: number; required: number | null }) {
@@ -326,25 +273,7 @@ export function PlayTable({ state, onChange }: { state: PlayState; onChange: (s:
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {t.seats.map((s, i) => (
-          <Seat key={s.name} seat={s} units={t.units} toAct={t.to_act === i} showAll={showAll} />
-        ))}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-4 rounded-lg border border-line bg-surface-2/40 px-3 py-3">
-        <div className="flex min-h-8 items-center gap-1">
-          {t.board.length ? <CardRow cards={t.board} /> : <span className="text-xs text-subtle">No board yet</span>}
-        </div>
-        {t.status === "awaiting_hero" && (
-          <span className="font-mono text-sm tabular text-fg">Pot {amount(t.pot, t.units)}</span>
-        )}
-        {t.status === "hand_over" && t.last_hand_net !== null && (
-          <span className={cn("text-sm font-medium", t.last_hand_net >= 0 ? "text-accent-strong" : "text-danger")}>
-            You {t.last_hand_net >= 0 ? "won" : "lost"} {amount(Math.abs(t.last_hand_net), t.units)}
-          </span>
-        )}
-      </div>
+      <TableFelt t={t} showAll={showAll} />
 
       {t.status !== "awaiting_hero" && t.summary.length > 0 && (
         <ul className="flex flex-col gap-0.5 text-sm text-fg" aria-label="Hand result">
