@@ -31,9 +31,21 @@ CAPABILITIES = [
         status="available",
         detail="Betting rules, side pots, uncalled bets, rake and settlement.",
     ),
-    Capability(key="trainer", name="Trainer", status="planned", detail="Requires validated solver results."),
+    Capability(
+        key="trainer",
+        name="Trainer",
+        status="available",
+        detail="Heads-up push/fold drills graded by EV against the exact equilibrium. Drills for other "
+        "spots wait for validated solutions.",
+    ),
     Capability(key="hand_analysis", name="Hand analysis", status="planned", detail="Hand-history parsing."),
-    Capability(key="analytics", name="Analytics", status="planned", detail="Built from your own hands."),
+    Capability(
+        key="analytics",
+        name="Analytics",
+        status="available",
+        detail="From your own games against the bots and trainer answers; imported hand histories "
+        "are planned.",
+    ),
 ]
 
 
