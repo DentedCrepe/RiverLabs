@@ -250,6 +250,15 @@ def play_report(records: list[dict[str, Any]], tournament: bool) -> dict[str, An
     return result
 
 
+def play_spot(record: dict[str, Any], index: int, config: dict[str, Any], max_bytes: int) -> dict[str, Any]:
+    """A postflop solve spec for one of your heads-up decisions (play_engine::spot::SpotExport),
+    with the richest tree that fits in `max_bytes`."""
+    result: dict[str, Any] = _call(
+        _engine.play_spot, json.dumps(record), index, json.dumps(config), max_bytes
+    )
+    return result
+
+
 def theory(kind: str, params: dict[str, Any]) -> Any:
     """Academy theory calculations (engine `poker-theory`)."""
     return _call(_engine.theory, kind, json.dumps(params))

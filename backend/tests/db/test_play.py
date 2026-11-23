@@ -125,11 +125,38 @@ def test_heads_up_cash_game_is_played_recorded_and_reported(
     assert any("small sample" in c for c in report["caveats"])
     assert all(f["measured_against"] for f in report["findings"])
 
+    # "Solve this spot": a heads-up decision after the flop becomes a postflop solve spec.
+    hand, index = None, -1
+    for _ in range(40):
+        play_hand(client, sid)
+        last_hand = client.get(f"/api/v1/play/sessions/{sid}/hands").json()[-1]
+        spots = [i for i, d in enumerate(last_hand["hero_decisions"]) if d.get("spot")]
+        if spots:
+            hand, index = last_hand, spots[0]
+            break
+    assert hand is not None, "a heads-up postflop decision within 40 hands"
+    url = f"/api/v1/play/sessions/{sid}/hands/{hand['hand_no']}/spot"
+    r = client.get(url, params={"decision": index})
+    assert r.status_code == 200, r.json()
+    spot = r.json()
+    assert len(spot["spec"]["ranges"]) == 2
+    assert len(spot["spec"]["board"]) >= 3
+    assert spot["hero_class"]
+    assert spot["notes"]
+    # The spec is accepted by the solver as is.
+    engine.validate_solve_spec(spot["spec"])
+    preflop = next(i for i, d in enumerate(hand["hero_decisions"]) if d["street"] == "preflop")
+    assert client.get(url, params={"decision": preflop}).status_code == 422
+    missing = f"/api/v1/play/sessions/{sid}/hands/99999/spot"
+    assert client.get(missing, params={"decision": 0}).status_code == 404
+
     left = client.post(f"/api/v1/play/sessions/{sid}/leave").json()
     assert left["session"]["status"] == "finished"
     assert client.post(f"/api/v1/play/sessions/{sid}/next").status_code == 409
     # The report is still available after leaving.
-    assert client.get(f"/api/v1/play/sessions/{sid}/report").status_code == 200
+    final = client.get(f"/api/v1/play/sessions/{sid}/report")
+    assert final.status_code == 200
+    report = final.json()
     with factory() as s:
         row = s.get(PlaySession, uuid.UUID(sid))
         assert row is not None

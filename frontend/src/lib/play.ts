@@ -2,6 +2,7 @@
  * Play against bots: request/response types and the table-config builder. Exact unit
  * conversion only; the engine validates every rule (seats, blinds, stacks).
  */
+import type { LineStep, SolveSpecIn } from "./solve";
 import type { GameConfig } from "./types";
 import { bbToMbb, formatBb, parseScaled } from "./units";
 
@@ -82,6 +83,19 @@ export type HeroDecision = {
   model: { spot: string; class: string; actions: string[]; frequencies: number[]; taken: number | null } | null;
   all_in_call: boolean;
   feedback: Feedback | null;
+  /** Heads-up after the flop: the decision can be solved (engine play_engine::spot::SpotInfo). */
+  spot?: { street: string; board: string[] } | null;
+};
+/** A solve built from one of your decisions (engine play_engine::spot::SpotExport). */
+export type SpotExport = {
+  spec: SolveSpecIn;
+  line: LineStep[];
+  hero_action: LineStep;
+  hero_player: number;
+  hero_cards: string[];
+  hero_class: string;
+  street: string;
+  notes: string[];
 };
 /** A finished hand (engine play_engine::HandRecord). */
 export type HandRecord = {

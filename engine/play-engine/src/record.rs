@@ -61,6 +61,9 @@ pub struct HeroDecision {
     /// Shown to you straight after the decision (same rules as the report; see judge.rs).
     #[serde(default)]
     pub feedback: Option<crate::judge::Feedback>,
+    /// Heads-up after the flop: what "solve this spot" needs (see spot.rs).
+    #[serde(default)]
+    pub spot: Option<crate::spot::SpotInfo>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

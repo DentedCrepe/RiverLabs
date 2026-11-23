@@ -109,13 +109,49 @@ sit & go decisions beyond chip equity (no ICM yet).
   street, with everyone's cards. Each of your decisions shows:
   - the pot, the amount to call, your equity and the price;
   - the verdict;
-  - preflop, the model's frequencies for your hand class, with your choice marked.
+  - preflop, the model's frequencies for your hand class, with your choice marked;
+  - heads-up after the flop, a **Solve this spot** button (below).
 - **Reveal bots' cards** (practice mode) shows their cards during hands. Hands played with it
   on are flagged, and the report says how many there were.
 - **Show all hands** after a hand reveals cards that weren't shown at showdown, without
   flagging anything.
 - **Auto-deal** deals the next hand after a short pause. It stops after a flagged or unusual
   decision so you can read the feedback.
+
+## Solve this spot
+A heads-up decision after the flop has a **Solve this spot** button in the hand review. It
+opens the Solver with a postflop solve filled in (every field can still be edited). When the
+solve finishes, the result walks the real line to your decision and shows the solver's mix
+for your hand class, with your action marked.
+
+What the export contains (`engine/play-engine/src/spot.rs`), recorded at the decision:
+- **Root:** the start of the decision's street: the board, the pot then, and the smaller of the
+  two stacks then. Tournament chips are converted to big blinds (chip EV, no ICM).
+- **Rake:** the table's rake (none for sit & go).
+- **Bot's range:** the range its rules actually played this way, tracked exactly from the
+  probabilities of every decision it made, with weights rounded to 4 decimals.
+- **Your range:** your range at the flop in the bots' preflop model (an approximate model; your
+  real bets are mapped to the nearest model sizes). It is not narrowed by your own actions after
+  the flop. If the hand left the model (e.g. a limp), it is every hand, and the note says to
+  edit it.
+- **Tree:** the sizes used in the hand on that street are always included, as whole
+  percentages in GTOpen's convention (bets: % of the pot; raises: the raise increment as a % of
+  the pot after calling). If an observed bet or raise was all-in, bets of 98% of the stack or more
+  become all-in. Default sizes are added from the richest of these that fits in the solver's
+  memory limit (`RIVERLAB_SOLVER_MAX_MEMORY_MB`):
+  1. 33% and 75% bets and a 100% raise on the street; 33% and 75% bets on later streets;
+  2. the same with only 75% bets on later streets;
+  3. a 75% bet on the street, no default raise; 75% on later streets;
+  4. only the hand's sizes (or a 75% bet where none was made); 75% on later streets.
+
+  Later streets never have raises. The export's notes say which tree was used, and when even the
+  smallest needs more memory than allowed (narrow the ranges then).
+- **Solver:** Discounted CFR, up to 500 iterations, stopping at 0.5% of the pot.
+
+The solve is an approximate equilibrium between these two ranges for this tree, not the bot's
+real strategy and not a verdict on the hand; following the line uses the nearest size in the
+tree for each real action. Preflop and multiway decisions cannot be solved (RiverLab solves only
+heads-up postflop spots).
 
 ## Persistence and limits
 - A game lives in the API process while you play. Every finished hand is stored in

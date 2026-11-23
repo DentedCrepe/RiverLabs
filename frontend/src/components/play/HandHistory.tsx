@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Cpu } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { type HandRecord, type HeroDecision, type RecordAction, amount, describeAction } from "@/lib/play";
 import { useApi } from "@/lib/useApi";
@@ -56,7 +57,7 @@ function ModelBars({ model }: { model: NonNullable<HeroDecision["model"]> }) {
   );
 }
 
-function DecisionView({ d, h }: { d: HeroDecision; h: HandRecord }) {
+function DecisionView({ d, h, solveHref }: { d: HeroDecision; h: HandRecord; solveHref?: string }) {
   const f = d.feedback;
   return (
     <div className="ml-3 flex flex-col gap-2 rounded-md border border-line bg-surface-2/50 px-3 py-2">
@@ -76,19 +77,27 @@ function DecisionView({ d, h }: { d: HeroDecision; h: HandRecord }) {
       </p>
       {d.model && <ModelBars model={d.model} />}
       {f && <p className="text-xs text-muted">{f.detail}</p>}
+      {solveHref && d.spot && (
+        <Link
+          href={solveHref}
+          className="inline-flex w-fit items-center gap-1.5 rounded-md border border-line-strong px-2 py-1 text-xs font-medium text-accent hover:bg-surface-2"
+        >
+          <Cpu aria-hidden className="size-3.5" />
+          Solve this spot
+        </Link>
+      )}
     </div>
   );
 }
 
 /** Street-by-street replay of one hand, with your decisions compared with the references. */
-export function HandReview({ hand: h }: { hand: HandRecord }) {
+export function HandReview({ hand: h, sessionId }: { hand: HandRecord; sessionId?: string }) {
   const u = units(h);
   const hero = h.seats.findIndex((s) => s.is_hero);
   // Your decisions are stored in the order you acted.
   let next = 0;
-  const decisionFor = new Map<RecordAction, HeroDecision>();
-  for (const a of h.actions)
-    if (a.seat === hero && h.hero_decisions[next]) decisionFor.set(a, h.hero_decisions[next++]);
+  const decisionFor = new Map<RecordAction, number>();
+  for (const a of h.actions) if (a.seat === hero && h.hero_decisions[next]) decisionFor.set(a, next++);
   const streets = STREETS.filter((st) => st === "preflop" || h.board.length >= BOARD_LEN[st]);
   return (
     <div className="flex flex-col gap-3">
@@ -128,14 +137,19 @@ export function HandReview({ hand: h }: { hand: HandRecord }) {
               {BOARD_LEN[st] > 0 && <CardRow cards={h.board.slice(0, BOARD_LEN[st])} size="sm" />}
             </h4>
             {acts.map((a, i) => {
-              const d = decisionFor.get(a);
+              const di = decisionFor.get(a);
+              const d = di === undefined ? undefined : h.hero_decisions[di];
+              const solveHref =
+                sessionId && di !== undefined
+                  ? `/solver?game=${sessionId}&hand=${h.hand_no}&decision=${di}`
+                  : undefined;
               return (
                 <div key={i} className="flex flex-col gap-1">
                   <p className={cn("text-xs", a.seat === hero ? "font-medium text-accent-strong" : "text-muted")}>
                     {a.seat === hero ? "You" : h.seats[a.seat].name}{" "}
                     {describeAction(a.action, u, a.all_in, a.seat === hero)}
                   </p>
-                  {d && <DecisionView d={d} h={h} />}
+                  {d && <DecisionView d={d} h={h} solveHref={solveHref} />}
                 </div>
               );
             })}
@@ -197,7 +211,7 @@ export function HandHistory({ sessionId, refreshKey }: { sessionId: string; refr
             </button>
             {isOpen && (
               <div className="mt-2 pb-2 pl-6">
-                <HandReview hand={h} />
+                <HandReview hand={h} sessionId={sessionId} />
               </div>
             )}
           </li>

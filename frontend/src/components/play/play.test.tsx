@@ -245,13 +245,23 @@ describe("hand review", () => {
           model: null,
           all_in_call: false,
           feedback: { verdict: "not_graded", headline: "Not graded", detail: "…", reference: null },
+          spot: { street: "flop", board: ["Ks", "7d", "2c"] },
         },
       ],
       hero_all_in_ev: null,
       revealed: false,
       summary: ["You win 5bb (everyone else folded)"],
     };
-    render(<HandReview hand={hand} />);
+    const { unmount } = render(<HandReview hand={hand} />);
+    expect(screen.queryByRole("link", { name: /Solve this spot/ })).not.toBeInTheDocument();
+    unmount();
+    render(<HandReview hand={hand} sessionId="s1" />);
+    // Only the heads-up postflop decision can be solved.
+    expect(screen.getAllByRole("link", { name: /Solve this spot/ })).toHaveLength(1);
+    expect(screen.getByRole("link", { name: /Solve this spot/ })).toHaveAttribute(
+      "href",
+      `/solver?game=s1&hand=${hand.hand_no}&decision=1`,
+    );
     expect(screen.getByLabelText("Model frequencies for your hand")).toHaveTextContent("Call ← you");
     expect(screen.getByLabelText("Model frequencies for your hand")).toHaveTextContent("65%");
     expect(screen.getByText("Bot 1 (hard) raises to 2.5bb")).toBeInTheDocument();

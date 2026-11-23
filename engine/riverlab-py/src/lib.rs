@@ -614,6 +614,17 @@ fn play_report(py: Python<'_>, records_json: &str, tournament: bool) -> PyResult
     to_json(&report)
 }
 
+/// "Solve this spot": the postflop solve for decision `index` of a hand record (JSON), using the
+/// session's table config (JSON) for the rake, and the richest tree that fits in `max_bytes`.
+/// Returns `play_engine::spot::SpotExport` as JSON.
+#[pyfunction]
+fn play_spot(py: Python<'_>, record_json: &str, index: usize, config_json: &str, max_bytes: u64) -> PyResult<String> {
+    let record: play_engine::HandRecord = serde_json::from_str(record_json).map_err(err)?;
+    let cfg: play_engine::TableConfig = serde_json::from_str(config_json).map_err(err)?;
+    let export = py.detach(|| play_engine::spot::export(&record, index, &cfg, max_bytes)).map_err(play_err)?;
+    to_json(&export)
+}
+
 /// Academy theory calculations. `kind`: pot_odds, bet_math, ev_call, ev_bluff, outs or
 /// regret_matching; `params_json` holds that calculation's inputs. Returns JSON.
 #[pyfunction]
@@ -677,5 +688,6 @@ fn riverlab_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(theory, m)?)?;
     m.add_function(wrap_pyfunction!(validate_table_config, m)?)?;
     m.add_function(wrap_pyfunction!(play_report, m)?)?;
+    m.add_function(wrap_pyfunction!(play_spot, m)?)?;
     Ok(())
 }

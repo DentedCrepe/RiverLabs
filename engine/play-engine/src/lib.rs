@@ -15,6 +15,7 @@ pub mod model;
 pub mod record;
 pub mod report;
 pub mod session;
+pub mod spot;
 pub mod strength;
 pub mod view;
 

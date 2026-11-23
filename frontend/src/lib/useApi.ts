@@ -10,17 +10,18 @@ export interface ApiState<T> {
   reload: () => void;
 }
 
-/** Fetches a GET endpoint on mount (and optionally on an interval). */
-export function useApi<T>(path: string, opts: { refreshMs?: number } = {}): ApiState<T> {
+/** Fetches a GET endpoint on mount (and optionally on an interval). `null`: fetch nothing. */
+export function useApi<T>(path: string | null, opts: { refreshMs?: number } = {}): ApiState<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(path !== null);
   const [tick, setTick] = useState(0);
   const reload = useCallback(() => setTick((t) => t + 1), []);
   // Interval refreshes are marked as polling so they don't keep an idle RiverLab awake.
   const polling = useRef(false);
 
   useEffect(() => {
+    if (path === null) return;
     let cancelled = false;
     const poll = polling.current;
     polling.current = false;
@@ -44,13 +45,13 @@ export function useApi<T>(path: string, opts: { refreshMs?: number } = {}): ApiS
   }, [path, tick]);
 
   useEffect(() => {
-    if (!opts.refreshMs) return;
+    if (!opts.refreshMs || path === null) return;
     const id = setInterval(() => {
       polling.current = true;
       reload();
     }, opts.refreshMs);
     return () => clearInterval(id);
-  }, [opts.refreshMs, reload]);
+  }, [opts.refreshMs, reload, path]);
 
   return { data, error, loading, reload };
 }
