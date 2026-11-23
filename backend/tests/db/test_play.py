@@ -155,6 +155,18 @@ def test_heads_up_cash_game_is_played_recorded_and_reported(
     assert [x["id"] for x in a["sessions"]] == [sid]
     stored = len(client.get(f"/api/v1/play/sessions/{sid}/hands").json())
     assert a["report"]["hands"] == stored
+    # Hands across sessions, newest first, filterable by the feedback's verdict.
+    page = client.get("/api/v1/play/hands", params={"limit": 5}).json()
+    assert page["total"] == stored
+    assert len(page["hands"]) == min(5, stored)
+    assert page["hands"][0]["record"]["hand_no"] == stored
+    assert page["hands"][0]["session_id"] == sid
+    flagged = client.get("/api/v1/play/hands", params={"verdict": "mistake", "limit": 100}).json()
+    for h in flagged["hands"]:
+        assert any(
+            (d.get("feedback") or {}).get("verdict") == "mistake" for d in h["record"]["hero_decisions"]
+        )
+    assert client.get("/api/v1/play/hands", params={"verdict": "ok"}).status_code == 422
     sng = client.get("/api/v1/analytics/play", params={"scope": "sit_and_go"}).json()
     assert sng["sessions"] == []
     assert sng["report"] is None

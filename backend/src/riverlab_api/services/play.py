@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from riverlab_api.db.models import PlayHand, PlaySession
@@ -186,6 +186,28 @@ class PlayManager:
         if hand is None:
             raise NotFoundError(f"Hand {hand_no} not found in this game")
         return engine.play_spot(hand.record, decision, row.config, self._max_bytes)
+
+    def all_hands(self, db: Session, verdict: str | None, limit: int, offset: int) -> dict[str, Any]:
+        """Hands across sessions, newest first, optionally only those with a decision of `verdict`."""
+        q = select(PlayHand, PlaySession).join(PlaySession, PlaySession.id == PlayHand.session_id)
+        if verdict is not None:
+            q = q.where(PlayHand.record["hero_decisions"].contains([{"feedback": {"verdict": verdict}}]))
+        total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+        rows = db.execute(
+            q.order_by(PlaySession.created_at.desc(), PlayHand.hand_no.desc()).limit(limit).offset(offset)
+        ).tuples()
+        return {
+            "total": total,
+            "hands": [
+                {
+                    "session_id": s.id,
+                    "format": s.format,
+                    "session_created_at": s.created_at,
+                    "record": h.record,
+                }
+                for h, s in rows
+            ],
+        }
 
     def list(self, db: Session, limit: int = 50) -> list[PlaySession]:
         q = select(PlaySession).order_by(PlaySession.created_at.desc(), PlaySession.id).limit(limit)
