@@ -7,6 +7,8 @@ import { cn } from "@/components/ui/cn";
 
 const DOT: Record<string, string> = {
   available: "bg-accent",
+  // A hollow amber dot: works, but built on an approximate model (labelled on the page).
+  approximate: "ring-1 ring-warn",
   partial: "bg-info",
   interface_only: "bg-warn",
   planned: "bg-subtle",

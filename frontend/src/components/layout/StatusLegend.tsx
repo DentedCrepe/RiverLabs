@@ -1,5 +1,6 @@
 const ITEMS = [
   ["bg-accent", "Available"],
+  ["ring-1 ring-warn", "Approximate model"],
   ["bg-info", "In development"],
   ["bg-warn", "Interface only"],
   ["bg-subtle", "Planned"],
