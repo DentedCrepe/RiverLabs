@@ -13,11 +13,12 @@ mkdir -p "$RUN"
 pattern() {
   case "$1" in
     api) echo "uvicorn riverlab_api.main:app" ;;
-    web) echo "$DATA/web/riverlab-web/server.js" ;;
+    # Next.js renames its process to "next-server (vX)", so match that, not server.js.
+    web) echo "next-server|next-render-worker|$DATA/web/riverlab-web/server.js" ;;
     watchdog) echo "riverlab.sh watchdog" ;;
   esac
 }
-running() { pgrep -f "$(pattern "$1")" >/dev/null 2>&1; }
+running() { pgrep -f -- "$(pattern "$1")" >/dev/null 2>&1; }
 # Detach from the launching shell, so a home-screen shortcut can exit without taking RiverLab down.
 detach() { if command -v setsid >/dev/null; then setsid nohup "$@"; else nohup "$@"; fi; }
 
@@ -71,7 +72,7 @@ start() {
 stop() {
   for p in watchdog web api; do
     # Never kill this script itself (the watchdog calls stop).
-    pgrep -f "$(pattern "$p")" | grep -vx "$$" | xargs -r kill 2>/dev/null || true
+    pgrep -f -- "$(pattern "$p")" | grep -vx "$$" | xargs -r kill 2>/dev/null || true
     rm -f "$RUN/$p.pid"
   done
   # Wait for the ports to free up, so a following start can bind them.
