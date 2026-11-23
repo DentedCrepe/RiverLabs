@@ -11,7 +11,7 @@ from riverlab_api.api import health
 from riverlab_api.api.v1 import router as v1_router
 from riverlab_api.config import get_settings
 from riverlab_api.errors import install_error_handlers
-from riverlab_api.services import activity, compute, play
+from riverlab_api.services import activity, compute, hand_review, play
 from riverlab_api.services.local_solver import BACKEND_NAME, LocalSolverBackend, fail_interrupted_jobs
 
 logger = logging.getLogger(__name__)
@@ -62,6 +62,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         play.manager = play.PlayManager(
             factory, settings.result_storage_dir, settings.solver_max_memory_mb, settings.solver_threads
         )
+        try:
+            with factory() as session:
+                n = hand_review.fail_interrupted_reviews(session)
+            if n:
+                logger.warning("marked %d unfinished hand review(s) as interrupted", n)
+        except Exception:
+            logger.exception("could not check for interrupted hand reviews (database unavailable?)")
+        hand_review.reviewer = hand_review.HandReviewer(factory, settings.solver_max_memory_mb * 1024 * 1024)
     try:
         yield
     finally:
@@ -71,6 +79,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if play.manager is not None:
             play.manager.shutdown()
             play.manager = None
+        if hand_review.reviewer is not None:
+            hand_review.reviewer.shutdown()
+            hand_review.reviewer = None
 
 
 def create_app() -> FastAPI:

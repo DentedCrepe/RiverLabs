@@ -3,7 +3,15 @@
 import { ChevronRight, Cpu } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import { type HandRecord, type HeroDecision, type RecordAction, amount, describeAction } from "@/lib/play";
+import {
+  type DecisionReview,
+  type HandRecord,
+  type HeroDecision,
+  type RecordAction,
+  amount,
+  describeAction,
+} from "@/lib/play";
+import { SolverDecision, SolverReviewPanel, useSolverReview } from "./SolverReview";
 import { useApi } from "@/lib/useApi";
 import { CardRow } from "@/components/poker/CardText";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/States";
@@ -57,7 +65,17 @@ function ModelBars({ model }: { model: NonNullable<HeroDecision["model"]> }) {
   );
 }
 
-function DecisionView({ d, h, solveHref }: { d: HeroDecision; h: HandRecord; solveHref?: string }) {
+function DecisionView({
+  d,
+  h,
+  solveHref,
+  solver,
+}: {
+  d: HeroDecision;
+  h: HandRecord;
+  solveHref?: string;
+  solver?: DecisionReview;
+}) {
   const f = d.feedback;
   return (
     <div className="ml-3 flex flex-col gap-2 rounded-md border border-line bg-surface-2/50 px-3 py-2">
@@ -77,6 +95,7 @@ function DecisionView({ d, h, solveHref }: { d: HeroDecision; h: HandRecord; sol
       </p>
       {d.model && <ModelBars model={d.model} />}
       {f && <p className="text-xs text-muted">{f.detail}</p>}
+      {solver && <SolverDecision r={solver} />}
       {solveHref && d.spot && (
         <Link
           href={solveHref}
@@ -99,8 +118,15 @@ export function HandReview({ hand: h, sessionId }: { hand: HandRecord; sessionId
   const decisionFor = new Map<RecordAction, number>();
   for (const a of h.actions) if (a.seat === hero && h.hero_decisions[next]) decisionFor.set(a, next++);
   const streets = STREETS.filter((st) => st === "preflop" || h.board.length >= BOARD_LEN[st]);
+  const sr = useSolverReview(sessionId, h.hand_no);
+  const solverFor = new Map<number, DecisionReview>();
+  for (const st of sr.review?.streets ?? []) for (const r of st.review?.decisions ?? []) solverFor.set(r.decision, r);
+  const reviewable = Boolean(sessionId) && h.hero_decisions.some((d) => d.spot);
   return (
     <div className="flex flex-col gap-3">
+      {reviewable && (
+        <SolverReviewPanel review={sr.review} error={sr.error} starting={sr.starting} onStart={sr.start} />
+      )}
       <ul className="grid grid-cols-1 gap-1.5 text-xs sm:grid-cols-2" aria-label="Players">
         {h.seats.map((s, i) => (
           <li
@@ -149,7 +175,14 @@ export function HandReview({ hand: h, sessionId }: { hand: HandRecord; sessionId
                     {a.seat === hero ? "You" : h.seats[a.seat].name}{" "}
                     {describeAction(a.action, u, a.all_in, a.seat === hero)}
                   </p>
-                  {d && <DecisionView d={d} h={h} solveHref={solveHref} />}
+                  {d && (
+                    <DecisionView
+                      d={d}
+                      h={h}
+                      solveHref={solveHref}
+                      solver={di === undefined ? undefined : solverFor.get(di)}
+                    />
+                  )}
                 </div>
               );
             })}

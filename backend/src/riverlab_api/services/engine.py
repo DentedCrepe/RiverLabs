@@ -259,6 +259,37 @@ def play_spot(record: dict[str, Any], index: int, config: dict[str, Any], max_by
     return result
 
 
+def review_streets(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """The streets after the flop where you made decisions, and whether each can be solved."""
+    result: list[dict[str, Any]] = _call(_engine.review_streets, json.dumps(record))
+    return result
+
+
+def review_street_spec(
+    record: dict[str, Any],
+    street: str,
+    config: dict[str, Any],
+    max_bytes: int,
+    carried: list[str] | None,
+) -> dict[str, Any]:
+    """The solve for one street of a hand review (play_engine::review::StreetSpec)."""
+    result: dict[str, Any] = _call(
+        _engine.review_street_spec,
+        json.dumps(record),
+        street,
+        json.dumps(config),
+        max_bytes,
+        None if carried is None else json.dumps(carried),
+    )
+    return result
+
+
+def review_analyze(street_spec: dict[str, Any], path: str) -> dict[str, Any]:
+    """Follows the street's real line through its saved solve (play_engine::review::StreetReview)."""
+    result: dict[str, Any] = _call(_engine.review_analyze, json.dumps(street_spec), path)
+    return result
+
+
 def push_fold_build_table(path: str, progress: Callable[[int, int], None]) -> None:
     """Builds the exact heads-up all-in equity table (tens of minutes) and saves it to `path`."""
     _engine.push_fold_build_table(path, progress)

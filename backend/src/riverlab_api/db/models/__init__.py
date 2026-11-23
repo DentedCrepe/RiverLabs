@@ -11,7 +11,7 @@ from riverlab_api.db.models.academy import (
 )
 from riverlab_api.db.models.config import GameConfig, Position, RakeConfig, StackConfig
 from riverlab_api.db.models.history import HandHistory, PerformanceStat
-from riverlab_api.db.models.play import PlayHand, PlaySession
+from riverlab_api.db.models.play import HandReview, PlayHand, PlaySession
 from riverlab_api.db.models.push_fold import PushFoldAnswer
 from riverlab_api.db.models.ranges import Range, RangeCombo
 from riverlab_api.db.models.solver import (
@@ -35,6 +35,7 @@ __all__ = [
     "AcademyQuestion",
     "GameConfig",
     "HandHistory",
+    "HandReview",
     "JobStatus",
     "PerformanceStat",
     "PlayHand",

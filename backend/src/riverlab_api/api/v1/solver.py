@@ -100,7 +100,7 @@ def library(
     if kind is not None:
         q = q.where(SolverJob.kind == kind)
     out = []
-    for job, result in db.execute(q).tuples():
+    for job, result in db.execute(q).all():
         summary, spec = result.summary, job.spec
         entry = LibraryEntry(
             job_id=job.id,

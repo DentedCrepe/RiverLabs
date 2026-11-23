@@ -129,7 +129,8 @@ What the export contains (`engine/play-engine/src/spot.rs`), recorded at the dec
   two stacks then. Tournament chips are converted to big blinds (chip EV, no ICM).
 - **Rake:** the table's rake (none for sit & go).
 - **Bot's range:** the range its rules actually played this way, tracked exactly from the
-  probabilities of every decision it made, with weights rounded to 4 decimals.
+  probabilities of every decision it made, as it was when the street was dealt (the solve starts
+  there and models the bot's own actions on the street), with weights rounded to 4 decimals.
 - **Your range:** your range at the flop in the bots' preflop model (an approximate model; your
   real bets are mapped to the nearest model sizes). It is not narrowed by your own actions after
   the flop. If the hand left the model (e.g. a limp), it is every hand, and the note says to
@@ -152,6 +153,37 @@ The solve is an approximate equilibrium between these two ranges for this tree, 
 real strategy and not a verdict on the hand; following the line uses the nearest size in the
 tree for each real action. Preflop and multiway decisions cannot be solved (RiverLab solves only
 heads-up postflop spots).
+
+## Solver review of a whole hand
+**Review this hand with the solver** (hand review, heads-up hands after the flop) solves every
+street where you made decisions, one after the other, and shows at each of your decisions the
+solver's mix for your exact hand, the EV of each action, and the EV you lost against the best
+one. Implementation: `engine/play-engine/src/review.rs`, run by `services/hand_review.py`.
+
+- **Which streets:** the flop, turn and river where you acted and only two players were in the
+  hand when the street began. Preflop decisions keep the model comparison above; multiway streets
+  are marked "not solvable" (RiverLab solves heads-up spots only).
+- **First solved street:** the same starting point as "Solve this spot": your range at the flop in
+  the bots' preflop model, and the bot's range as its rules actually played it, tracked exactly,
+  **as it was when the street was dealt** (before its own actions on that street).
+- **Later streets (subgame re-solving):** each starts from both players' ranges at the end of the
+  previous solved street, following what actually happened there: every combination's weight is
+  multiplied by how often the solution takes each real action with it, and hands that collide with
+  the new card are removed. If a street could not be solved, the next one starts afresh from the
+  tracked ranges. If the solution never reaches a street with your hand, your hand is added with
+  a weight of 0.0001 so its strategy can be shown, and a note says so.
+- **Trees:** as for "Solve this spot": the sizes used in the hand plus the richest defaults that fit
+  in the memory limit (each street's notes say which).
+- **Following the line:** each real action is matched to the tree action of the same kind with the
+  nearest size.
+- **EV of an action** for your hand: from the start of that street's solve, net of your half of
+  its starting pot, against the range that reaches the decision, with both players following the
+  solution afterwards. **EV lost** is the best action's EV minus yours (never negative). It is
+  exact for the solved tree; how much it says about real play depends on the tree's bet sizes and
+  the starting ranges.
+
+Each street is an ordinary solve: it appears in the Solver and the Solution Library with its
+exploitability. A review interrupted by a restart is marked as such and can be started again.
 
 ## Persistence and limits
 - A game lives in the API process while you play. Every finished hand is stored in

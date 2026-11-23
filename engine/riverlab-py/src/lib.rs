@@ -684,6 +684,44 @@ impl PushFoldTrainer {
     }
 }
 
+/// Solver review of a whole hand: the streets you made decisions on, and which can be solved.
+#[pyfunction]
+fn review_streets(record_json: &str) -> PyResult<String> {
+    let record: play_engine::HandRecord = serde_json::from_str(record_json).map_err(err)?;
+    to_json(&play_engine::review::streets(&record))
+}
+
+/// The solve for one street of a hand review. `carried_json`: `[oop, ip]` ranges from the end of
+/// the previous solved street, or None to start from the preflop model and the tracked range.
+#[pyfunction]
+#[pyo3(signature = (record_json, street, config_json, max_bytes, carried_json=None))]
+fn review_street_spec(
+    py: Python<'_>,
+    record_json: &str,
+    street: &str,
+    config_json: &str,
+    max_bytes: u64,
+    carried_json: Option<&str>,
+) -> PyResult<String> {
+    let record: play_engine::HandRecord = serde_json::from_str(record_json).map_err(err)?;
+    let cfg: play_engine::TableConfig = serde_json::from_str(config_json).map_err(err)?;
+    let carried: Option<[String; 2]> = carried_json.map(serde_json::from_str).transpose().map_err(err)?;
+    let spec =
+        py.detach(|| play_engine::review::street_spec(&record, street, &cfg, max_bytes, carried)).map_err(play_err)?;
+    to_json(&spec)
+}
+
+/// Follows a street's real line through its saved solve (GIL released).
+#[pyfunction]
+fn review_analyze(py: Python<'_>, street_spec_json: &str, path: &str) -> PyResult<String> {
+    let s: play_engine::review::StreetSpec = serde_json::from_str(street_spec_json).map_err(err)?;
+    let review = py.detach(|| {
+        let solved = solver_gtopen::load(&s.spec, path).map_err(|e| play_engine::PlayError::Engine(e.to_string()))?;
+        play_engine::review::analyze(&solved, &s)
+    });
+    to_json(&review.map_err(play_err)?)
+}
+
 /// Academy theory calculations. `kind`: pot_odds, bet_math, ev_call, ev_bluff, outs or
 /// regret_matching; `params_json` holds that calculation's inputs. Returns JSON.
 #[pyfunction]
@@ -761,6 +799,9 @@ fn riverlab_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(validate_table_config, m)?)?;
     m.add_function(wrap_pyfunction!(play_report, m)?)?;
     m.add_function(wrap_pyfunction!(play_spot, m)?)?;
+    m.add_function(wrap_pyfunction!(review_streets, m)?)?;
+    m.add_function(wrap_pyfunction!(review_street_spec, m)?)?;
+    m.add_function(wrap_pyfunction!(review_analyze, m)?)?;
     m.add_function(wrap_pyfunction!(push_fold_build_table, m)?)?;
     m.add_class::<PushFoldTrainer>()?;
     Ok(())

@@ -8,8 +8,9 @@ from sqlalchemy.orm import Session
 
 from riverlab_api.db.models import PlaySession
 from riverlab_api.db.session import get_db
+from riverlab_api.errors import NotFoundError
 from riverlab_api.schemas.play import PlayAction, PlaySessionCreate, PlaySessionOut, PlayState, RevealIn
-from riverlab_api.services import play
+from riverlab_api.services import hand_review, play
 
 router = APIRouter(prefix="/play", tags=["play"])
 DbSession = Annotated[Session, Depends(get_db)]
@@ -103,6 +104,21 @@ def spot(
 ) -> dict[str, Any]:
     """A postflop solve spec for one of your heads-up decisions after the flop (SpotExport)."""
     return play.require().spot(db, session_id, hand_no, decision)
+
+
+@router.post("/sessions/{session_id}/hands/{hand_no}/review", status_code=202)
+def start_review(session_id: uuid.UUID, hand_no: int, db: DbSession) -> dict[str, Any]:
+    """Solver review of the whole hand: one chained postflop solve per street, in the background."""
+    reviewer = hand_review.require()
+    return hand_review.review_out(reviewer.start(db, session_id, hand_no), db)
+
+
+@router.get("/sessions/{session_id}/hands/{hand_no}/review")
+def get_review(session_id: uuid.UUID, hand_no: int, db: DbSession) -> dict[str, Any]:
+    row = hand_review.require().get(db, session_id, hand_no)
+    if row is None:
+        raise NotFoundError(f"Hand {hand_no} has no solver review yet")
+    return hand_review.review_out(row, db)
 
 
 @router.delete("/sessions/{session_id}", status_code=204)
