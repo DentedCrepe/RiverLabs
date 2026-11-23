@@ -148,3 +148,31 @@ class PreflopResultOut(StrictModel):
     nodes: int
     root: PreflopNodeOut
     tree_available: bool
+
+
+class LibraryEntry(StrictModel):
+    """One saved result, with what defines it and how good it is."""
+
+    job_id: UUID
+    kind: str
+    finished_at: datetime | None
+    engine_version: str
+    solver_backend: str
+    solver_version: str
+    iterations: int
+    stop_reason: str | None
+    tree_available: bool
+    # Postflop
+    board: list[str] | None = None
+    ranges: list[str] | None = None
+    starting_pot_mbb: int | None = None
+    effective_stack_mbb: int | None = None
+    exploitability_mbb: float | None = None
+    exploitability_pct_pot: float | None = None
+    independent_check: bool | None = None
+    approximations: int = 0
+    # Preflop (an approximate model unless validated_scope says otherwise)
+    players: int | None = None
+    positions: list[str] | None = None
+    validated_scope: str | None = None
+    model_gap_mbb: float | None = None

@@ -2,6 +2,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from riverlab_api.db.models import SolverJob, SolverResult
@@ -10,6 +11,7 @@ from riverlab_api.errors import NotFoundError
 from riverlab_api.schemas.solver import (
     ClassStrategy,
     IndependentCheck,
+    LibraryEntry,
     NodeViewOut,
     PreflopNodeOut,
     PreflopResultOut,
@@ -80,6 +82,54 @@ def list_jobs(
     kind: Annotated[str | None, Query(pattern="^(postflop|preflop)$")] = None,
 ) -> list[SolverJobOut]:
     return [_out(j) for j in compute.JobService(db).list(limit, kind)]
+
+
+@router.get("/library", response_model=list[LibraryEntry])
+def library(
+    db: DbSession,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    kind: Annotated[str | None, Query(pattern="^(postflop|preflop)$")] = None,
+) -> list[LibraryEntry]:
+    """Every saved result, newest first, with its configuration and quality measures."""
+    q = (
+        select(SolverJob, SolverResult)
+        .join(SolverResult, SolverResult.job_id == SolverJob.id)
+        .order_by(SolverJob.finished_at.desc().nulls_last(), SolverJob.id)
+        .limit(limit)
+    )
+    if kind is not None:
+        q = q.where(SolverJob.kind == kind)
+    out = []
+    for job, result in db.execute(q).tuples():
+        summary, spec = result.summary, job.spec
+        entry = LibraryEntry(
+            job_id=job.id,
+            kind=job.kind,
+            finished_at=job.finished_at,
+            engine_version=result.engine_version,
+            solver_backend=result.solver_backend,
+            solver_version=result.solver_version,
+            iterations=result.iterations,
+            stop_reason=summary.get("stop_reason"),
+            tree_available=_tree_available(result),
+        )
+        if job.kind == "postflop":
+            entry.board = spec.get("board")
+            entry.ranges = spec.get("ranges")
+            entry.starting_pot_mbb = spec.get("starting_pot_mbb")
+            entry.effective_stack_mbb = spec.get("effective_stack_mbb")
+            entry.exploitability_mbb = result.exploitability
+            entry.exploitability_pct_pot = summary.get("exploitability_pct_pot")
+            entry.independent_check = bool(summary.get("independent_check", {}).get("performed"))
+            entry.approximations = len(result.assumptions.get("approximations", []))
+        else:
+            entry.players = spec.get("game", {}).get("players")
+            entry.positions = summary.get("positions")
+            entry.validated_scope = result.assumptions.get("validated_scope")
+            entry.model_gap_mbb = summary.get("model_gap_mbb")
+            entry.effective_stack_mbb = spec.get("game", {}).get("stack", {}).get("effective_stack")
+        out.append(entry)
+    return out
 
 
 @router.get("/jobs/{job_id}", response_model=SolverJobOut)

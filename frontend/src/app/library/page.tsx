@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
+import { Library } from "@/components/library/Library";
 import { Card, CardBody } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { EmptyState } from "@/components/ui/States";
 
 export const metadata: Metadata = { title: "Solution Library" };
 
@@ -10,15 +10,12 @@ export default function Page() {
     <>
       <PageHeader
         title="Solution Library"
-        status="planned"
-        description="Saved solver results with their full configuration, engine version and exploitability."
+        status="available"
+        description="Every saved solver result with its full configuration, engine and solver versions, and its exploitability (postflop) or model gap (preflop, an approximate model unless marked validated)."
       />
       <Card>
         <CardBody>
-          <EmptyState
-            title="No solutions"
-            description="The library is empty because no solver has produced a result yet."
-          />
+          <Library />
         </CardBody>
       </Card>
     </>
