@@ -71,7 +71,13 @@ pip install --quiet "maturin>=1.9,<2"
 export CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16
 rm -rf "$DATA/wheels"
 maturin build --release -m "$REPO/engine/riverlab-py/Cargo.toml" -o "$DATA/wheels"
-pip install --force-reinstall --no-deps "$DATA"/wheels/riverlab_engine-*.whl
+# Rust tags the wheel for Android (android_<api>_arm64_v8a); Termux's Python only accepts its
+# own platform tag (e.g. linux_aarch64). Retag the wheel with what this pip accepts.
+PLAT="$(python -c 'from pip._vendor.packaging import tags; print(next(iter(tags.sys_tags())).platform)')"
+for whl in "$DATA"/wheels/riverlab_engine-*.whl; do
+  case "$whl" in *"-$PLAT.whl") ;; *) python -m wheel tags --remove --platform-tag "$PLAT" "$whl" >/dev/null ;; esac
+done
+pip install --force-reinstall --no-deps "$DATA"/wheels/riverlab_engine-*-"$PLAT".whl
 pip install --quiet --no-deps -e "$REPO/backend"
 python -c "import riverlab_engine; print('engine', riverlab_engine.engine_version())"
 
