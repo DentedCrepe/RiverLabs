@@ -5,6 +5,7 @@
 #   scripts/test.sh engine     only the Rust engine
 #   scripts/test.sh backend    only the backend (needs PostgreSQL; started automatically)
 #   scripts/test.sh frontend   only the frontend
+#   scripts/test.sh e2e        only the end-to-end browser tests (scripts/e2e.sh)
 source "$(dirname "$0")/lib.sh"
 target="${1:-all}"
 
@@ -38,17 +39,23 @@ frontend() {
   npm test --silent
 }
 
+e2e() {
+  bash "$ROOT/scripts/e2e.sh"
+}
+
 # Each step runs in its own subshell as a plain command (never inside && / || lists), so
 # `set -e` stays active inside the step and any failing command aborts the script.
 case "$target" in
   engine) (engine) ;;
   backend) (backend) ;;
   frontend) (frontend) ;;
+  e2e) (e2e) ;;
   all)
     (engine)
     (backend)
     (frontend)
+    (e2e)
     ;;
-  *) die "unknown target '$target' (engine|backend|frontend|all)" ;;
+  *) die "unknown target '$target' (engine|backend|frontend|e2e|all)" ;;
 esac
 say "All checks passed ($target)"
