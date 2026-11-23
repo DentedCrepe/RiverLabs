@@ -12,6 +12,10 @@ poker-core.workspace = true
 hand-evaluator.workspace = true
 range-engine.workspace = true
 thiserror.workspace = true
+rayon.workspace = true
+
+[dev-dependencies]
+equity-engine.workspace = true
 
 [lints]
 workspace = true

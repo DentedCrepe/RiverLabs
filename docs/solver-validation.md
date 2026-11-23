@@ -34,11 +34,38 @@ The hand-solved value (IP −2bb) and the wide-river value (OOP +3.6726bb, agree
 independent solvers) also match. These run as automated tests in
 `engine/solver-gtopen/tests/validation.rs` on every `scripts/test.sh`.
 
+## GTOpen preflop: heads-up push/fold in the exact game
+Ground truth (`solver-validation::push_fold`) works on all 1,326 combos with full card
+removal. Every pairwise all-in equity comes from exact enumeration of all 1,712,304 boards with
+RiverLab's evaluator; a fast enumerator is checked against the general equity engine to 1e-12.
+The table takes ~20 minutes on 4 cores; its A♠A♥ vs K♠K♥ entry is 0.826366, matching the
+phevaluator-validated value. The exact game is solved with CFR+ and verified by exact best
+response. GTOpen's class-level strategies are then scored in that exact game.
+Reproduce: `cargo run --release -p solver-validation --example build_hu_equity`, then
+`cargo run --release -p solver-gtopen --example validate_push_fold`.
+
+| Stack | Strategy | SB jams | BB calls | SB EV (bb) | Exploitability in exact game (bb/hand) |
+|---|---|---|---|---|---|
+| 10bb | Exact (RiverLab) | 58.3% | 37.4% | −0.04537 | 0.000000 |
+| | GTOpen, blocker model on | 58.6% | 37.3% | −0.04536 | 0.00002 |
+| | GTOpen, blocker model off | 58.2% | 37.0% | −0.04570 | 0.00079 |
+| 20bb | Exact (RiverLab) | 40.2% | 21.7% | −0.18319 | 0.000000 |
+| | GTOpen, blocker model on | 40.0% | 21.7% | −0.18319 | 0.00000 |
+| | GTOpen, blocker model off | 40.0% | 20.7% | −0.18340 | 0.00153 |
+
+With its blocker model (`card_removal`) on, GTOpen's push/fold is essentially exact. The only
+classes differing by more than 25 points (43s at 10bb, Q5s at 20bb) are near-indifferent mixes.
+With it off, a few marginal classes flip and the strategy is measurably exploitable.
+**RiverLab must run GTOpen preflop with `card_removal` on.** This validates only the all-in
+part of GTOpen's preflop. Leaves that continue to the flop use GTOpen's modelled values and
+remain unvalidated.
+
 ## What is not validated yet
 - Turn and flop solves (chance nodes): the validator handles river trees only. The audit
   cross-checked turn values between three solvers (`solver-comparison.md`), but RiverLab's own
   best response does not cover them yet.
-- GTOpen's preflop model (see `solver-comparison.md`); the push/fold check is in progress.
+- GTOpen's preflop leaves that continue postflop (modelled values; see `solver-comparison.md`).
+  Push/fold (all-in) is validated above.
 - Kuhn/Leduc-style toy games for future in-house CFR variants.
 - Miri on GTOpen's `unsafe` code.
 

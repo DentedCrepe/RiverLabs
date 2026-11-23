@@ -418,3 +418,80 @@ impl Solved {
         Ok(me)
     }
 }
+
+/// GTOpen's heads-up push/fold preflop strategy at class level (169 hand classes), for
+/// validation against RiverLab's exact combo-level solution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClassPushFold {
+    /// Class label (e.g. "AKs") → small blind's jam frequency.
+    pub jam: std::collections::HashMap<String, f64>,
+    /// Class label → big blind's call frequency facing the jam.
+    pub call: std::collections::HashMap<String, f64>,
+}
+
+/// Runs GTOpen's preflop solver on heads-up jam/fold at `stack` bb (blinds 0.5/1, no ante, no
+/// rake), with its Monte Carlo class equity table of `equity_samples` per class pair.
+/// `card_removal` toggles GTOpen's blocker model.
+pub fn gtopen_hu_push_fold(
+    stack: f64,
+    card_removal: bool,
+    equity_samples: u32,
+    iterations: usize,
+) -> Result<ClassPushFold, AdapterError> {
+    use gtopen::preflop::equity::{EquityTable, NUM_CLASSES, class_label};
+    use gtopen::preflop::{PreflopConfig, PreflopSolver};
+    let cfg = PreflopConfig {
+        bb_ante: 0.0,
+        leaf_net: None,
+        card_removal,
+        limper_extra: 0.0,
+        caller_extra: 0.0,
+        raise_mults_oop: None,
+        fourbet_mults_oop: None,
+        utg_straddle: false,
+        positions: vec!["SB".into(), "BB".into()],
+        stack,
+        stacks: None,
+        posts: vec![0.5, 1.0],
+        ante: 0.0,
+        limp: false,
+        open_raises: vec![],
+        raise_mults: vec![],
+        max_raises: 1,
+        add_allin: true,
+        allin_threshold: 0.85,
+        rake_pct: 0.0,
+        rake_cap: 0.0,
+        no_flop_no_drop: true,
+        realization: "raw".into(),
+        call_only_seats: vec![],
+        open_raises_by_seat: None,
+        fourbet_mults: None,
+        fourbet_mults_by_seat: None,
+        raise_mults_by_seat: None,
+        icm: None,
+    };
+    let eq = Arc::new(EquityTable::build(equity_samples));
+    let mut s = PreflopSolver::new(cfg, eq).map_err(AdapterError::Backend)?;
+    for _ in 0..iterations {
+        s.iterate();
+    }
+    let find = |node: usize, kind: &str| {
+        s.nodes[node]
+            .actions
+            .iter()
+            .position(|a| a.kind == kind)
+            .ok_or_else(|| AdapterError::Backend(format!("no {kind} action at preflop node {node}")))
+    };
+    let jam_a = find(0, "jam")?;
+    let bb = s.child(0, jam_a);
+    let call_a = find(bb, "call")?;
+    let sb_strat = s.average_strategy(0);
+    let bb_strat = s.average_strategy(bb);
+    let mut out = ClassPushFold { jam: Default::default(), call: Default::default() };
+    for h in 0..NUM_CLASSES {
+        out.jam.insert(class_label(h), sb_strat[jam_a * NUM_CLASSES + h] as f64);
+        out.call.insert(class_label(h), bb_strat[call_a * NUM_CLASSES + h] as f64);
+    }
+    Ok(out)
+}
