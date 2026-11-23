@@ -90,6 +90,7 @@ const table = (patch: Partial<TableView>): PlayState => ({
     created_at: "",
     finished_at: null,
     config: {},
+    tracked: true,
   },
   table: {
     status: "awaiting_hero",

@@ -1,4 +1,13 @@
-# Guest mode
+# Untracked games and guest mode
+
+## One untracked table
+
+Tick **Don't count this game in my stats** when you start a table on the Play page. The game is
+stored with `play_sessions.tracked = false`: you can replay its hands and ask for solver reviews,
+and it shows in your game list marked **Not tracked**, but it never counts towards your hands
+goal, streak, Analytics, weaknesses, batch reviews or solver leaks.
+
+## Guest mode
 
 Guest mode lets someone else train on your RiverLab (on your phone, say) without changing your
 statistics. Turn it on with **Guest mode** in the top bar; a banner stays at the top of every
@@ -15,8 +24,8 @@ sends `X-RiverLab-Guest: 1` with every API request (`src/lib/api.ts`, forwarded 
 | Bookmarks | Locked (403 `guest_mode`). |
 | Push/fold and postflop drills | Graded as usual; the answer is **not stored** (no Analytics, no study count). |
 | Play against bots | Games are played and stored with `play_sessions.tracked = false`, so a guest can replay their hands and ask for a solver review of one. They never count towards the hands goal, streak, Analytics, weaknesses, batch reviews or solver leaks. |
-| Game lists (Play history, Hand Analysis) | Show guest games only; your games show only with guest mode off. |
-| Deleting games | A guest can delete only guest games. |
+| Game lists (Play history, Hand Analysis) | Show untracked games only. With guest mode off you see every game, untracked ones marked **Not tracked**. |
+| Deleting games | A guest can delete only untracked games. |
 | Batch solver reviews | Locked: they look for leaks in your hands. |
 | Daily goals | Shown, but the targets cannot be changed. |
 | Solver, Library, equity tools | Unchanged: these are not statistics. A solve a guest runs appears in your Library. |

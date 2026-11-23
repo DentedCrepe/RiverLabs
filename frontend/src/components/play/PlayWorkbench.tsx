@@ -35,6 +35,7 @@ function Setup({ onCreated }: { onCreated: (s: PlayState) => void }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [apiError, setApiError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [untracked, setUntracked] = useState(false);
   const selected =
     configs.data?.find((c) => c.id === configId) ?? configs.data?.find((c) => c.builtin) ?? configs.data?.[0];
   const set = (patch: Partial<PlayForm>) => setForm((f) => ({ ...f, ...patch }));
@@ -48,7 +49,12 @@ function Setup({ onCreated }: { onCreated: (s: PlayState) => void }) {
     setErrors({});
     setBusy(true);
     try {
-      onCreated(await api.post<PlayState>("/api/v1/play/sessions", { config: r.config }));
+      onCreated(
+        await api.post<PlayState>("/api/v1/play/sessions", {
+          config: r.config,
+          tracked: !untracked,
+        }),
+      );
     } catch (err) {
       setApiError(err instanceof ApiError ? err.message : String(err));
     } finally {
@@ -142,6 +148,21 @@ function Setup({ onCreated }: { onCreated: (s: PlayState) => void }) {
           </>
         )}
       </div>
+      <label className="inline-flex items-start gap-2 text-sm text-fg">
+        <input
+          type="checkbox"
+          className="mt-0.5 size-4 accent-[var(--color-accent)]"
+          checked={untracked}
+          onChange={(e) => setUntracked(e.target.checked)}
+        />
+        <span>
+          Don&apos;t count this game in my stats
+          <span className="block text-xs text-subtle">
+            For a friend or a test: the hands are kept and can be replayed, but never count towards your goals, streak,
+            Analytics, weaknesses or leaks.
+          </span>
+        </span>
+      </label>
       <p className="text-xs text-subtle">
         Bots play preflop from GTOpen&apos;s preflop model (an approximate model) and postflop by simple, documented
         rules; they are practice opponents, not solvers. A new table shape takes up to a minute to prepare the first
@@ -179,6 +200,7 @@ function Games({
           <li key={g.id} className="flex flex-wrap items-center gap-3 py-2 text-xs">
             <span className="rounded bg-surface-3 px-1.5 py-px font-medium uppercase">{g.status}</span>
             <span className="text-fg">{FORMAT_LABEL[g.format]}</span>
+            {!g.tracked && <span className="rounded border border-warn/40 px-1.5 py-px text-warn">Not tracked</span>}
             <span className="font-mono text-muted tabular">
               {g.hands} hands · {g.hero_net >= 0 ? "+" : "−"}
               {amount(Math.abs(g.hero_net), units)}

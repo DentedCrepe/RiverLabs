@@ -199,15 +199,13 @@ class PlayManager:
         return engine.play_spot(hand.record, decision, row.config, self._max_bytes)
 
     def all_hands(
-        self, db: Session, verdict: str | None, limit: int, offset: int, tracked: bool = True
+        self, db: Session, verdict: str | None, limit: int, offset: int, only_untracked: bool = False
     ) -> dict[str, Any]:
-        """Hands across sessions, newest first, optionally only those with a decision of `verdict`.
-        `tracked`: your games (True) or guest games (False)."""
-        q = (
-            select(PlayHand, PlaySession)
-            .join(PlaySession, PlaySession.id == PlayHand.session_id)
-            .where(PlaySession.tracked.is_(tracked))
-        )
+        """Hands across sessions, newest first, optionally only those with a decision of `verdict`
+        and (guest mode) only from untracked games."""
+        q = select(PlayHand, PlaySession).join(PlaySession, PlaySession.id == PlayHand.session_id)
+        if only_untracked:
+            q = q.where(PlaySession.tracked.is_(False))
         if verdict is not None:
             q = q.where(PlayHand.record["hero_decisions"].contains([{"feedback": {"verdict": verdict}}]))
         total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
@@ -227,13 +225,11 @@ class PlayManager:
             ],
         }
 
-    def list(self, db: Session, limit: int = 50, tracked: bool = True) -> list[PlaySession]:
-        q = (
-            select(PlaySession)
-            .where(PlaySession.tracked.is_(tracked))
-            .order_by(PlaySession.created_at.desc(), PlaySession.id)
-            .limit(limit)
-        )
+    def list(self, db: Session, limit: int = 50, only_untracked: bool = False) -> list[PlaySession]:
+        q = select(PlaySession)
+        if only_untracked:
+            q = q.where(PlaySession.tracked.is_(False))
+        q = q.order_by(PlaySession.created_at.desc(), PlaySession.id).limit(limit)
         return list(db.scalars(q))
 
 

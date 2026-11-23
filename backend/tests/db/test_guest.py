@@ -75,10 +75,11 @@ def test_guest_games_are_hidden_from_the_owners_statistics(
     db.flush()
 
     assert db_client.get("/api/v1/goals/today").json()["today"]["hands"] == 1
-    assert [s["id"] for s in db_client.get("/api/v1/play/sessions").json()] == [str(mine.id)]
+    owner_list = db_client.get("/api/v1/play/sessions").json()
+    assert {(s["id"], s["tracked"]) for s in owner_list} == {(str(mine.id), True), (str(theirs.id), False)}
     guest_list = db_client.get("/api/v1/play/sessions", headers=GUEST).json()
     assert [(s["id"], s["tracked"]) for s in guest_list] == [(str(theirs.id), False)]
-    assert db_client.get("/api/v1/play/hands").json()["total"] == 1
+    assert db_client.get("/api/v1/play/hands").json()["total"] == 3, "the owner can browse every game"
     assert db_client.get("/api/v1/play/hands", headers=GUEST).json()["total"] == 2
     # Analytics: a guest sit & go (no hand records needed for the listing) is not yours.
     db.add(PlaySession(format="sit_and_go", config={}, status="finished", hands=3, tracked=False))
@@ -115,3 +116,10 @@ def test_guest_push_fold_answers_are_not_stored(
     assert _count(db, PushFoldAnswer) == 0
     db_client.post("/api/v1/trainer/push-fold/answer", json=body)
     assert _count(db, PushFoldAnswer) == 1
+
+
+def test_a_table_can_be_started_untracked() -> None:
+    from riverlab_api.schemas.play import PlaySessionCreate
+
+    assert PlaySessionCreate(config={}).tracked is True
+    assert PlaySessionCreate(config={}, tracked=False).tracked is False

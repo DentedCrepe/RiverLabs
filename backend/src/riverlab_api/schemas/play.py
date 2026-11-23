@@ -8,6 +8,8 @@ from riverlab_api.schemas.common import StrictModel
 class PlaySessionCreate(StrictModel):
     # play_engine::TableConfig; the engine validates its contents.
     config: dict[str, Any]
+    # False: the game never counts towards your statistics (always false in guest mode).
+    tracked: bool = True
 
 
 class PlayAction(StrictModel):

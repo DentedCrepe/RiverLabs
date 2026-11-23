@@ -150,6 +150,8 @@ export type PlaySessionInfo = {
   created_at: string;
   finished_at: string | null;
   config: Record<string, unknown>;
+  /** False for a game that does not count towards your statistics (ticked at the start, or guest mode). */
+  tracked: boolean;
 };
 export type PlayState = { session: PlaySessionInfo; table: TableView | null };
 export type Finding = {

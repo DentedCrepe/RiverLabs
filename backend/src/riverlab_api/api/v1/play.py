@@ -43,9 +43,9 @@ def _state(db: Session, session_id: uuid.UUID, table: dict[str, Any] | None) -> 
 @router.post("/sessions", response_model=PlayState, status_code=201)
 def create_session(body: PlaySessionCreate, db: DbSession, guest: Guest) -> PlayState:
     """Creates a table. Its status is "preparing" until the bots' preflop model is ready.
-    In guest mode the game is not tracked: it never counts towards your statistics."""
+    With `tracked` false, or in guest mode, it never counts towards your statistics."""
     m = play.require()
-    row = m.create(db, body.config, tracked=not guest)
+    row = m.create(db, body.config, tracked=body.tracked and not guest)
     return _state(db, row.id, m.view(db, row.id))
 
 
@@ -53,8 +53,8 @@ def create_session(body: PlaySessionCreate, db: DbSession, guest: Guest) -> Play
 def list_sessions(
     db: DbSession, guest: Guest, limit: Annotated[int, Query(ge=1, le=200)] = 50
 ) -> list[PlaySessionOut]:
-    """Your games, or in guest mode only the guest games."""
-    return [_out(r) for r in play.require().list(db, limit, tracked=not guest)]
+    """All games (untracked ones are marked), or in guest mode only untracked games."""
+    return [_out(r) for r in play.require().list(db, limit, only_untracked=guest)]
 
 
 @router.get("/sessions/{session_id}", response_model=PlayState)
@@ -103,8 +103,8 @@ def all_hands(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> dict[str, Any]:
     """Your hands from every session, newest first; `verdict` keeps hands with a decision the
-    feedback flagged ("mistake") or found unusual ("rare"). In guest mode, only guest games."""
-    return play.require().all_hands(db, verdict, limit, offset, tracked=not guest)
+    feedback flagged ("mistake") or found unusual ("rare"). In guest mode, only untracked games."""
+    return play.require().all_hands(db, verdict, limit, offset, only_untracked=guest)
 
 
 @router.get("/sessions/{session_id}/hands/{hand_no}")

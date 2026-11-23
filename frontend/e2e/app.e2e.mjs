@@ -120,6 +120,7 @@ describe("RiverLab end to end", () => {
     const form = page.getByRole("form", { name: "New game" });
     await form.getByLabel("Seats (including you)").selectOption("2");
     await form.getByLabel("Bot difficulty").selectOption("medium");
+    await form.getByLabel(/Don't count this game in my stats/).check();
     await form.getByRole("button", { name: "Sit down" }).click();
     await page.getByRole("button", { name: /Deal the first hand/ }).click({ timeout: LONG });
     const bar = page.getByLabel("Your action");
@@ -139,6 +140,18 @@ describe("RiverLab end to end", () => {
     const history = page.getByLabel("Hand history");
     await history.getByRole("button").first().click();
     await page.getByLabel("Players").first().waitFor();
+    // The box was ticked: the game is labelled and its hand does not count towards today's goal.
+    await page.goto(`${URL}/play`);
+    await page.getByText("Not tracked").first().waitFor();
+    await page.goto(URL);
+    await page.getByText("day streak").waitFor();
+    assert.match(
+      await page
+        .getByText(/^\d+ \/ \d+$/)
+        .first()
+        .textContent(),
+      /^0 \//,
+    );
   });
 
   it("deals and grades a push/fold drill", async (t) => {
