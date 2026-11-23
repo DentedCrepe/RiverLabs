@@ -345,3 +345,39 @@ fn saved_trees_reload_and_can_be_browsed() {
     assert!(loaded.node_view(&[PathStep::Action(check), PathStep::Action(ip_check), PathStep::Card(ks)]).is_err());
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// Per-hand EVs along a line, on the hand-solved toy spot (pot 10bb, IP may bet the pot, all-in):
+/// at equilibrium IP's bluffs and OOP's bluff-catchers are indifferent, so their two actions are
+/// worth the same, and the value bets strictly prefer betting.
+#[test]
+fn hand_at_gives_per_hand_action_evs_that_satisfy_indifference() {
+    use range_engine::Combo;
+    use solver_gtopen::PathStep;
+    let s = solve(&toy(RakeConfig::none()), &AtomicBool::new(false), |_| {}).unwrap();
+    let c = |x: &str| Combo::from(x.parse::<poker_core::HoleCards>().unwrap());
+    let root = s.hand_at(&[], 0, c("AhQh")).unwrap();
+    assert_eq!(root.actions, ["check"]);
+    let after_check = [PathStep::Action(0)];
+    let bluff = s.hand_at(&after_check, 1, c("4h3c")).unwrap();
+    assert_eq!(bluff.actions, ["check", "bet 10bb"]);
+    let ev = bluff.action_evs_mbb.unwrap();
+    // Net of IP's half of the starting pot: checking 4-high loses 5bb; bluffing is indifferent.
+    assert!((ev[0] + 5000.0).abs() < 1.0 && (ev[1] - ev[0]).abs() < 30.0, "{ev:?}");
+    let value = s.hand_at(&after_check, 1, c("KhKd")).unwrap();
+    let v = value.action_evs_mbb.unwrap();
+    assert!(v[1] > v[0] + 1000.0, "kings gain by betting: {v:?}");
+    assert!(value.strategy.unwrap()[1] > 0.99);
+    // Facing the bet, the bluff-catcher folds or calls for the same EV; folding loses 5bb for every hand.
+    let facing = [PathStep::Action(0), PathStep::Action(1)];
+    for hand in ["AhQh", "AcQc"] {
+        let h = s.hand_at(&facing, 0, c(hand)).unwrap();
+        assert_eq!(h.actions, ["fold", "call 10bb"]);
+        let e = h.action_evs_mbb.unwrap();
+        assert!((e[0] + 5000.0).abs() < 1.0 && (e[1] - e[0]).abs() < 30.0, "{hand}: {e:?}");
+    }
+    // The opponent's hand is not given a strategy, and ranges are reported with their reach.
+    let other = s.hand_at(&facing, 1, c("KhKd")).unwrap();
+    assert!(other.strategy.is_none() && other.action_evs_mbb.is_none());
+    assert!(other.ranges[1].iter().all(|(_, w)| *w > 0.0));
+    assert!(other.reach_fraction[1] < 1.0, "IP's checks are no longer in its range after a bet");
+}

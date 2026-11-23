@@ -222,3 +222,68 @@ fn heads_up_river_spot_exports_a_solvable_tree_containing_the_line() {
     assert!(matching_action(&node.actions, &ex.hero_action).is_some(), "{:?}", node.actions);
     assert!(node.by_class.iter().any(|c| c.label == ex.hero_class), "your hand is in the solved range");
 }
+
+#[test]
+fn whole_hand_review_chains_street_solves() {
+    use play_engine::review;
+    let cfg = TableConfig {
+        format: Format::Cash { game: GameConfig { players: 2, ..GameConfig::default() }, auto_rebuy: true },
+        opponents: vec![Difficulty::Medium],
+        seed: 23,
+    };
+    let models = cache();
+    let mut s = Session::new(cfg.clone()).unwrap();
+    let mut found = None;
+    for _ in 0..300 {
+        s.start_hand(&models).unwrap();
+        while s.status() == SessionStatus::AwaitingHero {
+            let v = s.view();
+            let l = v.legal.clone().unwrap();
+            let a = match (v.board.len(), l.bet) {
+                (4, Some((min, _))) => Action::Bet { to: poker_core::Chips(min.max(v.pot / 2)) },
+                _ if l.check => Action::Check,
+                _ => Action::Call,
+            };
+            s.act(a).unwrap();
+        }
+        let r = s.records().last().unwrap();
+        let st = review::streets(r);
+        let ok = |name: &str| st.iter().any(|x| x.street == name && x.solvable);
+        if ok("turn") && ok("river") {
+            found = Some(r.clone());
+            break;
+        }
+    }
+    let record = found.expect("a hand with heads-up turn and river decisions");
+    let quick = |mut spec: review::StreetSpec| {
+        spec.spec.solver.stopping.max_iterations = 40;
+        spec.spec.solver.stopping.exploitability_check_interval = 40;
+        spec
+    };
+    let turn = quick(review::street_spec(&record, "turn", &cfg, 300 << 20, None).unwrap());
+    assert_eq!(turn.spec.board.cards().len(), 4);
+    assert!(turn.next_card.is_some(), "the hand reached the river");
+    let solved = solver_gtopen::solve(&turn.spec, &std::sync::atomic::AtomicBool::new(false), |_| {}).unwrap();
+    let a = review::analyze(&solved, &turn).unwrap();
+    assert!(a.followed, "{:?}", a.notes);
+    let turn_decisions = review::streets(&record).into_iter().find(|x| x.street == "turn").unwrap().decisions;
+    assert_eq!(a.decisions.iter().map(|d| d.decision).collect::<Vec<_>>(), turn_decisions);
+    for d in &a.decisions {
+        let mix = d.strategy.as_ref().expect("your hand is in your range");
+        assert!((mix.iter().sum::<f64>() - 1.0).abs() < 1e-3);
+        assert!(d.ev_loss_bb.unwrap() >= 0.0);
+        assert_eq!(d.action_evs_bb.as_ref().unwrap().len(), d.actions.len());
+    }
+    // The river starts from the turn solution's ranges along the real line.
+    let carried = a.next_ranges.clone().expect("ranges carried to the river");
+    let river = quick(review::street_spec(&record, "river", &cfg, 300 << 20, Some(carried.clone())).unwrap());
+    assert!(river.notes.iter().any(|n| n.contains("subgame re-solving")));
+    assert_eq!(river.spec.ranges[1 - river.hero_player as usize], carried[1 - river.hero_player as usize]);
+    let solved = solver_gtopen::solve(&river.spec, &std::sync::atomic::AtomicBool::new(false), |_| {}).unwrap();
+    let r = review::analyze(&solved, &river).unwrap();
+    assert!(r.followed, "{:?}", r.notes);
+    assert!(r.next_ranges.is_none(), "nothing after the river");
+    assert!(!r.decisions.is_empty());
+    // Preflop decisions are not part of the solver review.
+    assert!(review::streets(&record).iter().all(|x| x.street != "preflop"));
+}

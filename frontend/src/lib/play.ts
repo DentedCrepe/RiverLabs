@@ -272,3 +272,37 @@ export function parseAmount(s: string, units: "bb" | "chips"): number | null {
 }
 
 export const pct = (r: Ratio) => (r.opportunities ? `${((r.made / r.opportunities) * 100).toFixed(0)}%` : "—");
+
+/** What the solver says about one of your decisions (engine play_engine::review::DecisionReview). */
+export type DecisionReview = {
+  decision: number;
+  before: string[];
+  actions: string[];
+  strategy: number[] | null;
+  action_evs_bb: number[] | null;
+  taken: number;
+  best: number | null;
+  ev_loss_bb: number | null;
+};
+
+/** One street of a solver review of a hand. */
+export type ReviewStreet = {
+  street: string;
+  decisions: number[];
+  solvable: boolean;
+  note: string | null;
+  status: "pending" | "solving" | "done" | "failed" | "skipped";
+  job_id?: string;
+  job_status?: string;
+  progress?: { iterations?: number; exploitability_pct_pot?: number };
+  notes?: string[];
+  error?: string;
+  review?: { decisions: DecisionReview[]; followed: boolean; notes: string[]; next_ranges: string[] | null };
+};
+
+export type HandSolverReview = {
+  id: string;
+  status: "queued" | "running" | "done" | "failed" | "interrupted";
+  streets: ReviewStreet[];
+  error_message: string | null;
+};

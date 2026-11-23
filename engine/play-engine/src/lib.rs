@@ -15,6 +15,7 @@ pub mod model;
 pub mod push_fold;
 pub mod record;
 pub mod report;
+pub mod review;
 pub mod session;
 pub mod spot;
 pub mod strength;

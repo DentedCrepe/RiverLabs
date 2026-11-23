@@ -501,6 +501,35 @@ pub struct NodeView {
     pub reach_fraction: [f64; 2],
 }
 
+struct Walk {
+    idx: u32,
+    combos: [Vec<Combo>; 2],
+    reach: [Vec<f64>; 2],
+    start: [f64; 2],
+    board: Vec<Card>,
+    dealt: gtopen::game::Dealt,
+}
+
+/// One hand at one node of a solved tree (see [`Solved::hand_at`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct HandAtNode {
+    /// "decision", "chance", "fold" or "showdown".
+    pub kind: String,
+    pub player: Option<usize>,
+    pub actions: Vec<String>,
+    /// At a decision of the hand's player: the solver's average strategy for this exact hand.
+    pub strategy: Option<Vec<f64>>,
+    /// At a decision of the hand's player: the expected value (mbb) of each action for this hand,
+    /// against the opponent's range as it reaches this node, with both players following the
+    /// solved strategy afterwards. Measured from the start of the solved street.
+    pub action_evs_mbb: Option<Vec<f64>>,
+    /// Each player's range here: every hand with its reach (range weight times that player's own
+    /// action probabilities along the path; hands blocked by dealt cards are dropped).
+    pub ranges: [Vec<(Combo, f64)>; 2],
+    pub reach_fraction: [f64; 2],
+    pub board: Vec<String>,
+}
+
 /// Loads a solve saved by [`Solved::save`], re-deriving the spot from the same spec. The spec
 /// must be the one the file was solved from (checked against the saved spot).
 pub fn load(spec: &SolveSpec, path: &str) -> Result<Solved, AdapterError> {
@@ -552,8 +581,10 @@ impl Solved {
         self.solver.save(path).map_err(AdapterError::Backend)
     }
 
-    /// The node reached from the root by `path`, with reach-weighted class strategies.
-    pub fn node_view(&self, path: &[PathStep]) -> Result<NodeView, AdapterError> {
+    /// Follows `path` from the root: the node reached, each player's reach per hand (their range
+    /// weight times their own action probabilities, zero for hands blocked by dealt cards), and
+    /// the board and cards dealt on the way.
+    fn walk(&self, path: &[PathStep]) -> Result<Walk, AdapterError> {
         let tree = &self.solver.spot.tree;
         let hands = &self.solver.spot.hands;
         let combos: [Vec<Combo>; 2] = std::array::from_fn(|p| {
@@ -566,6 +597,7 @@ impl Solved {
         let start: [f64; 2] = std::array::from_fn(|p| reach[p].iter().sum());
         let mut board =
             Card::parse_many(&self.prepared.config.board).map_err(|e| AdapterError::Backend(e.to_string()))?;
+        let mut dealt = gtopen::game::Dealt::default();
         let bad = |m: String| Err(AdapterError::InvalidSpec(m));
         let mut idx = 0u32;
         for (k, step) in path.iter().enumerate() {
@@ -599,11 +631,20 @@ impl Solved {
                         }
                     }
                     board.push(*c);
+                    dealt = dealt.push(gt);
                     idx = child;
                 }
                 _ => return bad(format!("step {k} ({step:?}) does not match the node there")),
             }
         }
+        Ok(Walk { idx, combos, reach, start, board, dealt })
+    }
+
+    /// The node reached from the root by `path`, with reach-weighted class strategies.
+    pub fn node_view(&self, path: &[PathStep]) -> Result<NodeView, AdapterError> {
+        let tree = &self.solver.spot.tree;
+        let hands = &self.solver.spot.hands;
+        let Walk { idx, combos, reach, start, board, .. } = self.walk(path)?;
         let node = &tree.nodes[idx as usize];
         let street = match board.len() {
             3 => "flop",
@@ -676,6 +717,71 @@ impl Solved {
             _ => view.kind = "showdown".into(),
         }
         Ok(view)
+    }
+
+    /// `combo` (held by `player`) at the node reached by `path`: its strategy and the EV of each
+    /// action there (when it is that player's decision), and both players' ranges.
+    pub fn hand_at(&self, path: &[PathStep], player: usize, combo: Combo) -> Result<HandAtNode, AdapterError> {
+        if player > 1 {
+            return Err(AdapterError::InvalidSpec("player must be 0 (out of position) or 1".into()));
+        }
+        let tree = &self.solver.spot.tree;
+        let w = self.walk(path)?;
+        let node = &tree.nodes[w.idx as usize];
+        let kind = match node.kind {
+            KIND_ACTION => "decision",
+            KIND_CHANCE => "chance",
+            KIND_TERM_FOLD => "fold",
+            _ => "showdown",
+        };
+        let mut out = HandAtNode {
+            kind: kind.into(),
+            player: (node.kind == KIND_ACTION || node.kind == KIND_TERM_FOLD).then_some(node.player as usize),
+            actions: Vec::new(),
+            strategy: None,
+            action_evs_mbb: None,
+            ranges: std::array::from_fn(|p| {
+                w.combos[p].iter().zip(&w.reach[p]).filter(|(_, r)| **r > 0.0).map(|(c, r)| (*c, *r)).collect()
+            }),
+            reach_fraction: std::array::from_fn(|p| {
+                if w.start[p] > 0.0 { w.reach[p].iter().sum::<f64>() / w.start[p] } else { 0.0 }
+            }),
+            board: w.board.iter().map(|c| c.to_string()).collect(),
+        };
+        if node.kind != KIND_ACTION {
+            return Ok(out);
+        }
+        let n_act = node.num_children as usize;
+        out.actions = (0..n_act).map(|a| action_label(&tree.actions[node.actions_start as usize + a])).collect();
+        if node.player as usize != player {
+            return Ok(out);
+        }
+        let Some(i) = w.combos[player].iter().position(|c| *c == combo) else {
+            return Ok(out); // not in this player's range at all
+        };
+        let nh = w.combos[player].len();
+        let sigma = self.solver.average_strategy(w.idx, node);
+        out.strategy = Some((0..n_act).map(|a| sigma[a * nh + i] as f64).collect());
+        // Counterfactual values below each child, normalised by the opponent reach that does not
+        // collide with this hand: the hand's expected value for each action.
+        let opp = 1 - player;
+        let reach_o: Vec<f32> = w.reach[opp].iter().map(|&r| r as f32).collect();
+        let norm: f64 = w.combos[opp]
+            .iter()
+            .zip(&w.reach[opp])
+            .filter(|(c, _)| !c.card_set().intersects(combo.card_set()))
+            .map(|(_, r)| *r)
+            .sum();
+        if norm > 0.0 {
+            let evs = (0..n_act)
+                .map(|a| {
+                    let child = tree.children[node.children_start as usize + a];
+                    self.solver.traverse_avg(child, player, &reach_o, w.dealt)[i] as f64 / norm
+                })
+                .collect();
+            out.action_evs_mbb = Some(evs);
+        }
+        Ok(out)
     }
 
     /// Recomputes values and exploitability with RiverLab's own validator, if the exported tree

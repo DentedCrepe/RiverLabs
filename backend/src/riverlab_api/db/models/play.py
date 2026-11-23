@@ -54,3 +54,27 @@ class PlayHand(UUIDPk, CreatedAt, Base):
     session: Mapped[PlaySession] = relationship(back_populates="hand_records")
 
     __table_args__ = (UniqueConstraint("session_id", "hand_no"),)
+
+
+class HandReview(UUIDPk, Timestamps, Base):
+    """A solver review of one hand: one postflop solve per street, chained (play_engine::review)."""
+
+    __tablename__ = "hand_reviews"
+
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("play_sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    hand_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    # queued -> running -> done | failed; "interrupted" when the server restarted mid-review.
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="queued")
+    # Per street: {street, decisions, solvable, note, status, job_id, notes, review}.
+    streets: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("session_id", "hand_no"),
+        CheckConstraint(
+            "status IN ('queued', 'running', 'done', 'failed', 'interrupted')", name="review_status"
+        ),
+    )

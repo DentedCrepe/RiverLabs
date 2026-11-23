@@ -54,7 +54,8 @@ pub struct SpotInfo {
     /// The street's actions before your decision.
     pub line: Vec<SpotStep>,
     pub hero_action: SpotStep,
-    /// The bot's tracked range (exact for its policy; weights rounded to 4 decimals).
+    /// The bot's tracked range when the street was dealt, before its actions on this street
+    /// (exact for its policy; weights rounded to 4 decimals).
     pub opponent_range: String,
     /// Your range from the bots' preflop model at the flop (`None`: the hand left the model).
     pub hero_range: Option<String>,
@@ -83,7 +84,7 @@ pub struct SpotExport {
     pub notes: Vec<String>,
 }
 
-fn round4(w: f64) -> f64 {
+pub(crate) fn round4(w: f64) -> f64 {
     (w.clamp(0.0, 1.0) * 10_000.0).round() / 10_000.0
 }
 
@@ -103,7 +104,7 @@ pub fn class_notation<'a>(classes: impl IntoIterator<Item = (&'a str, f64)>) -> 
     (!r.is_empty()).then(|| r.to_notation())
 }
 
-fn pct(num: u64, den: u64) -> Option<u32> {
+pub(crate) fn pct(num: u64, den: u64) -> Option<u32> {
     (den > 0).then(|| ((num as f64 * 100.0 / den as f64).round() as u32).clamp(1, 10_000))
 }
 
@@ -182,7 +183,7 @@ pub fn capture(
 
 /// How rich an exported tree is. The sizes used in the hand are always added on its street.
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct TreeShape {
+pub(crate) struct TreeShape {
     /// Default bets on the decision street.
     bets: &'static [u32],
     /// Default raise on the decision street.
@@ -192,7 +193,7 @@ struct TreeShape {
 }
 
 /// From richest to leanest; the first that fits in memory is used.
-const TREES: [TreeShape; 4] = [
+pub(crate) const TREES: [TreeShape; 4] = [
     TreeShape { bets: &DEFAULT_BETS, raise: true, later: &DEFAULT_BETS },
     TreeShape { bets: &DEFAULT_BETS, raise: true, later: &[75] },
     TreeShape { bets: &[75], raise: false, later: &[75] },
@@ -200,11 +201,11 @@ const TREES: [TreeShape; 4] = [
 ];
 
 /// Bet and raise sizes used on the decision street, per solver player.
-struct Observed {
-    bets: [Vec<u32>; 2],
-    raises: [Vec<u32>; 2],
-    raise_count: u8,
-    all_in: bool,
+pub(crate) struct Observed {
+    pub(crate) bets: [Vec<u32>; 2],
+    pub(crate) raises: [Vec<u32>; 2],
+    pub(crate) raise_count: u8,
+    pub(crate) all_in: bool,
 }
 
 fn observed_sizes(spot: &SpotInfo, player: impl Fn(bool) -> u8) -> Observed {
@@ -224,7 +225,7 @@ fn observed_sizes(spot: &SpotInfo, player: impl Fn(bool) -> u8) -> Observed {
     o
 }
 
-fn tree_at(o: &Observed, s: usize, shape: TreeShape) -> TreeAbstraction {
+pub(crate) fn tree_at(o: &Observed, s: usize, shape: TreeShape) -> TreeAbstraction {
     let mut sizing = [PlayerSizing::default(), PlayerSizing::default()];
     for (p, z) in sizing.iter_mut().enumerate() {
         let mut bets: Vec<u32> = shape.bets.iter().copied().chain(o.bets[p].iter().copied()).collect();
@@ -256,7 +257,7 @@ fn tree_at(o: &Observed, s: usize, shape: TreeShape) -> TreeAbstraction {
     }
 }
 
-fn describe_tree(shape: TreeShape, street: &str, s: usize) -> String {
+pub(crate) fn describe_tree(shape: TreeShape, street: &str, s: usize) -> String {
     let pcts = |v: &[u32]| v.iter().map(|b| format!("{b}%")).collect::<Vec<_>>().join(" and ");
     let mut text = if shape.bets.is_empty() {
         format!("Tree: on the {street}, only the sizes used in the hand (or a 75% bet where none was made)")

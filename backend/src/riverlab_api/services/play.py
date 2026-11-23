@@ -195,7 +195,7 @@ class PlayManager:
         total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
         rows = db.execute(
             q.order_by(PlaySession.created_at.desc(), PlayHand.hand_no.desc()).limit(limit).offset(offset)
-        ).tuples()
+        ).all()
         return {
             "total": total,
             "hands": [

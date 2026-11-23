@@ -56,6 +56,9 @@ struct Hand {
     hero_odds: Option<HeroOdds>,
     /// Your range at the flop in the bots' preflop model (for "solve this spot").
     hero_range: Option<String>,
+    /// The tracked ranges when the current street was dealt: a solve of a street starts there,
+    /// before the bot's own actions on that street narrow its range.
+    street_ranges: Vec<Vec<f64>>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -293,6 +296,7 @@ impl Session {
             decisions: 0,
             hero_odds: None,
             hero_range: None,
+            street_ranges: vec![],
         });
         self.hand_no += 1;
         self.run()
@@ -368,6 +372,7 @@ impl Session {
                     let k = if street == Street::Flop { 3 } else { 1 };
                     let cards: Vec<Card> = (0..k).map(|_| hand.deck.pop().expect("deck")).collect();
                     hand.state.deal_board(&cards)?;
+                    hand.street_ranges = hand.ranges.clone();
                     hand.model_path = None; // the preflop model ends at the flop
                 }
                 Phase::Showdown => {
@@ -709,7 +714,7 @@ fn hero_decision(hand: &mut Hand, seat: usize, action: Action) -> HeroDecision {
         model: model_check,
         all_in_call: legal.and_then(|l| l.call).is_some_and(|c| c == state.players()[seat].stack),
         feedback: None,
-        spot: crate::spot::capture(state, seat, action, |k| hand.ranges[k].clone(), hand.hero_range.clone()),
+        spot: crate::spot::capture(state, seat, action, |k| hand.street_ranges[k].clone(), hand.hero_range.clone()),
     }
 }
 
