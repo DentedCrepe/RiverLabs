@@ -18,6 +18,7 @@ range-engine.workspace = true
 equity-engine.workspace = true
 solver-interface.workspace = true
 play-engine = { path = "../play-engine" }
+solver-validation.workspace = true
 poker-theory = { path = "../poker-theory" }
 solver-gtopen = { path = "../solver-gtopen" }
 serde.workspace = true

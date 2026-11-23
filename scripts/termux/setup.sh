@@ -132,6 +132,22 @@ if [ "$(cat "$DATA/web/VERSION" 2>/dev/null)" != "$TREE" ]; then
   echo "$TREE" > "$DATA/web/VERSION"
 fi
 
+step "push/fold trainer equity table"
+# Exact all-in equities for the trainer (7 MB; ~20+ minutes to build on a phone). A pre-built copy
+# is published on the android-web branch; RiverLab re-computes sample entries exactly before
+# using it, and can still build it in the app if this download fails.
+TABLE="$DATA/solver-results/hu_combo_equity.bin"
+if [ ! -f "$TABLE" ]; then
+  mkdir -p "$DATA/solver-results"
+  if curl -fsSL "https://raw.githubusercontent.com/DentedCrepe/riverlabs/android-web/hu_combo_equity.bin.gz" \
+      -o "$TABLE.gz" && gunzip -f "$TABLE.gz"; then
+    echo "downloaded"
+  else
+    rm -f "$TABLE.gz" "$TABLE"
+    echo "!! Could not download it; the Trainer page can build it instead." >&2
+  fi
+fi
+
 step "installing the riverlab command"
 cat > "$PREFIX/bin/riverlab" <<EOF
 #!/data/data/com.termux/files/usr/bin/bash

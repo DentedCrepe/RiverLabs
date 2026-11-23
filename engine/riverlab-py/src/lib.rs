@@ -625,6 +625,65 @@ fn play_spot(py: Python<'_>, record_json: &str, index: usize, config_json: &str,
     to_json(&export)
 }
 
+/// Builds the exact heads-up all-in equity table for the push/fold trainer and saves it to `path`
+/// (tens of minutes; about 47k exact enumerations). `progress(done, total)` is called as it goes.
+#[pyfunction]
+fn push_fold_build_table(py: Python<'_>, path: &str, progress: Py<PyAny>) -> PyResult<()> {
+    let path = std::path::PathBuf::from(path);
+    py.detach(|| {
+        let t = solver_validation::push_fold::ComboEquities::compute_with_progress(|done, total| {
+            Python::attach(|py| {
+                if let Err(e) = progress.call1(py, (done, total)) {
+                    e.print(py);
+                }
+            });
+        });
+        t.save(&path)
+    })
+    .map_err(err)
+}
+
+/// Push/fold drills graded against the exact heads-up equilibrium. Loading verifies the table
+/// (structure, symmetry and `samples` entries re-computed exactly).
+#[pyclass(frozen)]
+struct PushFoldTrainer {
+    inner: play_engine::push_fold::PushFoldTrainer,
+}
+
+#[pymethods]
+impl PushFoldTrainer {
+    #[new]
+    fn new(py: Python<'_>, path: &str, samples: usize) -> PyResult<Self> {
+        let path = std::path::PathBuf::from(path);
+        let eq = py.detach(|| {
+            let eq = solver_validation::push_fold::ComboEquities::load(&path)
+                .ok_or_else(|| format!("{} is missing or is not an equity table", path.display()))?;
+            eq.verify(samples, 0x5EED).map(|()| eq)
+        });
+        let eq = eq.map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("equity table rejected: {e}")))?;
+        Ok(PushFoldTrainer { inner: play_engine::push_fold::PushFoldTrainer::new(std::sync::Arc::new(eq)) })
+    }
+
+    /// `seat`: "sb", "bb" or None (random). Stacks in mbb.
+    #[pyo3(signature = (min_mbb, max_mbb, seat, seed))]
+    fn drill(&self, py: Python<'_>, min_mbb: u64, max_mbb: u64, seat: Option<&str>, seed: u64) -> PyResult<String> {
+        let seat =
+            seat.map(|s| serde_json::from_value(serde_json::Value::String(s.into()))).transpose().map_err(err)?;
+        to_json(&py.detach(|| self.inner.drill(min_mbb, max_mbb, seat, seed)).map_err(play_err)?)
+    }
+
+    /// `drill_json`: a drill; `choice`: "fold" or "play" (jam or call). Solves the depth on first use.
+    fn grade(&self, py: Python<'_>, drill_json: &str, choice: &str) -> PyResult<String> {
+        let drill: play_engine::push_fold::Drill = serde_json::from_str(drill_json).map_err(err)?;
+        let choice = serde_json::from_value(serde_json::Value::String(choice.into())).map_err(err)?;
+        to_json(&py.detach(|| self.inner.grade(&drill, choice)).map_err(play_err)?)
+    }
+
+    fn chart(&self, py: Python<'_>, stack_mbb: u64) -> PyResult<String> {
+        to_json(&py.detach(|| self.inner.chart(stack_mbb)).map_err(play_err)?)
+    }
+}
+
 /// Academy theory calculations. `kind`: pot_odds, bet_math, ev_call, ev_bluff, outs or
 /// regret_matching; `params_json` holds that calculation's inputs. Returns JSON.
 #[pyfunction]
@@ -689,5 +748,7 @@ fn riverlab_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(validate_table_config, m)?)?;
     m.add_function(wrap_pyfunction!(play_report, m)?)?;
     m.add_function(wrap_pyfunction!(play_spot, m)?)?;
+    m.add_function(wrap_pyfunction!(push_fold_build_table, m)?)?;
+    m.add_class::<PushFoldTrainer>()?;
     Ok(())
 }

@@ -103,6 +103,11 @@ impl ComboEquities {
     /// Computes the full table (one exact enumeration per suit-isomorphism class of unordered
     /// pairs, about 47k), in parallel. Takes minutes; see [`ComboEquities::load_or_compute`].
     pub fn compute() -> ComboEquities {
+        Self::compute_with_progress(|_, _| {})
+    }
+
+    /// Like [`ComboEquities::compute`], calling `progress(done, total)` as exact enumerations finish.
+    pub fn compute_with_progress(progress: impl Fn(usize, usize) + Sync) -> ComboEquities {
         let perms = suit_perms();
         let combos: Vec<Combo> = Combo::all().collect();
         // Canonical representative of each unordered pair.
@@ -125,11 +130,17 @@ impl ComboEquities {
             }
         }
         let keys: Vec<(usize, usize)> = reps.keys().copied().collect();
+        let done = std::sync::atomic::AtomicUsize::new(0);
         let values: Vec<f64> = keys
             .par_iter()
             .map(|&(a, b)| {
                 let (ca, cb) = (combos[a], combos[b]);
-                exact_pair_equity(ca.card_set().bits(), cb.card_set().bits())
+                let v = exact_pair_equity(ca.card_set().bits(), cb.card_set().bits());
+                let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                if n % 256 == 0 || n == keys.len() {
+                    progress(n, keys.len());
+                }
+                v
             })
             .collect();
         for (k, v) in keys.into_iter().zip(values) {
@@ -158,26 +169,79 @@ impl ComboEquities {
         ComboEquities { eq }
     }
 
-    /// Loads a cached table, or computes and caches it.
-    pub fn load_or_compute(path: &Path) -> std::io::Result<ComboEquities> {
-        if let Ok(mut f) = std::fs::File::open(path) {
-            let mut buf = Vec::new();
-            f.read_to_end(&mut buf)?;
-            if buf.len() == 8 + 4 * COMBO_COUNT * COMBO_COUNT && &buf[..8] == MAGIC {
-                let eq = buf[8..].chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect();
-                return Ok(ComboEquities { eq });
+    /// Loads a cached table; `None` if the file is missing or not a table.
+    pub fn load(path: &Path) -> Option<ComboEquities> {
+        let mut f = std::fs::File::open(path).ok()?;
+        let mut buf = Vec::new();
+        f.read_to_end(&mut buf).ok()?;
+        (buf.len() == 8 + 4 * COMBO_COUNT * COMBO_COUNT && &buf[..8] == MAGIC).then(|| ComboEquities {
+            eq: buf[8..].chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect(),
+        })
+    }
+
+    /// Re-computes `samples` pseudo-random entries exactly and compares them (a check that a
+    /// loaded or downloaded table is intact). Also checks every entry is in [0, 1] or `NaN`
+    /// exactly where the combos share a card, and that `eq(i, j) + eq(j, i) = 1`.
+    pub fn verify(&self, samples: usize, seed: u64) -> Result<(), String> {
+        let combos: Vec<Combo> = Combo::all().collect();
+        for (i, x) in combos.iter().enumerate() {
+            for (j, y) in combos.iter().enumerate() {
+                let v = self.get(i, j);
+                let shared = i == j || x.card_set().intersects(y.card_set());
+                if shared != v.is_nan() || (!shared && !(0.0..=1.0).contains(&v)) {
+                    return Err(format!("entry {x} v {y} is {v}"));
+                }
+                if !shared && j > i && (v + self.get(j, i) - 1.0).abs() > 1e-5 {
+                    return Err(format!("{x} v {y} and {y} v {x} do not sum to 1"));
+                }
             }
         }
+        let mut state = seed | 1;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state % COMBO_COUNT as u64) as usize
+        };
+        let mut checked = 0;
+        while checked < samples {
+            let (i, j) = (next(), next());
+            if self.get(i, j).is_nan() {
+                continue;
+            }
+            let exact = exact_pair_equity(combos[i].card_set().bits(), combos[j].card_set().bits());
+            if (exact - self.get(i, j) as f64).abs() > 1e-5 {
+                return Err(format!("{} v {}: table {} but exact {exact}", combos[i], combos[j], self.get(i, j)));
+            }
+            checked += 1;
+        }
+        Ok(())
+    }
+
+    /// Loads a cached table, or computes and caches it.
+    pub fn load_or_compute(path: &Path) -> std::io::Result<ComboEquities> {
+        if let Some(t) = Self::load(path) {
+            return Ok(t);
+        }
         let t = ComboEquities::compute();
+        t.save(path)?;
+        Ok(t)
+    }
+
+    /// Writes the table (an 8-byte header and little-endian f32s).
+    pub fn save(&self, path: &Path) -> std::io::Result<()> {
+        let t = self;
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        let mut f = std::fs::File::create(path)?;
+        let tmp = path.with_extension("partial");
+        let mut f = std::fs::File::create(&tmp)?;
         f.write_all(MAGIC)?;
-        for v in &t.eq {
-            f.write_all(&v.to_le_bytes())?;
-        }
-        Ok(t)
+        let bytes: Vec<u8> = t.eq.iter().flat_map(|v| v.to_le_bytes()).collect();
+        // Write then rename, so an interrupted save never leaves a truncated table.
+        f.write_all(&bytes)?;
+        drop(f);
+        std::fs::rename(&tmp, path)
     }
 }
 
@@ -250,6 +314,30 @@ pub fn evaluate(eq: &ComboEquities, stack: f64, profile: &PushFold) -> PushFoldE
     let bb_ev = -ev;
     let nash_conv = (sb_best - ev) + (bb_best - bb_ev);
     PushFoldEvaluation { sb_ev: ev, sb_best, bb_best, exploitability: nash_conv / 2.0 }
+}
+
+/// Each combo's expected value (bb, from the start of the hand, blinds included) of the
+/// non-fold action against the other seat's `profile`: the small blind jamming, and the big blind
+/// calling a jam. Folding is worth −0.5 (small blind) and −1 (big blind facing a jam).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ComboEvs {
+    pub jam: Vec<f64>,
+    /// `NaN` where the small blind never jams a hand compatible with this combo.
+    pub call: Vec<f64>,
+}
+
+pub fn combo_evs(eq: &ComboEquities, stack: f64, profile: &PushFold) -> ComboEvs {
+    let g = Game { eq, stack };
+    let jam = (0..COMBO_COUNT).into_par_iter().map(|i| g.jam_value(i, &profile.call) / OPPONENTS).collect();
+    let call = (0..COMBO_COUNT)
+        .into_par_iter()
+        .map(|j| {
+            let (call, fold, _) = g.bb_values(j, &profile.jam);
+            // `fold` is minus the jam weight facing this combo; normalise to "given a jam".
+            if fold < 0.0 { call / -fold } else { f64::NAN }
+        })
+        .collect();
+    ComboEvs { jam, call }
 }
 
 /// Solves exact push/fold with CFR+ (regret floor at zero, linear averaging).
@@ -343,6 +431,25 @@ mod tests {
         let lazy = PushFold { jam: vec![1.0; COMBO_COUNT], call: vec![0.0; COMBO_COUNT] };
         let e = evaluate(&eq, 10.0, &lazy);
         assert!((e.sb_ev - 1.0).abs() < 1e-9 && (e.bb_best - 0.0).abs() < 1e-9, "{e:?}");
+    }
+
+    #[test]
+    fn verification_rejects_tables_that_are_not_exact() {
+        // Symmetric and well-formed, but not the real equities: caught by exact re-computation.
+        let fake = ComboEquities::from_fn(|_, _| 0.5);
+        assert!(fake.verify(0, 1).is_ok());
+        assert!(fake.verify(3, 1).unwrap_err().contains("exact"));
+        // Not symmetric.
+        let skewed = ComboEquities::from_fn(|_, _| 0.6);
+        assert!(skewed.verify(0, 1).unwrap_err().contains("sum to 1"));
+        // A real table round-trips through save and load.
+        let dir = std::env::temp_dir().join(format!("riverlab-eq-{}", std::process::id()));
+        let path = dir.join("t.bin");
+        fake.save(&path).unwrap();
+        assert_eq!(ComboEquities::load(&path).unwrap().get(0, 100), 0.5);
+        std::fs::write(&path, b"short").unwrap();
+        assert!(ComboEquities::load(&path).is_none());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

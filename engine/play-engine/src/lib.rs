@@ -12,6 +12,7 @@ pub mod bot;
 pub mod config;
 pub mod judge;
 pub mod model;
+pub mod push_fold;
 pub mod record;
 pub mod report;
 pub mod session;

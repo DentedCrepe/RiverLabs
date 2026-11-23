@@ -71,8 +71,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     href: "/trainer",
     label: "Trainer",
     icon: Target,
-    status: "planned",
-    description: "Drills graded against validated solutions",
+    status: "partial",
+    description: "Heads-up push/fold drills graded against the exact equilibrium; more drills planned",
   },
   {
     href: "/hand-analysis",

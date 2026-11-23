@@ -306,6 +306,7 @@ dependencies = [
  "serde_json",
  "solver-gtopen",
  "solver-interface",
+ "solver-validation",
  "thiserror",
 ]
 
@@ -548,6 +549,7 @@ dependencies = [
  "serde_json",
  "solver-gtopen",
  "solver-interface",
+ "solver-validation",
 ]
 
 [[package]]

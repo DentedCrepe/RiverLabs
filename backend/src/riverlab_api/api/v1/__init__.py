@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from riverlab_api.api.v1 import academy, config, meta, play, poker, solver, theory
+from riverlab_api.api.v1 import academy, config, meta, play, poker, solver, theory, trainer
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(meta.router)
@@ -10,3 +10,4 @@ router.include_router(solver.router)
 router.include_router(play.router)
 router.include_router(academy.router)
 router.include_router(theory.router)
+router.include_router(trainer.router)
