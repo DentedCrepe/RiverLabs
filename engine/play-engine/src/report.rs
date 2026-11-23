@@ -74,6 +74,8 @@ pub struct AllInLuck {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Example {
+    /// Index of the hand in the records the report was built from.
+    pub record: usize,
     pub hand_no: u64,
     pub street: String,
     pub text: String,
@@ -112,6 +114,9 @@ fn is_aggressive(a: &Action) -> bool {
     matches!(a, Action::Bet { .. } | Action::Raise { .. })
 }
 
+/// Hands kept per finding, to browse in the app.
+pub const MAX_EXAMPLES: usize = 200;
+
 pub fn build(records: &[HandRecord], tournament: bool) -> Report {
     let mut stats = Stats::default();
     let mut by_pos: BTreeMap<String, PositionStats> = BTreeMap::new();
@@ -134,14 +139,14 @@ pub fn build(records: &[HandRecord], tournament: bool) -> Report {
         if hit {
             f.count += 1;
             if let Some(e) = ex {
-                if f.examples.len() < 5 {
+                if f.examples.len() < MAX_EXAMPLES {
                     f.examples.push(e);
                 }
             }
         }
     };
 
-    for r in records {
+    for (ri, r) in records.iter().enumerate() {
         let h = r.hero_seat();
         let bb = r.big_blind.max(1) as f64;
         net += r.net[h];
@@ -239,7 +244,8 @@ pub fn build(records: &[HandRecord], tournament: bool) -> Report {
                 cmp.4 += m.model_raise;
             }
             for c in j.checks {
-                let example = c.hit.then(|| Example { hand_no: r.hand_no, street: d.street.clone(), text: c.text });
+                let example =
+                    c.hit.then(|| Example { record: ri, hand_no: r.hand_no, street: d.street.clone(), text: c.text });
                 add(c.key, c.title, c.detail, c.reference, c.hit, example);
             }
         }

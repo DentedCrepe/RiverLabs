@@ -10,6 +10,7 @@ from riverlab_api.db.models.academy import (
     AcademyQuestion,
 )
 from riverlab_api.db.models.config import GameConfig, Position, RakeConfig, StackConfig
+from riverlab_api.db.models.goals import DailyGoals
 from riverlab_api.db.models.history import HandHistory, PerformanceStat
 from riverlab_api.db.models.play import HandReview, PlayHand, PlaySession
 from riverlab_api.db.models.push_fold import PostflopAnswer, PushFoldAnswer
@@ -33,6 +34,7 @@ __all__ = [
     "AcademyLessonVersion",
     "AcademyProgress",
     "AcademyQuestion",
+    "DailyGoals",
     "GameConfig",
     "HandHistory",
     "HandReview",

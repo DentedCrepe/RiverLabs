@@ -33,15 +33,21 @@ def play(
             .order_by(PlaySession.created_at.desc())
         )
     )
-    records = [
-        h.record
-        for h in db.scalars(
+    rows = list(
+        db.scalars(
             select(PlayHand)
             .join(PlaySession, PlaySession.id == PlayHand.session_id)
             .where(PlaySession.format.in_(formats))
             .order_by(PlaySession.created_at, PlayHand.hand_no)
         )
-    ]
+    )
+    records = [h.record for h in rows]
+    report = engine.play_report(records, scope == "sit_and_go") if records else None
+    if report is not None:
+        # Each example names the game it came from, so its hand can be opened.
+        for finding in report["findings"]:
+            for ex in finding["examples"]:
+                ex["session_id"] = str(rows[ex["record"]].session_id)
     return {
         "scope": scope,
         "sessions": [
@@ -55,7 +61,7 @@ def play(
             }
             for s in sessions
         ],
-        "report": engine.play_report(records, scope == "sit_and_go") if records else None,
+        "report": report,
     }
 
 

@@ -167,6 +167,12 @@ def test_heads_up_cash_game_is_played_recorded_and_reported(
             (d.get("feedback") or {}).get("verdict") == "mistake" for d in h["record"]["hero_decisions"]
         )
     assert client.get("/api/v1/play/hands", params={"verdict": "ok"}).status_code == 422
+    for f in a["report"]["findings"]:
+        assert all(ex["session_id"] == sid for ex in f["examples"]), "examples say which game they came from"
+    # The daily plan reads the same hands (and may recommend studying a weakness found in them).
+    plan = client.get("/api/v1/goals/today").json()
+    assert plan["today"]["hands"] >= stored
+    assert all(r["href"].startswith("/") for r in plan["recommended"])
     sng = client.get("/api/v1/analytics/play", params={"scope": "sit_and_go"}).json()
     assert sng["sessions"] == []
     assert sng["report"] is None

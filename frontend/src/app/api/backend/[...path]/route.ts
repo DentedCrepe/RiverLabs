@@ -16,4 +16,5 @@ async function handle(request: Request, ctx: Ctx): Promise<Response> {
 
 export const GET = handle;
 export const POST = handle;
+export const PUT = handle;
 export const DELETE = handle;
