@@ -259,6 +259,19 @@ def play_spot(record: dict[str, Any], index: int, config: dict[str, Any], max_by
     return result
 
 
+def push_fold_build_table(path: str, progress: Callable[[int, int], None]) -> None:
+    """Builds the exact heads-up all-in equity table (tens of minutes) and saves it to `path`."""
+    _engine.push_fold_build_table(path, progress)
+
+
+def push_fold_trainer(path: str, samples: int) -> Any:
+    """Loads and verifies the equity table; raises EngineValidationError if it is rejected."""
+    try:
+        return _engine.PushFoldTrainer(path, samples)
+    except ValueError as exc:
+        raise EngineValidationError(str(exc)) from exc
+
+
 def theory(kind: str, params: dict[str, Any]) -> Any:
     """Academy theory calculations (engine `poker-theory`)."""
     return _call(_engine.theory, kind, json.dumps(params))

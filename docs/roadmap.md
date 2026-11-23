@@ -9,7 +9,7 @@
 | 4 | Job infrastructure | Redis queue, worker process, progress/cancellation, S3-compatible result storage | Jobs survive restarts; cancellation works |
 | 5 | Preflop | Range editor persistence, preflop solution import/solve, 13×13 strategy visualisation | Only solver-produced data displayed. **In progress:** GTOpen's preflop model runs in the app, labelled approximate; heads-up push/fold validated |
 | 5a | Academy | Six-level curriculum, lesson framework, interactive components, assessments, revision; AI tutor (design in `academy-ai-tutor.md`) | Every number from the engine; every lesson reviewed by a person before `review = reviewed`. **Foundation done:** architecture, dashboard, five demonstration lessons |
-| 6 | Trainer | Spot generation from stored solutions, grading by EV loss | Grades reproducible from stored results |
+| 6 | Trainer | Spot generation from stored solutions, grading by EV loss | Grades reproducible from stored results. **Started:** heads-up push/fold drills graded against the exact equilibrium (`trainer.md`) |
 | 7 | Hand analysis & analytics | Hand-history parsing, leak reports | Parser validated on real histories |
 | 8 | Accounts | Authentication, per-user settings, quotas | Security review passed |
 

@@ -22,7 +22,7 @@ describe("navigation", () => {
   it("labels partial and planned features honestly", () => {
     const status = Object.fromEntries(NAV_ITEMS.map((i) => [i.label, i.status]));
     expect(status.Solver).toBe("partial");
-    expect(status.Trainer).toBe("planned");
+    expect(status.Trainer).toBe("partial");
     expect(status.Play).toBe("approximate");
     expect(status.Preflop).toBe("approximate");
   });

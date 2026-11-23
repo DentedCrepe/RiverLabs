@@ -89,6 +89,12 @@ branch, and `setup.sh` downloads the bundle matching the checkout. **Whenever `f
 changes on the branch the phone runs, publish a new bundle**, or setup stops with
 "No prebuilt web app for this version".
 
+The push/fold trainer's exact equity table (`hu_combo_equity.bin.gz`, about 7 MB) is published
+on the same branch. `setup.sh` downloads it once, if it is not already in
+`~/riverlab-data/solver-results`. RiverLab re-checks entries exactly before using it
+(`docs/trainer.md`). If the download fails, setup carries on and the Trainer page offers to
+build the table on the phone instead.
+
 ## Where things live on the phone
 | What | Where |
 |---|---|
