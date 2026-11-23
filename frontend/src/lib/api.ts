@@ -60,5 +60,6 @@ export const api = {
   get: <T>(path: string, opts: { poll?: boolean } = {}) =>
     apiFetch<T>(path, opts.poll ? { headers: { "X-RiverLab-Poll": "1" } } : undefined),
   post: <T>(path: string, json: unknown) => apiFetch<T>(path, { method: "POST", json }),
+  put: <T>(path: string, json: unknown) => apiFetch<T>(path, { method: "PUT", json }),
   delete: (path: string) => apiFetch<void>(path, { method: "DELETE" }),
 };

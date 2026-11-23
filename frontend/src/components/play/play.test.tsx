@@ -33,7 +33,7 @@ const REPORT: PlayReport = {
       measured_against: "Pot odds vs your equity against the bots' actual ranges",
       count: 2,
       out_of: 5,
-      examples: [{ hand_no: 12, street: "river", text: "river facing 5bb into 10bb" }],
+      examples: [{ record: 0, hand_no: 12, street: "river", text: "river facing 5bb into 10bb" }],
     },
   ],
   caveats: ["40 hands is a small sample"],
@@ -278,5 +278,91 @@ describe("table layout", () => {
     expect(seatAngle(1, 6)).toBe(150);
     expect(seatAngle(3, 6)).toBe(270);
     expect(seatAngle(1, 2)).toBe(270);
+  });
+});
+
+describe("flicking through a weakness", () => {
+  it("steps through the hands behind a finding", async () => {
+    const { FindingBrowser } = await import("./FindingBrowser");
+    const { waitFor } = await import("@testing-library/react");
+    const record = {
+      level: null,
+      tournament: false,
+      small_blind: 500,
+      big_blind: 1000,
+      ante: 0,
+      seats: [
+        {
+          name: "Bot 1 (hard)",
+          position: "SB",
+          starting_stack: 100_000,
+          hole_cards: ["7c", "2d"],
+          shown: false,
+          is_hero: false,
+        },
+        { name: "You", position: "BB", starting_stack: 100_000, hole_cards: ["As", "Kd"], shown: false, is_hero: true },
+      ],
+      board: [],
+      actions: [],
+      net: [500, -500],
+      showdown: false,
+      hero_decisions: [],
+      hero_all_in_ev: null,
+      revealed: false,
+      summary: [],
+    };
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const n = Number(String(input).split("/hands/")[1]);
+      return Response.json({ ...record, hand_no: n });
+    });
+    render(
+      <FindingBrowser
+        examples={[
+          { record: 0, hand_no: 4, street: "preflop", text: "BB vs open with 72o", session_id: "s1" },
+          { record: 1, hand_no: 9, street: "river", text: "river facing 5bb", session_id: "s2" },
+        ]}
+      />,
+    );
+    expect(await screen.findByText(/1 of 2/)).toBeInTheDocument();
+    expect(screen.getByText(/Hand 4, preflop: BB vs open with 72o/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Next hand" }));
+    expect(await screen.findByText(/Hand 9, river/)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(fetchSpy).toHaveBeenLastCalledWith(expect.stringContaining("/sessions/s2/hands/9"), expect.anything()),
+    );
+    expect(screen.getByRole("button", { name: "Next hand" })).toBeDisabled();
+  });
+});
+
+describe("older hand records", () => {
+  it("replays a hand stored before newer fields existed", async () => {
+    const { HandReview } = await import("./HandHistory");
+    const old = {
+      hand_no: 2,
+      level: null,
+      tournament: false,
+      small_blind: 500,
+      big_blind: 1000,
+      ante: 0,
+      seats: [
+        {
+          name: "Bot 1 (hard)",
+          position: "SB",
+          starting_stack: 100_000,
+          hole_cards: ["7c", "2d"],
+          shown: false,
+          is_hero: false,
+        },
+        { name: "You", position: "BB", starting_stack: 100_000, hole_cards: ["As", "Kd"], shown: false, is_hero: true },
+      ],
+      board: [],
+      actions: [],
+      net: [500, -500],
+      showdown: false,
+      hero_decisions: [],
+      hero_all_in_ev: null,
+    } as unknown as Parameters<typeof HandReview>[0]["hand"];
+    render(<HandReview hand={old} />);
+    expect(screen.getByLabelText("Players")).toHaveTextContent("You");
   });
 });

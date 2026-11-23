@@ -159,7 +159,8 @@ export type Finding = {
   measured_against: string;
   count: number;
   out_of: number;
-  examples: { hand_no: number; street: string; text: string }[];
+  /** `session_id` is set in Analytics (hands from many games). */
+  examples: { record: number; hand_no: number; street: string; text: string; session_id?: string }[];
 };
 export type PlayReport = {
   hands: number;
@@ -311,3 +312,16 @@ export type HandSolverReview = {
   streets: ReviewStreet[];
   error_message: string | null;
 };
+
+/**
+ * A stored hand record with the fields that newer engines add filled in, so hands recorded by an
+ * older version still display (the engine defaults them the same way when it reads them).
+ */
+export function withRecordDefaults(h: HandRecord): HandRecord {
+  return {
+    ...h,
+    summary: h.summary ?? [],
+    revealed: h.revealed ?? false,
+    hero_decisions: (h.hero_decisions ?? []).map((d) => ({ ...d, feedback: d.feedback ?? null, spot: d.spot ?? null })),
+  };
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { CircleAlert } from "lucide-react";
+import { useState } from "react";
 import { type PlayReport as Report, type Ratio, pct } from "@/lib/play";
 import { GLOSSARY } from "@/lib/glossary";
 import { useApi } from "@/lib/useApi";
@@ -8,6 +9,8 @@ import { InfoTip } from "@/components/ui/InfoTip";
 import { ErrorState, EmptyState, LoadingState } from "@/components/ui/States";
 import { Metric } from "@/components/solver/ResultView";
 import { cn } from "@/components/ui/cn";
+import { Button } from "@/components/ui/Button";
+import { FindingBrowser } from "./FindingBrowser";
 
 const STATS: [keyof Report["stats"], string, string][] = [
   ["vpip", "VPIP", GLOSSARY.vpip],
@@ -22,7 +25,8 @@ const STATS: [keyof Report["stats"], string, string][] = [
 
 const signed = (x: number, d = 1) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toFixed(d)}`;
 
-export function ReportView({ report: r }: { report: Report }) {
+export function ReportView({ report: r, sessionId }: { report: Report; sessionId?: string }) {
+  const [browsing, setBrowsing] = useState<string | null>(null);
   if (r.hands === 0) return <EmptyState title="No hands yet" description="Play at least one hand to get a report." />;
   return (
     <div className="flex flex-col gap-5">
@@ -111,12 +115,28 @@ export function ReportView({ report: r }: { report: Report }) {
                 <p className="text-xs text-subtle">Measured against: {f.measured_against}</p>
                 {f.examples.length > 0 && (
                   <ul className="mt-1 flex flex-col gap-0.5 font-mono text-[11px] text-muted">
-                    {f.examples.map((e, i) => (
+                    {f.examples.slice(0, 3).map((e, i) => (
                       <li key={i}>
                         Hand {e.hand_no}: {e.text}
                       </li>
                     ))}
                   </ul>
+                )}
+                {f.examples.length > 0 && (
+                  <div className="mt-2">
+                    <Button
+                      size="sm"
+                      variant={browsing === f.key ? "ghost" : "secondary"}
+                      onClick={() => setBrowsing(browsing === f.key ? null : f.key)}
+                    >
+                      {browsing === f.key ? "Close" : `Flick through these hands (${f.examples.length})`}
+                    </Button>
+                    {browsing === f.key && (
+                      <div className="mt-2">
+                        <FindingBrowser examples={f.examples} sessionId={sessionId} />
+                      </div>
+                    )}
+                  </div>
                 )}
               </li>
             ))}
@@ -164,5 +184,5 @@ export function PlayReport({ sessionId, refreshKey }: { sessionId: string; refre
   const { data, error, loading } = useApi<Report>(`/api/v1/play/sessions/${sessionId}/report?v=${refreshKey}`);
   if (error) return <ErrorState message={error.message} />;
   if (loading && !data) return <LoadingState label="Building the report…" />;
-  return data ? <ReportView report={data} /> : null;
+  return data ? <ReportView report={data} sessionId={sessionId} /> : null;
 }

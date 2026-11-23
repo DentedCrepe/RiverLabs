@@ -10,6 +10,7 @@ import {
   type RecordAction,
   amount,
   describeAction,
+  withRecordDefaults,
 } from "@/lib/play";
 import { SolverDecision, SolverReviewPanel, useSolverReview } from "./SolverReview";
 import { useApi } from "@/lib/useApi";
@@ -110,7 +111,8 @@ function DecisionView({
 }
 
 /** Street-by-street replay of one hand, with your decisions compared with the references. */
-export function HandReview({ hand: h, sessionId }: { hand: HandRecord; sessionId?: string }) {
+export function HandReview({ hand, sessionId }: { hand: HandRecord; sessionId?: string }) {
+  const h = withRecordDefaults(hand);
   const u = units(h);
   const hero = h.seats.findIndex((s) => s.is_hero);
   // Your decisions are stored in the order you acted.
@@ -209,7 +211,8 @@ export function HandRows({ items, ariaLabel }: { items: HandItem[]; ariaLabel: s
   const [open, setOpen] = useState<string | null>(null);
   return (
     <ul className="divide-y divide-line" aria-label={ariaLabel}>
-      {items.map(({ sessionId, hand: h, label }) => {
+      {items.map(({ sessionId, hand, label }) => {
+        const h = withRecordDefaults(hand);
         const key = `${sessionId}:${h.hand_no}`;
         const hero = h.seats.findIndex((s) => s.is_hero);
         const flagged = h.hero_decisions.filter((d) => d.feedback?.verdict === "mistake").length;
