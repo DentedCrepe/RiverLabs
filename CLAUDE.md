@@ -57,8 +57,8 @@ docs/      architecture, ADRs, poker-rules, rake, hand-evaluator, equity, roadma
 ## Commands
 - `scripts/setup.sh`: create `.env`, run `uv sync` (compiles the engine), run `npm ci`.
 - `scripts/dev.sh`: start PostgreSQL, run migrations, start the API (:8000) and web (:3000).
-- `scripts/test.sh [engine|backend|frontend]`: run every format, lint, type and test check.
-  **Run this before declaring work done.**
+- `scripts/test.sh [engine|backend|frontend|e2e]`: run every format, lint, type and test check,
+  and the end-to-end browser tests (docs/testing.md). **Run this before declaring work done.**
 - `scripts/validate-engine.sh`: run the exhaustive 133M-hand evaluator check (release build).
 - After changing Rust code used by Python, run `cd backend && uv sync --reinstall-package riverlab-engine`
   (`test.sh` and `dev.sh` do this for you).
