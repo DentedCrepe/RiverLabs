@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from pydantic import Field
 from sqlalchemy.orm import Session
 
+from riverlab_api.api.guest import Guest, GuestForbiddenError
 from riverlab_api.db.session import get_db
 from riverlab_api.schemas.common import StrictModel
 from riverlab_api.services import daily
@@ -26,6 +27,8 @@ def today(db: DbSession) -> dict[str, Any]:
 
 
 @router.put("")
-def set_goals(body: GoalsIn, db: DbSession) -> dict[str, Any]:
+def set_goals(body: GoalsIn, db: DbSession, guest: Guest) -> dict[str, Any]:
+    if guest:
+        raise GuestForbiddenError("Guests cannot change the owner's daily goals")
     daily.set_goals(db, body.hands_target, body.study_target)
     return daily.plan(db)

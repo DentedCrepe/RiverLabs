@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ApiError, api } from "./api";
+import { setGuest } from "./guest";
 
 function mockFetch(status: number, body: unknown) {
   return vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -18,6 +19,18 @@ describe("api client", () => {
       "/api/backend/api/v1/x",
       expect.objectContaining({ method: "POST", body: '{"a":1}' }),
     );
+  });
+
+  it("marks every request in guest mode, and only then", async () => {
+    const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({}));
+    setGuest(true);
+    await api.post("/api/v1/x", { a: 1 });
+    expect(f.mock.calls[0][1]?.headers).toEqual({ "Content-Type": "application/json", "X-RiverLab-Guest": "1" });
+    await api.get("/api/v1/y", { poll: true });
+    expect(f.mock.calls[1][1]?.headers).toEqual({ "X-RiverLab-Poll": "1", "X-RiverLab-Guest": "1" });
+    setGuest(false);
+    await api.get("/api/v1/y");
+    expect(f.mock.calls[2][1]?.headers).toBeUndefined();
   });
 
   it("surfaces engine errors with code and message", async () => {

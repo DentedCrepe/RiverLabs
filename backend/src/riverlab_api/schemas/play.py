@@ -29,6 +29,8 @@ class PlaySessionOut(StrictModel):
     created_at: datetime
     finished_at: datetime | None
     config: dict[str, Any]
+    # False for a guest game, which never counts towards your statistics.
+    tracked: bool
 
 
 class PlayState(StrictModel):

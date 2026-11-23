@@ -43,10 +43,12 @@ class PlayManager:
 
     # ---- lifecycle ----
 
-    def create(self, db: Session, config: dict[str, Any]) -> PlaySession:
+    def create(self, db: Session, config: dict[str, Any], tracked: bool = True) -> PlaySession:
         canonical = engine.validate_table_config(config)
         game = engine.new_play_session(canonical, self._cache_dir, self._max_bytes, self._threads)
-        row = PlaySession(format=canonical["format"]["type"], config=canonical, status="preparing")
+        row = PlaySession(
+            format=canonical["format"]["type"], config=canonical, status="preparing", tracked=tracked
+        )
         db.add(row)
         db.commit()
         with self._lock:
@@ -196,9 +198,16 @@ class PlayManager:
             raise NotFoundError(f"Hand {hand_no} not found in this game")
         return engine.play_spot(hand.record, decision, row.config, self._max_bytes)
 
-    def all_hands(self, db: Session, verdict: str | None, limit: int, offset: int) -> dict[str, Any]:
-        """Hands across sessions, newest first, optionally only those with a decision of `verdict`."""
-        q = select(PlayHand, PlaySession).join(PlaySession, PlaySession.id == PlayHand.session_id)
+    def all_hands(
+        self, db: Session, verdict: str | None, limit: int, offset: int, tracked: bool = True
+    ) -> dict[str, Any]:
+        """Hands across sessions, newest first, optionally only those with a decision of `verdict`.
+        `tracked`: your games (True) or guest games (False)."""
+        q = (
+            select(PlayHand, PlaySession)
+            .join(PlaySession, PlaySession.id == PlayHand.session_id)
+            .where(PlaySession.tracked.is_(tracked))
+        )
         if verdict is not None:
             q = q.where(PlayHand.record["hero_decisions"].contains([{"feedback": {"verdict": verdict}}]))
         total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
@@ -218,8 +227,13 @@ class PlayManager:
             ],
         }
 
-    def list(self, db: Session, limit: int = 50) -> list[PlaySession]:
-        q = select(PlaySession).order_by(PlaySession.created_at.desc(), PlaySession.id).limit(limit)
+    def list(self, db: Session, limit: int = 50, tracked: bool = True) -> list[PlaySession]:
+        q = (
+            select(PlaySession)
+            .where(PlaySession.tracked.is_(tracked))
+            .order_by(PlaySession.created_at.desc(), PlaySession.id)
+            .limit(limit)
+        )
         return list(db.scalars(q))
 
 

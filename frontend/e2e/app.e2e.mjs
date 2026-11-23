@@ -89,6 +89,32 @@ describe("RiverLab end to end", () => {
       .waitFor();
   });
 
+  it("in guest mode, answers are graded but the owner's study count does not change", async () => {
+    await page.goto(URL);
+    const before = await page
+      .getByText(/^\d+ \/ \d+$/)
+      .nth(1)
+      .textContent();
+    await page.getByRole("button", { name: "Guest mode" }).click();
+    await page.getByRole("status", { name: "Guest mode" }).waitFor();
+    await page.goto(`${URL}/academy/pot-odds`);
+    const q = page.locator('form[aria-label="Knowledge check"]').first();
+    await q.getByRole("textbox").first().fill("25");
+    await q.getByRole("button", { name: "Check answer" }).click();
+    await q.getByText(/Correct/).waitFor();
+    await page.getByRole("button", { name: "End guest mode" }).click();
+    await page.getByRole("button", { name: "Guest mode" }).waitFor();
+    await page.goto(URL);
+    await page.getByText("day streak").waitFor();
+    assert.equal(
+      await page
+        .getByText(/^\d+ \/ \d+$/)
+        .nth(1)
+        .textContent(),
+      before,
+    );
+  });
+
   it("plays a heads-up hand at the table and replays it from the history", async () => {
     await page.goto(`${URL}/play`);
     const form = page.getByRole("form", { name: "New game" });

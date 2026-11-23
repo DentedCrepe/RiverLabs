@@ -145,7 +145,9 @@ def _touch_activity(db: Session) -> None:
     )
 
 
-def update_progress(db: Session, slug: str, changes: dict[str, Any]) -> AcademyProgress:
+def update_progress(db: Session, slug: str, changes: dict[str, Any], store: bool = True) -> dict[str, Any]:
+    """Applies `changes` to a lesson's progress. With `store=False` (guest mode) the result is
+    returned but nothing is saved."""
     lesson(db, slug)
     row = db.get(AcademyProgress, slug)
     if row is None:
@@ -161,9 +163,18 @@ def update_progress(db: Session, slug: str, changes: dict[str, Any]) -> AcademyP
         row.status, row.completed_at = "completed", datetime.now(UTC)
     elif changes.get("completed") is False:
         row.status, row.completed_at = "started", None
+    out = {
+        "status": row.status,
+        "saved": row.saved,
+        "last_section": row.last_section,
+        "explanation_level": row.explanation_level,
+    }
+    if not store:
+        db.rollback()
+        return out
     _touch_activity(db)
     db.commit()
-    return row
+    return out
 
 
 def grade(q: AcademyQuestion, answer: Any) -> bool:
@@ -178,19 +189,26 @@ def grade(q: AcademyQuestion, answer: Any) -> bool:
 
 
 def attempt(
-    db: Session, question_id: str, answer: Any, confidence: int | None, time_ms: int | None
+    db: Session,
+    question_id: str,
+    answer: Any,
+    confidence: int | None,
+    time_ms: int | None,
+    store: bool = True,
 ) -> dict[str, Any]:
+    """Grades an answer and records it (not in guest mode, `store=False`)."""
     q = db.get(AcademyQuestion, question_id)
     if q is None or not q.active:
         raise NotFoundError(f"Question {question_id!r} not found")
     correct = grade(q, answer)
-    db.add(
-        AcademyAttempt(
-            question_id=q.id, answer=answer, correct=correct, confidence=confidence, time_ms=time_ms
+    if store:
+        db.add(
+            AcademyAttempt(
+                question_id=q.id, answer=answer, correct=correct, confidence=confidence, time_ms=time_ms
+            )
         )
-    )
-    _touch_activity(db)
-    db.commit()
+        _touch_activity(db)
+        db.commit()
     d = q.data
     return {
         "question_id": q.id,

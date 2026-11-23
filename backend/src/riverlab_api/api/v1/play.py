@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from pydantic import Field
 from sqlalchemy.orm import Session
 
+from riverlab_api.api.guest import Guest, GuestForbiddenError
 from riverlab_api.db.models import PlaySession
 from riverlab_api.db.session import get_db
 from riverlab_api.errors import NotFoundError
@@ -29,6 +30,7 @@ def _out(row: PlaySession) -> PlaySessionOut:
         created_at=row.created_at,
         finished_at=row.finished_at,
         config=row.config,
+        tracked=row.tracked,
     )
 
 
@@ -39,16 +41,20 @@ def _state(db: Session, session_id: uuid.UUID, table: dict[str, Any] | None) -> 
 
 
 @router.post("/sessions", response_model=PlayState, status_code=201)
-def create_session(body: PlaySessionCreate, db: DbSession) -> PlayState:
-    """Creates a table. Its status is "preparing" until the bots' preflop model is ready."""
+def create_session(body: PlaySessionCreate, db: DbSession, guest: Guest) -> PlayState:
+    """Creates a table. Its status is "preparing" until the bots' preflop model is ready.
+    In guest mode the game is not tracked: it never counts towards your statistics."""
     m = play.require()
-    row = m.create(db, body.config)
+    row = m.create(db, body.config, tracked=not guest)
     return _state(db, row.id, m.view(db, row.id))
 
 
 @router.get("/sessions", response_model=list[PlaySessionOut])
-def list_sessions(db: DbSession, limit: Annotated[int, Query(ge=1, le=200)] = 50) -> list[PlaySessionOut]:
-    return [_out(r) for r in play.require().list(db, limit)]
+def list_sessions(
+    db: DbSession, guest: Guest, limit: Annotated[int, Query(ge=1, le=200)] = 50
+) -> list[PlaySessionOut]:
+    """Your games, or in guest mode only the guest games."""
+    return [_out(r) for r in play.require().list(db, limit, tracked=not guest)]
 
 
 @router.get("/sessions/{session_id}", response_model=PlayState)
@@ -91,13 +97,14 @@ def hands(session_id: uuid.UUID, db: DbSession) -> list[dict[str, Any]]:
 @router.get("/hands")
 def all_hands(
     db: DbSession,
+    guest: Guest,
     verdict: Annotated[Literal["mistake", "rare"] | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 30,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> dict[str, Any]:
     """Your hands from every session, newest first; `verdict` keeps hands with a decision the
-    feedback flagged ("mistake") or found unusual ("rare")."""
-    return play.require().all_hands(db, verdict, limit, offset)
+    feedback flagged ("mistake") or found unusual ("rare"). In guest mode, only guest games."""
+    return play.require().all_hands(db, verdict, limit, offset, tracked=not guest)
 
 
 @router.get("/sessions/{session_id}/hands/{hand_no}")
@@ -127,8 +134,12 @@ class BatchIn(StrictModel):
 
 
 @router.post("/reviews/batch", status_code=202)
-def batch_reviews(body: BatchIn, db: DbSession) -> dict[str, Any]:
+def batch_reviews(body: BatchIn, db: DbSession, guest: Guest) -> dict[str, Any]:
     """Queues solver reviews for several of your hands; they run one after another."""
+    if guest:
+        raise GuestForbiddenError(
+            "Batch reviews look for leaks in the owner's hands; turn guest mode off first"
+        )
     return hand_review.require().batch(db, body.scope, body.limit)
 
 
@@ -146,6 +157,8 @@ def get_review(session_id: uuid.UUID, hand_no: int, db: DbSession) -> dict[str, 
 
 
 @router.delete("/sessions/{session_id}", status_code=204)
-def delete_session(session_id: uuid.UUID, db: DbSession) -> Response:
+def delete_session(session_id: uuid.UUID, db: DbSession, guest: Guest) -> Response:
+    if guest and play.require().get(db, session_id).tracked:
+        raise GuestForbiddenError("Guests can only delete guest games")
     play.require().delete(db, session_id)
     return Response(status_code=204)

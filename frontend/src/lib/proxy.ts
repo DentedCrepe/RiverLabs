@@ -69,6 +69,8 @@ export async function forwardToBackend(
   if (contentType) headers["content-type"] = contentType;
   // Marks background refreshes, which the API's idle tracking ignores.
   if (request.headers.get("x-riverlab-poll") === "1") headers["x-riverlab-poll"] = "1";
+  // Guest mode: nothing is recorded towards the owner's statistics (docs/guest-mode.md).
+  if (request.headers.get("x-riverlab-guest") === "1") headers["x-riverlab-guest"] = "1";
 
   try {
     const res = await fetchImpl(target, {

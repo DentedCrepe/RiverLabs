@@ -30,3 +30,30 @@ describe("MobileNav", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
+
+describe("Guest mode", () => {
+  it("shows a banner while on and offers the switch only while off", async () => {
+    const { GuestBanner, GuestToggle } = await import("./GuestMode");
+    const { setGuest } = await import("@/lib/guest");
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    const user = userEvent.setup();
+    const { unmount } = render(
+      <>
+        <GuestToggle />
+        <GuestBanner />
+      </>,
+    );
+    expect(screen.queryByRole("status", { name: "Guest mode" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Guest mode" }));
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("status", { name: "Guest mode" })).toHaveTextContent(/nothing counts towards/);
+    expect(screen.queryByRole("button", { name: "Guest mode" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "End guest mode" }));
+    expect(reload).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("status", { name: "Guest mode" })).not.toBeInTheDocument();
+    unmount();
+    setGuest(false);
+    vi.unstubAllGlobals();
+  });
+});

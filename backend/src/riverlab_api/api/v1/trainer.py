@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from riverlab_api.api.guest import Guest
 from riverlab_api.db.models import PushFoldAnswer
 from riverlab_api.db.session import get_db
 from riverlab_api.schemas.common import StrictModel
@@ -47,10 +48,12 @@ def drill(body: DrillIn) -> dict[str, Any]:
 
 
 @router.post("/answer")
-def answer(body: AnswerIn, db: DbSession) -> dict[str, Any]:
+def answer(body: AnswerIn, db: DbSession, guest: Guest) -> dict[str, Any]:
     """Grades a choice: EVs of both actions against the equilibrium opponent, and the EV lost.
-    Every graded answer is stored for Analytics."""
+    Every graded answer is stored for Analytics, except in guest mode."""
     g = trainer.service().grade(body.drill, body.choice)
+    if guest:
+        return g
     d = g["drill"]
     db.add(
         PushFoldAnswer(
@@ -103,6 +106,7 @@ def postflop_drill(body: PostflopDrillIn, db: DbSession) -> dict[str, Any]:
 
 
 @postflop.post("/answer")
-def postflop_answer(body: PostflopAnswerIn, db: DbSession) -> dict[str, Any]:
-    """Grades a choice by its EV for your hand from the solve. Stored for Analytics."""
-    return trainer.postflop_answer(db, body.job_id, body.drill, body.choice)
+def postflop_answer(body: PostflopAnswerIn, db: DbSession, guest: Guest) -> dict[str, Any]:
+    """Grades a choice by its EV for your hand from the solve. Stored for Analytics, except in
+    guest mode."""
+    return trainer.postflop_answer(db, body.job_id, body.drill, body.choice, store=not guest)

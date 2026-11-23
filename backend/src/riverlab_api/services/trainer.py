@@ -189,9 +189,13 @@ def postflop_drill(db: Session, job_id: uuid.UUID | None, seed: int, hero: int |
     }
 
 
-def postflop_answer(db: Session, job_id: uuid.UUID, drill: dict[str, Any], choice: int) -> dict[str, Any]:
+def postflop_answer(
+    db: Session, job_id: uuid.UUID, drill: dict[str, Any], choice: int, store: bool = True
+) -> dict[str, Any]:
     game, spec, _ = _solve(db, job_id)
     grade: dict[str, Any] = engine.play_call(game.grade, json.dumps(spec), json.dumps(drill), choice)
+    if not store:
+        return grade
     db.add(
         PostflopAnswer(
             job_id=job_id,

@@ -4,6 +4,8 @@
  * ApiError — never swallowed.
  */
 
+import { GUEST_HEADER, isGuest } from "./guest";
+
 export const API_BASE = "/api/backend";
 
 export class ApiError extends Error {
@@ -39,7 +41,9 @@ async function parseError(res: Response): Promise<ApiError> {
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
-  const { json, headers, ...rest } = init ?? {};
+  const { json, headers: given, ...rest } = init ?? {};
+  // Guest mode: the backend grades and plays as usual but records nothing as the owner's.
+  const headers = isGuest() ? { ...(given as Record<string, string> | undefined), [GUEST_HEADER]: "1" } : given;
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {

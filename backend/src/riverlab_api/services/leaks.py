@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from riverlab_api.db.models import HandReview, PlayHand, SolverJob
+from riverlab_api.db.models import HandReview, PlayHand, PlaySession, SolverJob
 
 LEAK_PCT_POT = 1.0
 TOP = 20
@@ -45,7 +45,14 @@ def _bucket() -> dict[str, Any]:
 
 
 def summary(db: Session) -> dict[str, Any]:
-    reviews = list(db.scalars(select(HandReview).where(HandReview.status == "done")))
+    # Only your games: reviews of guest games never count as your leaks.
+    reviews = list(
+        db.scalars(
+            select(HandReview)
+            .join(PlaySession, PlaySession.id == HandReview.session_id)
+            .where(HandReview.status == "done", PlaySession.tracked)
+        )
+    )
     pots: dict[str, float] = {}
     job_ids = [uuid.UUID(st["job_id"]) for r in reviews for st in r.streets if st.get("job_id")]
     for job in db.scalars(select(SolverJob).where(SolverJob.id.in_(job_ids))) if job_ids else []:

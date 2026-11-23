@@ -35,3 +35,7 @@ Built only from your own data; with none, only a general drill suggestion appear
    prerequisites you have covered.
 3. **Trainer:** your weakest postflop street (at least 5 answers, losing more than 1% of the pot on
    average), else your weaker push/fold seat (at least 5 answers), else push/fold drills.
+
+## Guest mode
+
+What a guest does in guest mode never counts here; see [guest-mode.md](guest-mode.md).

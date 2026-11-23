@@ -133,7 +133,15 @@ class HandReviewer:
     def batch(self, db: Session, scope: str, limit: int) -> dict[str, Any]:
         """Queues reviews for up to `limit` of your hands that have something to solve and no
         review yet: the most recent, those with a flagged or unusual decision, or the biggest pots."""
-        rows = list(db.scalars(select(PlayHand).order_by(PlayHand.created_at.desc()).limit(2000)))
+        rows = list(
+            db.scalars(
+                select(PlayHand)
+                .join(PlaySession, PlaySession.id == PlayHand.session_id)
+                .where(PlaySession.tracked)
+                .order_by(PlayHand.created_at.desc())
+                .limit(2000)
+            )
+        )
         reviewed = {
             (r.session_id, r.hand_no)
             for r in db.scalars(

@@ -210,3 +210,7 @@ through with their full replays. The Today card recommends your biggest leak.
   tables of the same shape start immediately.
 - Playing needs the solver backend (`RIVERLAB_SOLVER_ENABLED=true`); otherwise the endpoints
   return 503.
+
+## Guest mode
+
+What a guest does in guest mode never counts here; see [guest-mode.md](guest-mode.md).

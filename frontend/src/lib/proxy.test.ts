@@ -55,6 +55,13 @@ describe("backend proxy", () => {
     expect(fetchImpl.mock.calls[0][1].headers).toEqual({ "x-riverlab-poll": "1" });
   });
 
+  it("passes on the guest-mode marker so nothing is recorded as the owner's", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(Response.json({}));
+    const req = new Request("http://frontend/api/backend/api/v1/goals/today", { headers: { "x-riverlab-guest": "1" } });
+    await forwardToBackend(req, ["api", "v1", "goals", "today"], "http://b", fetchImpl);
+    expect(fetchImpl.mock.calls[0][1].headers).toEqual({ "x-riverlab-guest": "1" });
+  });
+
   it("returns structured errors for misconfiguration, unknown paths and outages", async () => {
     const req = new Request("http://frontend/api/backend/health");
     expect((await forwardToBackend(req, ["health"], undefined)).status).toBe(500);

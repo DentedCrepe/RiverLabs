@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { GuestBanner } from "./GuestMode";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 
@@ -14,6 +15,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <Sidebar />
       <div className="flex min-h-dvh flex-col lg:pl-60">
         <TopBar />
+        <GuestBanner />
         <main id="main" className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 lg:px-8 lg:py-8">
           {children}
         </main>

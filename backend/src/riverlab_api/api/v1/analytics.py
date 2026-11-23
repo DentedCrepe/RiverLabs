@@ -29,7 +29,7 @@ def play(
     sessions = list(
         db.scalars(
             select(PlaySession)
-            .where(PlaySession.format.in_(formats), PlaySession.hands > 0)
+            .where(PlaySession.format.in_(formats), PlaySession.hands > 0, PlaySession.tracked)
             .order_by(PlaySession.created_at.desc())
         )
     )
@@ -37,7 +37,7 @@ def play(
         db.scalars(
             select(PlayHand)
             .join(PlaySession, PlaySession.id == PlayHand.session_id)
-            .where(PlaySession.format.in_(formats))
+            .where(PlaySession.format.in_(formats), PlaySession.tracked)
             .order_by(PlaySession.created_at, PlayHand.hand_no)
         )
     )

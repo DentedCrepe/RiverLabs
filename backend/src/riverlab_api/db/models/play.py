@@ -4,7 +4,17 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -25,6 +35,9 @@ class PlaySession(UUIDPk, Timestamps, Base):
     # Your net result in chip units (mbb at cash tables, tournament chips in a sit & go).
     hero_net: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # False for games played in guest mode: kept for the guest's own history, never counted in
+    # your statistics, streak, goals, analytics or leaks.
+    tracked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
 
     hand_records: Mapped[list["PlayHand"]] = relationship(
         back_populates="session",

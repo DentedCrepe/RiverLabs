@@ -18,6 +18,7 @@ from riverlab_api.db.models import (
     AcademyAttempt,
     DailyGoals,
     PlayHand,
+    PlaySession,
     PostflopAnswer,
     PushFoldAnswer,
 )
@@ -44,7 +45,12 @@ def _local_day(ts: datetime) -> date:
 
 def _counts(db: Session, since: datetime) -> tuple[Counter[date], Counter[date]]:
     hands: Counter[date] = Counter(
-        _local_day(t) for t in db.scalars(select(PlayHand.created_at).where(PlayHand.created_at >= since))
+        _local_day(t)
+        for t in db.scalars(
+            select(PlayHand.created_at)
+            .join(PlaySession, PlaySession.id == PlayHand.session_id)
+            .where(PlayHand.created_at >= since, PlaySession.tracked)
+        )
     )
     study: Counter[date] = Counter()
     for model in (AcademyAttempt, PushFoldAnswer, PostflopAnswer):
@@ -84,7 +90,15 @@ def _streaks(met: set[date], today: date) -> tuple[int, int]:
 
 
 def _weakness(db: Session) -> dict[str, Any] | None:
-    rows = list(db.scalars(select(PlayHand).order_by(PlayHand.created_at.desc()).limit(RECENT_HANDS)))
+    rows = list(
+        db.scalars(
+            select(PlayHand)
+            .join(PlaySession, PlaySession.id == PlayHand.session_id)
+            .where(PlaySession.tracked)
+            .order_by(PlayHand.created_at.desc())
+            .limit(RECENT_HANDS)
+        )
+    )
     cash = [r.record for r in rows if not r.record.get("tournament")]
     if not cash:
         return None

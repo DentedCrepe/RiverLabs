@@ -1,5 +1,6 @@
 import { Brand } from "./Brand";
 import { ConnectionIndicator } from "./ConnectionIndicator";
+import { GuestToggle } from "./GuestMode";
 import { MobileNav } from "./MobileNav";
 
 export function TopBar() {
@@ -13,7 +14,8 @@ export function TopBar() {
         <span className="label-caps">Game</span>
         <span className="text-fg">NL Hold&apos;em · 6-max · Cash</span>
       </div>
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-2">
+        <GuestToggle />
         <ConnectionIndicator />
       </div>
     </header>

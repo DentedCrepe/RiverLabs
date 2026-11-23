@@ -4,6 +4,7 @@ import { Flame, Pencil } from "lucide-react";
 import Link from "next/link";
 import { type FormEvent, useState } from "react";
 import { ApiError, api } from "@/lib/api";
+import { useGuest } from "@/lib/guest";
 import { useApi } from "@/lib/useApi";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
@@ -102,6 +103,7 @@ export function DailyGoalsCard() {
   const { data, error, loading, reload } = useApi<DailyPlan>("/api/v1/goals/today");
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState<DailyPlan | null>(null);
+  const guest = useGuest(); // a guest sees the owner's goals but cannot change them
   const p = saved ?? data;
   return (
     <Card>
@@ -109,9 +111,16 @@ export function DailyGoalsCard() {
         title="Today"
         icon={<Flame className={cn("size-4", p?.today.done ? "text-warn" : "text-subtle")} />}
         actions={
-          <Button size="sm" variant="ghost" onClick={() => setEditing(!editing)} icon={<Pencil className="size-3.5" />}>
-            Targets
-          </Button>
+          guest ? undefined : (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setEditing(!editing)}
+              icon={<Pencil className="size-3.5" />}
+            >
+              Targets
+            </Button>
+          )
         }
       />
       <CardBody className="flex flex-col gap-4">
@@ -127,7 +136,7 @@ export function DailyGoalsCard() {
                 day streak{p.today.done ? " · today's goals done" : ""} · best {p.best_streak}
               </span>
             </p>
-            {editing && (
+            {editing && !guest && (
               <Targets
                 plan={p}
                 onSaved={(n) => {

@@ -7,6 +7,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
+from riverlab_api.api.guest import Guest, GuestForbiddenError
 from riverlab_api.config import get_settings
 from riverlab_api.db.models import AcademyLesson, AcademyProgress
 from riverlab_api.db.session import get_db
@@ -64,19 +65,15 @@ def get_lesson(slug: str, db: DbSession, include_drafts: bool = False) -> dict[s
 
 
 @router.post("/lessons/{slug}/progress")
-def update_progress(slug: str, body: ProgressUpdate, db: DbSession) -> dict[str, Any]:
-    p = academy.update_progress(db, slug, body.model_dump(exclude_none=True))
-    return {
-        "status": p.status,
-        "saved": p.saved,
-        "last_section": p.last_section,
-        "explanation_level": p.explanation_level,
-    }
+def update_progress(slug: str, body: ProgressUpdate, db: DbSession, guest: Guest) -> dict[str, Any]:
+    """Saves your place, level and completion (in guest mode nothing is saved)."""
+    return academy.update_progress(db, slug, body.model_dump(exclude_none=True), store=not guest)
 
 
 @router.post("/questions/{question_id}/attempts")
-def attempt(question_id: str, body: AttemptIn, db: DbSession) -> dict[str, Any]:
-    return academy.attempt(db, question_id, body.answer, body.confidence, body.time_ms)
+def attempt(question_id: str, body: AttemptIn, db: DbSession, guest: Guest) -> dict[str, Any]:
+    """Grades an answer; recorded for revision and your streak, except in guest mode."""
+    return academy.attempt(db, question_id, body.answer, body.confidence, body.time_ms, store=not guest)
 
 
 @router.get("/revision")
@@ -85,7 +82,9 @@ def revision(db: DbSession) -> dict[str, Any]:
 
 
 @router.post("/bookmarks", status_code=201)
-def add_bookmark(body: BookmarkIn, db: DbSession) -> dict[str, Any]:
+def add_bookmark(body: BookmarkIn, db: DbSession, guest: Guest) -> dict[str, Any]:
+    if guest:
+        raise GuestForbiddenError("Guests cannot change the owner's bookmarks")
     b = academy.add_bookmark(db, body.lesson, body.section, body.label, body.note)
     return {
         "id": str(b.id),
@@ -97,7 +96,9 @@ def add_bookmark(body: BookmarkIn, db: DbSession) -> dict[str, Any]:
 
 
 @router.delete("/bookmarks/{bookmark_id}", status_code=204)
-def delete_bookmark(bookmark_id: uuid.UUID, db: DbSession) -> Response:
+def delete_bookmark(bookmark_id: uuid.UUID, db: DbSession, guest: Guest) -> Response:
+    if guest:
+        raise GuestForbiddenError("Guests cannot change the owner's bookmarks")
     academy.delete_bookmark(db, bookmark_id)
     return Response(status_code=204)
 
