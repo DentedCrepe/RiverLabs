@@ -3,31 +3,54 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 
 const MILESTONES = [
   {
-    n: 1,
+    n: "1",
     title: "Foundation",
     detail: "Engine, evaluator, ranges, equity, rake, betting rules, schema, app",
     state: "done",
   },
   {
-    n: 2,
+    n: "2",
     title: "Solver validation",
-    detail: "Independent best response; GTOpen checked on river, turn and push/fold. Full-range flop checks next",
+    detail:
+      "Independent best response; GTOpen checked on river, turn and push/fold, and under Miri. Full-range flop checks next",
     state: "current",
   },
   {
-    n: 3,
+    n: "3",
     title: "Postflop solving",
-    detail: "Heads-up solves run in the app with exploitability. Node-by-node browsing next",
-    state: "current",
+    detail: "Heads-up solves with exploitability, node-by-node browsing, and solving spots from your own hands",
+    state: "done",
   },
   {
-    n: 4,
+    n: "4",
     title: "Job infrastructure",
     detail: "Local worker done; queue workers and result storage at scale",
     state: "next",
   },
-  { n: 5, title: "Preflop", detail: "Six-max preflop with validated, clearly labelled approximations", state: "later" },
-  { n: 6, title: "Trainer", detail: "Drills graded by EV loss against stored solutions", state: "later" },
+  {
+    n: "5",
+    title: "Preflop",
+    detail: "GTOpen's preflop model in the app, labelled approximate; heads-up push/fold validated",
+    state: "current",
+  },
+  {
+    n: "5a",
+    title: "Academy",
+    detail: "Lesson framework and five demonstration lessons; the curriculum is still to be written",
+    state: "current",
+  },
+  {
+    n: "6",
+    title: "Trainer",
+    detail: "Push/fold drills graded against the exact equilibrium; other drills wait for validated solutions",
+    state: "current",
+  },
+  {
+    n: "7",
+    title: "Hand analysis & analytics",
+    detail: "Analytics from your games and drills; hand-history import planned",
+    state: "current",
+  },
 ] as const;
 
 export function RoadmapCard() {
