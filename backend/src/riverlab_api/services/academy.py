@@ -1,5 +1,6 @@
 """RiverLab Academy: syncing content into the database, progress, grading and the dashboard."""
 
+import json
 import logging
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -19,7 +20,7 @@ from riverlab_api.db.models import (
     AcademyQuestion,
 )
 from riverlab_api.errors import ConflictError, EngineValidationError, NotFoundError
-from riverlab_api.services.academy_content import ContentReport, read_content
+from riverlab_api.services.academy_content import ContentReport, load_curriculum, read_content
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,57 @@ _curriculum: list[dict[str, Any]] = []
 
 # Spaced revision: after n consecutive correct answers, a question is due again in this many days.
 REVIEW_INTERVALS_DAYS = (1, 3, 7, 21, 60)
+
+
+def content_fingerprint(root: Path) -> str:
+    """A hash of everything a sync's result depends on: the content files, the engine build
+    (it recomputes every answer and runs the lesson solves) and the content validator."""
+    import hashlib
+
+    import riverlab_engine
+
+    from riverlab_api.services import academy_content
+
+    h = hashlib.sha256()
+    for path in sorted(p for p in root.rglob("*") if p.is_file()):
+        h.update(str(path.relative_to(root)).encode())
+        h.update(path.read_bytes())
+    engine_dir = Path(riverlab_engine.__file__).parent
+    for path in [
+        *sorted(engine_dir.glob("*.so")),
+        *sorted(engine_dir.glob("*.pyd")),
+        Path(academy_content.__file__),
+    ]:
+        h.update(path.read_bytes())
+    return h.hexdigest()
+
+
+def sync_if_changed(db: Session, root: Path, state: Path) -> ContentReport | None:
+    """Syncs unless nothing a sync depends on has changed since the last sync without errors
+    (recorded in `state`) and the database still holds those lessons. Returns the report, or
+    None when the sync was skipped. Checking every lesson runs its solves, which is slow on a
+    phone, and RiverLab restarts often there."""
+    global _curriculum
+    fingerprint = content_fingerprint(root)
+    try:
+        saved = json.loads(state.read_text())
+    except (OSError, ValueError):
+        saved = {}
+    in_db = db.scalar(select(func.count()).select_from(AcademyLesson)) or 0
+    if saved.get("fingerprint") == fingerprint and saved.get("lessons") == in_db and in_db > 0:
+        report = ContentReport()
+        load_curriculum(root, report)
+        _curriculum = report.curriculum
+        return None
+    report = sync(db, root)
+    if not report.errors:
+        try:
+            state.parent.mkdir(parents=True, exist_ok=True)
+            count = db.scalar(select(func.count()).select_from(AcademyLesson)) or 0
+            state.write_text(json.dumps({"fingerprint": fingerprint, "lessons": count}))
+        except OSError:
+            logger.exception("could not record the Academy sync state in %s", state)
+    return report
 
 
 def sync(db: Session, root: Path) -> ContentReport:

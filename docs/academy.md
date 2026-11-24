@@ -233,6 +233,15 @@ All current lessons were drafted with AI assistance. They are published with
 Every numeric answer is computed by the engine and every showdown answer is checked by the
 evaluator at each sync; the prose still needs a person's review.
 
+## Syncing at startup
+The API syncs the content when it starts (`RIVERLAB_ACADEMY_SYNC_ON_STARTUP`). A full sync
+re-checks every lesson against the engine, including its solves, which takes a few seconds on a
+phone. So startup skips it when nothing it depends on has changed since the last sync **without
+errors**: the content files, the engine build and the content validator (a SHA-256 fingerprint
+in `<result storage>/academy-sync.json`), and the database still holds the same number of
+lessons. Content with errors is re-checked, and its errors logged, at every start. `POST
+/academy/sync` always runs a full sync.
+
 ## Review by a person
 
 Every lesson starts as "Not yet reviewed by a person" (`[review] status = "pending"`). A person

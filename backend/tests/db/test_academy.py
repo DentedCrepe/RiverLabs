@@ -157,3 +157,39 @@ def test_theory_endpoint(client: TestClient) -> None:
     assert len(rm) == 50
     assert client.post("/api/v1/theory/pot_odds", json={"params": {"pot_mbb": 1}}).status_code == 422
     assert client.post("/api/v1/theory/nope", json={"params": {}}).status_code == 422
+
+
+def test_startup_sync_is_skipped_only_when_nothing_changed(db: Session, tmp_path: Path) -> None:
+    from sqlalchemy import delete, func
+
+    from riverlab_api.db.models import AcademyLesson
+
+    root = tmp_path / "academy"
+    shutil.copytree(CONTENT, root)
+    state = tmp_path / "state" / "academy-sync.json"
+    first = academy.sync_if_changed(db, root, state)
+    assert first is not None
+    assert first.errors == []
+    assert state.exists()
+    assert academy.sync_if_changed(db, root, state) is None, "unchanged content is not re-checked"
+    assert academy.curriculum(db), "the curriculum is still loaded when the sync is skipped"
+    # Any change to the content re-checks it, and content with errors is re-checked (and its
+    # errors reported) at every start until it is fixed.
+    lesson = root / "lessons" / "pot-odds.md"
+    lesson.write_text(lesson.read_text() + "\n")
+    for _ in range(2):
+        report = academy.sync_if_changed(db, root, state)
+        assert report is not None
+        assert any("bump it to publish" in e for e in report.errors)
+    text = lesson.read_text()
+    version = int(text.split("version = ", 1)[1].split("\n", 1)[0])
+    lesson.write_text(text.replace(f"version = {version}", f"version = {version + 1}", 1))
+    fixed = academy.sync_if_changed(db, root, state)
+    assert fixed is not None
+    assert fixed.errors == []
+    assert academy.sync_if_changed(db, root, state) is None
+    # So does a database that lost its lessons.
+    db.execute(delete(AcademyLesson))
+    db.flush()
+    assert academy.sync_if_changed(db, root, state) is not None
+    assert (db.scalar(func.count(AcademyLesson.id)) or 0) > 0

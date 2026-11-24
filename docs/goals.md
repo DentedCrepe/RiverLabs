@@ -15,6 +15,11 @@ Both targets can be changed on the card (1 to 1000) and are stored in `daily_goa
 yesterday, so it only breaks once a whole day passes without meeting the goals. The card also
 shows the best streak and the last 14 days (met, some activity, or none).
 
+Activity is counted per hour in the database, with hours aligned to the device's time zone, so
+each falls on one local day (exact for every time zone; daylight saving on Lord Howe Island,
+which moves clocks by 30 minutes, is the one exception). The weakness recommendation below is
+recomputed only when a tracked hand has been added or removed.
+
 ## Recommended today
 Built only from your own data; with none, only a general drill suggestion appears.
 

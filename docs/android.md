@@ -65,6 +65,14 @@ riverlab stop
 - **Changing the idle time:** re-run setup with `RIVERLAB_IDLE_MINUTES=60` (0 = never stop).
 - **Checking it:** look at Settings → Battery → Termux after a day of normal use. While idle,
   the three processes use almost no CPU.
+- **No refreshing in the background.** Pages that refresh themselves (solve lists, status) stop
+  while the screen is off or the browser is in the background, and catch up as soon as you look
+  again. Solve lists refresh every 1.5 s only while a solve is queued or running, otherwise
+  every 15 s.
+- **Fast restarts.** Checking every Academy lesson runs its solves, so it is done only when the
+  lessons, the engine or the checker changed since the last clean check (recorded in
+  `~/riverlab-data/solver-results/academy-sync.json`); otherwise starting takes about 0.01 s
+  for the Academy instead of a few seconds.
 
 Defaults suited to a phone: solves use 2 threads and at most 3 GB of memory. To change them,
 re-run setup with `RIVERLAB_SOLVER_THREADS=4 RIVERLAB_SOLVER_MAX_MEMORY_MB=4096 bash

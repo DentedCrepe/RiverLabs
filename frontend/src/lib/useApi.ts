@@ -10,8 +10,16 @@ export interface ApiState<T> {
   reload: () => void;
 }
 
-/** Fetches a GET endpoint on mount (and optionally on an interval). `null`: fetch nothing. */
-export function useApi<T>(path: string | null, opts: { refreshMs?: number } = {}): ApiState<T> {
+/**
+ * Fetches a GET endpoint on mount. `refreshMs` re-fetches it in the background: a fixed interval,
+ * or a function of the latest data (return `null` to stop, e.g. a slower interval when nothing is
+ * running). Background refreshes pause while the page is hidden (screen off, app in the
+ * background) and run once as soon as it is shown again. `null` path: fetch nothing.
+ */
+export function useApi<T>(
+  path: string | null,
+  opts: { refreshMs?: number | ((data: T | null) => number | null) } = {},
+): ApiState<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [loading, setLoading] = useState(path !== null);
@@ -44,14 +52,28 @@ export function useApi<T>(path: string | null, opts: { refreshMs?: number } = {}
     };
   }, [path, tick]);
 
+  const refresh = opts.refreshMs;
+  const every = typeof refresh === "function" ? refresh(data) : (refresh ?? null);
   useEffect(() => {
-    if (!opts.refreshMs || path === null) return;
+    if (!every || path === null) return;
+    const hidden = () => typeof document !== "undefined" && document.visibilityState === "hidden";
     const id = setInterval(() => {
+      if (hidden()) return; // nobody is looking: save the battery and the API
       polling.current = true;
       reload();
-    }, opts.refreshMs);
-    return () => clearInterval(id);
-  }, [opts.refreshMs, reload, path]);
+    }, every);
+    const onVisible = () => {
+      if (!hidden()) {
+        polling.current = true;
+        reload();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [every, reload, path]);
 
   return { data, error, loading, reload };
 }

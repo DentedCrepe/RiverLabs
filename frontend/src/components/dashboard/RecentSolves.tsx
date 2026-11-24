@@ -4,11 +4,14 @@ import { Cpu } from "lucide-react";
 import Link from "next/link";
 import type { SolverJob } from "@/lib/types";
 import { useApi } from "@/lib/useApi";
+import { jobPollMs } from "@/lib/solverJobs";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/States";
 
 export function RecentSolves() {
-  const { data, error, loading } = useApi<SolverJob[]>("/api/v1/solver/jobs?limit=5", { refreshMs: 5000 });
+  const { data, error, loading } = useApi<SolverJob[]>("/api/v1/solver/jobs?limit=5", {
+    refreshMs: (jobs) => (jobPollMs(jobs) === 1500 ? 5000 : 30_000),
+  });
   return (
     <Card>
       <CardHeader

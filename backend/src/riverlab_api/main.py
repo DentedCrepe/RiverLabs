@@ -17,7 +17,7 @@ from riverlab_api.services.local_solver import BACKEND_NAME, LocalSolverBackend,
 logger = logging.getLogger(__name__)
 
 
-def _sync_academy(content_dir: str) -> None:
+def _sync_academy(content_dir: str, state_dir: str) -> None:
     from pathlib import Path
 
     from riverlab_api.db.session import get_sessionmaker
@@ -25,8 +25,13 @@ def _sync_academy(content_dir: str) -> None:
 
     try:
         with get_sessionmaker()() as session:
-            report = academy.sync(session, Path(content_dir))
-        logger.info("academy: %d lesson(s) synced, %d error(s)", len(report.lessons), len(report.errors))
+            report = academy.sync_if_changed(
+                session, Path(content_dir), Path(state_dir) / "academy-sync.json"
+            )
+        if report is None:
+            logger.info("academy: content unchanged since the last sync; not re-checked")
+        else:
+            logger.info("academy: %d lesson(s) synced, %d error(s)", len(report.lessons), len(report.errors))
     except Exception:
         logger.exception("could not sync Academy content (database unavailable?)")
 
@@ -35,7 +40,7 @@ def _sync_academy(content_dir: str) -> None:
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     if settings.academy_sync_on_startup:
-        _sync_academy(settings.academy_content_dir)
+        _sync_academy(settings.academy_content_dir, settings.result_storage_dir)
     backend: LocalSolverBackend | None = None
     if settings.solver_enabled and not any(b.name == BACKEND_NAME for b in compute.registry.backends):
         from riverlab_api.db.session import get_sessionmaker

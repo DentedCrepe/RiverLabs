@@ -8,10 +8,10 @@ Academy revision queue, and your weakest trainer area. Nothing is recommended fr
 """
 
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import String, func, literal, select, text
 from sqlalchemy.orm import Session
 
 from riverlab_api.db.models import (
@@ -44,20 +44,40 @@ def _local_day(ts: datetime) -> date:
     return ts.astimezone().date()
 
 
+# Activity is counted per hour in the database, then each hour is given a local day. The hours
+# are aligned to the local time zone's offset (its minutes past the hour), so each one falls on a
+# single local day and the counts are exact without loading every timestamp. (Daylight saving
+# moves offsets by whole hours everywhere except Lord Howe Island, where it moves them by 30
+# minutes.)
+_HOUR = text("interval '1 hour'")
+
+
+def _day_counts(db: Session, column: Any, *where: Any, join: tuple[Any, Any] | None = None) -> Counter[date]:
+    offset = datetime.now().astimezone().utcoffset()
+    # Local hours start this many minutes past each UTC hour (UTC+5:45: at :15).
+    minutes = -int(offset.total_seconds() // 60) % 60 if offset is not None else 0
+    origin = literal(datetime(2000, 1, 1, 0, minutes, tzinfo=UTC))
+    bucket = func.date_bin(_HOUR, column, origin)
+    q = select(bucket, func.count()).where(*where).group_by(bucket)
+    if join is not None:
+        q = q.join(*join)
+    counts: Counter[date] = Counter()
+    for start, n in db.execute(q):
+        counts[_local_day(start)] += int(n)
+    return counts
+
+
 def _counts(db: Session, since: datetime) -> tuple[Counter[date], Counter[date]]:
-    hands: Counter[date] = Counter(
-        _local_day(t)
-        for t in db.scalars(
-            select(PlayHand.created_at)
-            .join(PlaySession, PlaySession.id == PlayHand.session_id)
-            .where(PlayHand.created_at >= since, PlaySession.tracked)
-        )
+    hands = _day_counts(
+        db,
+        PlayHand.created_at,
+        PlayHand.created_at >= since,
+        PlaySession.tracked,
+        join=(PlaySession, PlaySession.id == PlayHand.session_id),
     )
     study: Counter[date] = Counter()
     for model in (AcademyAttempt, PushFoldAnswer, PostflopAnswer, PreflopAnswer):
-        study.update(
-            _local_day(t) for t in db.scalars(select(model.created_at).where(model.created_at >= since))
-        )
+        study.update(_day_counts(db, model.created_at, model.created_at >= since))
     return hands, study
 
 
@@ -90,7 +110,29 @@ def _streaks(met: set[date], today: date) -> tuple[int, int]:
     return current, max(best, current)
 
 
+# The weakness recommendation, kept until the set of recent tracked hands changes.
+_weakness_cache: tuple[tuple[Any, ...], dict[str, Any] | None] | None = None
+
+
 def _weakness(db: Session) -> dict[str, Any] | None:
+    """The most frequent flagged habit in your recent cash hands, as a study recommendation.
+    Recomputed only when a tracked hand has been added or removed since the last time."""
+    global _weakness_cache
+    key = tuple(
+        db.execute(
+            select(func.count(PlayHand.id), func.max(PlayHand.created_at), func.max(PlayHand.id.cast(String)))
+            .join(PlaySession, PlaySession.id == PlayHand.session_id)
+            .where(PlaySession.tracked)
+        ).one()
+    )
+    if _weakness_cache is not None and _weakness_cache[0] == key:
+        return _weakness_cache[1]
+    found = _find_weakness(db)
+    _weakness_cache = (key, found)
+    return found
+
+
+def _find_weakness(db: Session) -> dict[str, Any] | None:
     rows = list(
         db.scalars(
             select(PlayHand)

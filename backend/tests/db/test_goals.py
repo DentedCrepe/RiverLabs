@@ -78,3 +78,31 @@ def test_plan_counts_today_and_the_streak(db_client: TestClient, db: Session) ->
     assert p["streak"] == 2
     assert p["best_streak"] == 2
     assert [d["met"] for d in p["days"][-3:]] == [False, True, True]
+
+
+def test_day_counts_are_exact_at_local_midnight_in_odd_time_zones(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import time
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setenv("TZ", "Asia/Kathmandu")  # UTC+5:45
+    time.tzset()
+    try:
+        tz = ZoneInfo("Asia/Kathmandu")
+        game = PlaySession(format="cash", config={}, status="finished")
+        db.add(game)
+        db.flush()
+        midnight = datetime(2026, 3, 10, tzinfo=tz)
+        for n, minutes in enumerate((-50, -10, -1, 0, 1, 14, 59), start=1):
+            db.add(
+                PlayHand(
+                    session_id=game.id, hand_no=n, record={}, created_at=midnight + timedelta(minutes=minutes)
+                )
+            )
+        db.flush()
+        counts = daily._day_counts(db, PlayHand.created_at, PlayHand.session_id == game.id)
+        assert counts == {date(2026, 3, 9): 3, date(2026, 3, 10): 4}
+    finally:
+        monkeypatch.delenv("TZ")
+        time.tzset()

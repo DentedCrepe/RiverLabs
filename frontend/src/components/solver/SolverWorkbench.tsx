@@ -7,6 +7,7 @@ import type { SpotExport } from "@/lib/play";
 import { formFromSpec } from "@/lib/solve";
 import type { SolverJob } from "@/lib/types";
 import { useApi } from "@/lib/useApi";
+import { jobPollMs } from "@/lib/solverJobs";
 import { CardRow } from "@/components/poker/CardText";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { ErrorState, LoadingState } from "@/components/ui/States";
@@ -43,7 +44,7 @@ function SpotBanner({ spot }: { spot: SpotExport }) {
 }
 
 function Workbench({ query }: { query: SpotQuery | null }) {
-  const jobs = useApi<SolverJob[]>("/api/v1/solver/jobs?kind=postflop&limit=20", { refreshMs: 1500 });
+  const jobs = useApi<SolverJob[]>("/api/v1/solver/jobs?kind=postflop&limit=20", { refreshMs: jobPollMs });
   const spotUrl = query
     ? `/api/v1/play/sessions/${encodeURIComponent(query.game)}/hands/${encodeURIComponent(query.hand)}/spot?decision=${encodeURIComponent(query.decision)}`
     : null;
