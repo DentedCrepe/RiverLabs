@@ -202,6 +202,9 @@ pub enum StopReason {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Progress {
+    /// True while a node-locked solve is still solving the unlocked game it locks from.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unlocked_phase: bool,
     pub iterations: u64,
     /// Average gain available to a deviating player, in mbb per hand.
     pub exploitability_mbb: f64,
@@ -255,6 +258,95 @@ pub struct SolveOutcome {
     /// Tree plus solver arenas, in bytes.
     pub memory_bytes: u64,
     pub independent_check: IndependentCheck,
+    /// For a node-locked solve: the unlocked solve it was locked from (the equilibrium to compare
+    /// the exploit with). `None` for an ordinary solve.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unlocked: Option<UnlockedBase>,
+}
+
+/// The unlocked solve a node-locked solve starts from.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UnlockedBase {
+    pub iterations: u64,
+    pub exploitability_mbb: f64,
+    pub exploitability_pct_pot: f64,
+    pub values_mbb: [f64; 2],
+}
+
+/// Runs CFR iterations until a stopping rule fires, reporting progress at each check.
+fn run(
+    solver: &mut Solver,
+    pool: &rayon::ThreadPool,
+    stop: &solver_interface::StoppingCriteria,
+    pot: f64,
+    unlocked_phase: bool,
+    cancel: &AtomicBool,
+    on_progress: &mut impl FnMut(&Progress),
+) -> (StopReason, Progress) {
+    let start = Instant::now();
+    let mut progress = Progress {
+        unlocked_phase,
+        iterations: 0,
+        exploitability_mbb: f64::NAN,
+        exploitability_pct_pot: f64::NAN,
+        elapsed_ms: 0,
+    };
+    let reason = loop {
+        if cancel.load(Ordering::Relaxed) {
+            break StopReason::Cancelled;
+        }
+        pool.install(|| solver.iterate());
+        let it = solver.iteration as u64;
+        let last = it >= stop.max_iterations;
+        let timed_out = stop.max_seconds.is_some_and(|s| start.elapsed().as_secs() >= s);
+        if last || timed_out || it % stop.exploitability_check_interval == 0 {
+            let e = pool.install(|| solver.exploitability());
+            progress = Progress {
+                unlocked_phase,
+                iterations: it,
+                exploitability_mbb: e,
+                exploitability_pct_pot: e / pot * 100.0,
+                elapsed_ms: start.elapsed().as_millis() as u64,
+            };
+            on_progress(&progress);
+            if stop.target_exploitability_pct_pot.is_some_and(|t| progress.exploitability_pct_pot <= t) {
+                break StopReason::TargetReached;
+            }
+            if last {
+                break StopReason::MaxIterations;
+            }
+            if timed_out {
+                break StopReason::MaxSeconds;
+            }
+        }
+    };
+    (reason, progress)
+}
+
+/// Turns the solved strategy at each locked decision into one with the requested range-wide
+/// frequencies (GTOpen's range lock: every hand's frequencies are scaled from the solved
+/// strategy, so hands keep their relative preferences).
+fn apply_locks(solver: &mut Solver, spec: &SolveSpec) -> Result<(), AdapterError> {
+    for (i, lock) in spec.locks.iter().enumerate() {
+        let path: Vec<gtopen::PathStep> = lock.path.iter().map(|&index| gtopen::PathStep::Action { index }).collect();
+        let walk = solver.walk_path(&path).map_err(|e| AdapterError::InvalidSpec(format!("lock {i}: {e}")))?;
+        let node = &solver.spot.tree.nodes[walk.node_idx as usize];
+        if node.kind != KIND_ACTION {
+            return Err(AdapterError::InvalidSpec(format!("lock {i}: the path does not end at a decision")));
+        }
+        if node.num_children as usize != lock.frequencies.len() {
+            return Err(AdapterError::InvalidSpec(format!(
+                "lock {i}: that decision has {} actions, but {} frequencies were given",
+                node.num_children,
+                lock.frequencies.len()
+            )));
+        }
+        let freqs = lock.frequencies.iter().map(|&f| f as f32).collect();
+        solver
+            .lock_node(&path, gtopen::LockMode::Range { freqs }, format!("lock {i}"))
+            .map_err(|e| AdapterError::InvalidSpec(format!("lock {i}: {e}")))?;
+    }
+    Ok(())
 }
 
 /// A solved game, kept for inspection and export.
@@ -342,38 +434,40 @@ pub fn solve_with_limits(
         .num_threads(spec.solver.threads as usize)
         .build()
         .map_err(|e| AdapterError::Backend(e.to_string()))?;
-    let start = Instant::now();
     let pot = spec.starting_pot_mbb as f64;
-    let mut progress =
-        Progress { iterations: 0, exploitability_mbb: f64::NAN, exploitability_pct_pot: f64::NAN, elapsed_ms: 0 };
-    let reason = loop {
-        if cancel.load(Ordering::Relaxed) {
-            break StopReason::Cancelled;
+    let locked = !spec.locks.is_empty();
+    let (mut reason, mut progress) = run(&mut solver, &pool, stop, pot, locked, cancel, &mut on_progress);
+    let mut unlocked = None;
+    let mut approximations = prepared.approximations.clone();
+    if locked && reason != StopReason::Cancelled {
+        if !progress.exploitability_mbb.is_finite() {
+            return Err(AdapterError::Backend("exploitability is not finite".into()));
         }
-        pool.install(|| solver.iterate());
-        let it = solver.iteration as u64;
-        let last = it >= stop.max_iterations;
-        let timed_out = stop.max_seconds.is_some_and(|s| start.elapsed().as_secs() >= s);
-        if last || timed_out || it % stop.exploitability_check_interval == 0 {
-            let e = pool.install(|| solver.exploitability());
-            progress = Progress {
-                iterations: it,
-                exploitability_mbb: e,
-                exploitability_pct_pot: e / pot * 100.0,
-                elapsed_ms: start.elapsed().as_millis() as u64,
-            };
-            on_progress(&progress);
-            if stop.target_exploitability_pct_pot.is_some_and(|t| progress.exploitability_pct_pot <= t) {
-                break StopReason::TargetReached;
-            }
-            if last {
-                break StopReason::MaxIterations;
-            }
-            if timed_out {
-                break StopReason::MaxSeconds;
-            }
-        }
-    };
+        unlocked = Some(UnlockedBase {
+            iterations: progress.iterations,
+            exploitability_mbb: progress.exploitability_mbb,
+            exploitability_pct_pot: progress.exploitability_pct_pot,
+            values_mbb: values(&solver),
+        });
+        // Lock from the solved strategy, then solve again from scratch with only the locks
+        // carried over, so the averages contain no pre-lock iterations.
+        apply_locks(&mut solver, spec)?;
+        let locks = std::mem::take(&mut solver.locks);
+        let labels = std::mem::take(&mut solver.lock_labels);
+        let spot = solver.spot.clone();
+        drop(solver);
+        solver = Solver::new(spot);
+        solver.algo = prepared.algorithm;
+        solver.locks = locks;
+        solver.lock_labels = labels;
+        (reason, progress) = run(&mut solver, &pool, stop, pot, false, cancel, &mut on_progress);
+        approximations.push(format!(
+            "Node-locked: {} decision(s) are fixed at the frequencies you set. The other decisions are \
+             solved as a response to them, so this is an exploit of those locks, not an equilibrium. \
+             Exploitability counts only what a player could gain at decisions that are not locked.",
+            spec.locks.len()
+        ));
+    }
     if !progress.exploitability_mbb.is_finite() && reason != StopReason::Cancelled {
         return Err(AdapterError::Backend("exploitability is not finite".into()));
     }
@@ -388,7 +482,7 @@ pub fn solve_with_limits(
         stop_reason: reason,
         progress,
         values_mbb: values(&solver),
-        approximations: prepared.approximations.clone(),
+        approximations,
         root,
         root_by_class,
         memory_bytes,
@@ -398,6 +492,7 @@ pub fn solve_with_limits(
             exploitability_mbb: None,
             note: "not run".into(),
         },
+        unlocked,
     };
     let mut solved = Solved { solver, prepared, limits, outcome };
     solved.outcome.independent_check = solved.independent_check();
@@ -557,6 +652,7 @@ pub fn load(spec: &SolveSpec, path: &str) -> Result<Solved, AdapterError> {
         algorithm: prepared.algorithm.name().into(),
         stop_reason: StopReason::MaxIterations,
         progress: Progress {
+            unlocked_phase: false,
             iterations: solver.iteration as u64,
             exploitability_mbb: f64::NAN,
             exploitability_pct_pot: f64::NAN,
@@ -573,6 +669,7 @@ pub fn load(spec: &SolveSpec, path: &str) -> Result<Solved, AdapterError> {
             exploitability_mbb: None,
             note: "loaded from storage".into(),
         },
+        unlocked: None,
     };
     Ok(Solved { solver, prepared, limits: Limits { max_nodes: usize::MAX, max_bytes: u64::MAX }, outcome })
 }
@@ -844,11 +941,12 @@ impl Solved {
             }
         }
         let mut nodes = Vec::new();
+        let mut locked = std::collections::BTreeSet::new();
         let board_mask = board.iter().fold(0u64, |m, c| m | 1 << c.index());
-        self.export(0, &maps, &ranges, board_mask, &mut nodes)?;
+        self.export(0, &maps, &ranges, board_mask, &mut nodes, &mut locked)?;
         let cfg = &self.prepared.config.tree;
         let rake = Rake { fraction: cfg.rake_pct, cap: (cfg.rake_cap > 0.0).then_some(cfg.rake_cap) };
-        Ok(PostflopGame { board, ranges, rake, nodes })
+        Ok(PostflopGame { board, ranges, rake, nodes, locked })
     }
 
     fn export(
@@ -858,6 +956,7 @@ impl Solved {
         ranges: &[Vec<(Combo, f64)>; 2],
         board: u64,
         out: &mut Vec<GameNode>,
+        locked: &mut std::collections::BTreeSet<usize>,
     ) -> Result<usize, AdapterError> {
         let tree = &self.solver.spot.tree;
         let node = &tree.nodes[idx as usize];
@@ -865,6 +964,9 @@ impl Solved {
         out.push(GameNode::Fold { folder: 0, put: [0.0; 2] }); // placeholder, replaced below
         let filled = match node.kind {
             KIND_ACTION => {
+                if self.solver.locks.contains_key(&idx) {
+                    locked.insert(me);
+                }
                 let p = node.player as usize;
                 let n_act = node.num_children as usize;
                 let theirs = self.solver.average_strategy(idx, node);
@@ -883,7 +985,7 @@ impl Solved {
                 let mut children = Vec::with_capacity(n_act);
                 for a in 0..n_act {
                     let child = tree.children[node.children_start as usize + a];
-                    children.push(self.export(child, maps, ranges, board, out)?);
+                    children.push(self.export(child, maps, ranges, board, out, locked)?);
                 }
                 GameNode::Decision { player: p, children, strategy }
             }
@@ -897,7 +999,7 @@ impl Solved {
                     let ours = Card::from_str(&gtopen::cards::card_to_string(card))
                         .map_err(|e| AdapterError::Backend(e.to_string()))?;
                     let bit = 1u64 << ours.index();
-                    children.push((ours, self.export(child, maps, ranges, board | bit, out)?));
+                    children.push((ours, self.export(child, maps, ranges, board | bit, out, locked)?));
                 }
                 GameNode::Chance { children }
             }

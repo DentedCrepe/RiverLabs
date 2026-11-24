@@ -83,6 +83,12 @@ class SolverResultOut(StrictModel):
     independent_check: IndependentCheck
     root: RootStrategy | None
     tree_available: bool
+    # Node locks in the spec (empty for an ordinary solve) and, for a locked solve, the unlocked
+    # solve they were applied to: values, exploitability and iterations.
+    locks: list[dict[str, Any]] = Field(default_factory=list)
+    unlocked: dict[str, Any] | None = None
+    # The spec the result was solved from (to re-solve it, e.g. with a node lock added).
+    spec: dict[str, Any] = Field(default_factory=dict)
 
 
 class NodeViewOut(StrictModel):

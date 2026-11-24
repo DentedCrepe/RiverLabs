@@ -380,6 +380,7 @@ pub fn export(record: &HandRecord, index: usize, cfg: &TableConfig, max_bytes: u
         effective_stack_mbb: stack,
         tree: tree_at(&observed, s, TREES[0]),
         solver,
+        locks: Vec::new(),
     };
     // The richest tree that fits in the solver's memory limit (the hand's sizes are always kept).
     let mut chosen = None;

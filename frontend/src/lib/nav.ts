@@ -51,7 +51,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "Solver",
     icon: Cpu,
     status: "partial",
-    description: "Heads-up postflop solving (GTOpen); multiway planned",
+    description: "Heads-up postflop solving (GTOpen) with node locking; multiway planned",
   },
   {
     href: "/academy",

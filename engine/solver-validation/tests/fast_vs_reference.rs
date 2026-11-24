@@ -90,7 +90,7 @@ fn random_game(seed: u64) -> PostflopGame {
     let board_mask = dead.bits();
     g.node(board_mask, [5.0, 5.0], 3, 0);
     let rake = if seed % 2 == 0 { Rake::NONE } else { Rake { fraction: 0.05, cap: Some(3.0) } };
-    PostflopGame { board, ranges: [r0, r1], rake, nodes: g.nodes }
+    PostflopGame { board, ranges: [r0, r1], rake, nodes: g.nodes, locked: Default::default() }
 }
 
 #[test]

@@ -184,3 +184,104 @@ describe("NodeBrowser following a real line", () => {
     expect(screen.getByRole("button", { name: "bet 3.8bb" })).toBeInTheDocument();
   });
 });
+
+describe("node locking", () => {
+  // Shapes only: the frequencies are test inputs, not solver output.
+  const decision = {
+    kind: "decision",
+    street: "river",
+    board: ["Ks", "Qd", "7h", "7c", "2s"],
+    put_mbb: [5000, 5000],
+    player: 1,
+    actions: ["check", "bet 10bb"],
+    cards: [],
+    by_class: [{ label: "KK", row: 1, col: 1, weight: 4, frequencies: [0.75, 0.25] }],
+    reach_fraction: [1, 1],
+    path: "a0",
+  };
+
+  it("locks a decision from the tree and re-solves with the lock added to the spec", async () => {
+    const { ResultView } = await import("./ResultView");
+    const posts: unknown[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const u = String(input);
+      if (init?.method === "POST") {
+        posts.push(JSON.parse(String(init.body)));
+        return Response.json({ id: "j2", status: "queued" }, { status: 202 });
+      }
+      if (u.includes("/result"))
+        return Response.json({
+          job_id: "j1",
+          engine_version: "0",
+          solver_backend: "gtopen",
+          solver_version: "x",
+          algorithm: "dcfr",
+          iterations: 10,
+          stop_reason: "max_iterations",
+          exploitability_mbb: 1,
+          exploitability_pct_pot: 0.01,
+          values_mbb: [0, 0],
+          elapsed_ms: 1,
+          memory_bytes: 1,
+          approximations: [],
+          independent_check: { performed: false, values_mbb: null, exploitability_mbb: null, note: "" },
+          root: null,
+          tree_available: true,
+          locks: [],
+          unlocked: null,
+          spec: { board: ["Ks"], solver: {} },
+        });
+      const path = new URL(u, "http://x").searchParams.get("path") ?? "";
+      return Response.json({ ...decision, path, player: path ? 1 : 0, actions: path ? decision.actions : ["check"] });
+    });
+    const onLocked = vi.fn();
+    const user = userEvent.setup();
+    render(<ResultView jobId="j1" onLocked={onLocked} />);
+    await user.click(await screen.findByRole("button", { name: /^check/ }));
+    await screen.findByText(/IP to act/);
+    await user.click(screen.getByText("Lock this decision"));
+    const bet = screen.getByLabelText("bet 10bb (%)");
+    expect(screen.getByLabelText("check (%)")).toHaveValue(75);
+    fireEvent.change(bet, { target: { value: "50" } });
+    await user.click(screen.getByRole("button", { name: "Solve with this lock" }));
+    expect(await screen.findByText(/add up to 125%/)).toHaveAttribute("role", "alert");
+    fireEvent.change(screen.getByLabelText("check (%)"), { target: { value: "50" } });
+    await user.click(screen.getByRole("button", { name: "Solve with this lock" }));
+    await waitFor(() => expect(onLocked).toHaveBeenCalledWith({ id: "j2", status: "queued" }));
+    expect(posts).toEqual([{ spec: { board: ["Ks"], solver: {}, locks: [{ path: [0], frequencies: [0.5, 0.5] }] } }]);
+  });
+
+  it("labels a locked result as an exploit and shows how the values moved", async () => {
+    const { ResultView } = await import("./ResultView");
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (String(input).includes("/result"))
+        return Response.json({
+          job_id: "j2",
+          engine_version: "0",
+          solver_backend: "gtopen",
+          solver_version: "x",
+          algorithm: "dcfr",
+          iterations: 10,
+          stop_reason: "max_iterations",
+          exploitability_mbb: 1,
+          exploitability_pct_pot: 0.01,
+          values_mbb: [1500, -1500],
+          elapsed_ms: 1,
+          memory_bytes: 1,
+          approximations: [],
+          independent_check: { performed: false, values_mbb: null, exploitability_mbb: null, note: "" },
+          root: null,
+          tree_available: true,
+          locks: [{ path: [], frequencies: [1, 0] }],
+          unlocked: { iterations: 10, exploitability_mbb: 1, exploitability_pct_pot: 0.01, values_mbb: [1000, -1000] },
+          spec: {},
+        });
+      return Response.json({ ...decision, path: "", player: 0 });
+    });
+    render(<ResultView jobId="j2" />);
+    expect(await screen.findByText(/an exploit, not an equilibrium/)).toBeInTheDocument();
+    expect(screen.getByText(/OOP \+1bb → \+1\.5bb/)).toBeInTheDocument();
+    expect(await screen.findByText(/Locked: OOP plays these frequencies/)).toBeInTheDocument();
+    expect(screen.queryByText("Lock this decision")).not.toBeInTheDocument();
+  });
+});

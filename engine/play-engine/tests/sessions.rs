@@ -310,6 +310,7 @@ fn postflop_drills_are_dealt_from_a_solve_and_graded_by_ev() {
             add_all_in: false,
         },
         solver,
+        locks: Vec::new(),
     };
     let solved = solver_gtopen::solve(&spec, &std::sync::atomic::AtomicBool::new(false), |_| {}).unwrap();
     let a = drill::deal(&solved, &spec, 7, None).unwrap();

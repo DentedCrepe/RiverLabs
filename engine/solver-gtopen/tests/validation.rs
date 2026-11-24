@@ -40,6 +40,7 @@ fn spec(
             add_all_in: false,
         },
         solver,
+        locks: Vec::new(),
     }
 }
 
@@ -380,4 +381,58 @@ fn hand_at_gives_per_hand_action_evs_that_satisfy_indifference() {
     assert!(other.strategy.is_none() && other.action_evs_mbb.is_none());
     assert!(other.ranges[1].iter().all(|(_, w)| *w > 0.0));
     assert!(other.reach_fraction[1] < 1.0, "IP's checks are no longer in its range after a bet");
+}
+
+#[test]
+fn node_locked_solve_exploits_the_lock_and_is_checked_independently() {
+    // Lock IP (after OOP's check) to bet half the time instead of the equilibrium's mix.
+    // KK is 3 of 15 IP combos, so betting 50% means bluffing far too often: OOP should call
+    // more and gain.
+    let mut spec = toy(RakeConfig::none());
+    spec.locks = vec![solver_interface::NodeLock { path: vec![0], frequencies: vec![0.5, 0.5] }];
+    let s = solve(&spec, &AtomicBool::new(false), |_| {}).unwrap();
+    let base = s.outcome.unlocked.clone().expect("the unlocked solve is reported");
+    assert!((base.values_mbb[1] + 2000.0).abs() < 1.0, "the base is the ordinary solve: {base:?}");
+    assert!(
+        s.outcome.values_mbb[0] > base.values_mbb[0] + 100.0,
+        "OOP exploits the over-bluffing: {:?} vs {:?}",
+        s.outcome.values_mbb,
+        base.values_mbb
+    );
+    assert!(s.outcome.approximations.iter().any(|a| a.starts_with("Node-locked")));
+
+    // The locked decision really bets 50% across IP's range.
+    let game = s.postflop_game().unwrap();
+    assert!(game.locked.contains(&1), "the export marks the locked decision");
+    if let solver_validation::GameNode::Decision { strategy, .. } = &game.nodes[1] {
+        let n = game.ranges[1].len();
+        let total: f64 = game.ranges[1].iter().map(|(_, w)| w).sum();
+        let bet: f64 = game.ranges[1].iter().enumerate().map(|(i, (_, w))| w * strategy[n + i]).sum::<f64>() / total;
+        assert!((bet - 0.5).abs() < 1e-3, "aggregate bet frequency {bet}");
+    }
+    // Independent check: OOP's response is a best response to the lock, and the independent
+    // validator agrees with GTOpen on values and on exploitability measured with the lock fixed.
+    let ours = evaluate(&game).unwrap();
+    assert!((ours.ev[0] - s.outcome.values_mbb[0]).abs() < 0.5, "{ours:?}");
+    assert!(ours.exploitability < 1.0, "constrained exploitability {} mbb", ours.exploitability);
+    assert!((ours.exploitability - s.outcome.progress.exploitability_mbb).abs() < 0.5);
+    let check = &s.outcome.independent_check;
+    assert!(check.performed, "{}", check.note);
+
+    // Without the lock marked, the same profile is clearly exploitable (IP should stop bluffing).
+    let mut unmarked = game.clone();
+    unmarked.locked.clear();
+    assert!(evaluate(&unmarked).unwrap().exploitability > 100.0);
+}
+
+#[test]
+fn bad_locks_are_rejected() {
+    let mut spec = toy(RakeConfig::none());
+    spec.locks = vec![solver_interface::NodeLock { path: vec![0], frequencies: vec![0.2, 0.3, 0.5] }];
+    let err = solve(&spec, &AtomicBool::new(false), |_| {}).unwrap_err();
+    assert!(matches!(err, AdapterError::InvalidSpec(ref m) if m.contains("has 2 actions")), "{err}");
+    spec.locks = vec![solver_interface::NodeLock { path: vec![0], frequencies: vec![0.2, 0.3] }];
+    assert!(matches!(solve(&spec, &AtomicBool::new(false), |_| {}), Err(AdapterError::InvalidSpec(_))));
+    spec.locks = vec![solver_interface::NodeLock { path: vec![5], frequencies: vec![0.5, 0.5] }];
+    assert!(matches!(solve(&spec, &AtomicBool::new(false), |_| {}), Err(AdapterError::InvalidSpec(_))));
 }

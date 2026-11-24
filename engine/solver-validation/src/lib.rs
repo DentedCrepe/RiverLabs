@@ -77,13 +77,18 @@ pub struct PostflopGame {
     pub ranges: [Vec<(Combo, f64)>; 2],
     pub rake: Rake,
     pub nodes: Vec<GameNode>,
+    /// Decision nodes whose strategy is fixed (node locking). A best response follows the given
+    /// strategy there instead of choosing, so exploitability measures how far the rest of the
+    /// profile is from answering the locks optimally. Empty for an ordinary solve.
+    pub locked: std::collections::BTreeSet<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Evaluation {
     /// Expected value per hand for each player when both follow the profile.
     pub ev: [f64; 2],
-    /// Value per hand of a best response against the other player's profile strategy.
+    /// Value per hand of a best response against the other player's profile strategy (following
+    /// the profile at locked nodes).
     pub br: [f64; 2],
     /// `(br[0] − ev[0]) + (br[1] − ev[1])`. Zero exactly at a Nash equilibrium.
     pub nash_conv: f64,
@@ -175,7 +180,7 @@ impl Reference<'_> {
                         .map(|i| {
                             if !live(i) {
                                 0.0
-                            } else if best {
+                            } else if best && !self.game.locked.contains(&node) {
                                 vals.iter().map(|v| v[i]).fold(f64::NEG_INFINITY, f64::max)
                             } else {
                                 vals.iter().enumerate().map(|(a, v)| strategy[a * n + i] * v[i]).sum()
@@ -372,7 +377,26 @@ mod tests {
                 GameNode::Fold { folder: 0, put: [5.0, 15.0] },
                 GameNode::Showdown { put: [15.0, 15.0] },
             ],
+            locked: Default::default(),
         }
+    }
+
+    #[test]
+    fn locked_nodes_are_constraints_for_the_best_response() {
+        // IP bluffs every time and OOP always calls: OOP's call is the best response to that,
+        // but IP could gain by bluffing less. Locking IP's decision leaves nothing to gain.
+        let free = toy(1.0, 1.0, Rake::NONE);
+        assert!(evaluate(&free).unwrap().exploitability > 0.1);
+        let mut locked = free.clone();
+        locked.locked.insert(1);
+        for e in [evaluate(&locked).unwrap(), evaluate_reference(&locked).unwrap()] {
+            assert!(e.exploitability.abs() < 1e-9, "{e:?}");
+            assert_eq!(e.ev, evaluate(&free).unwrap().ev, "locks change best responses, not values");
+        }
+        // With OOP folding instead, OOP's own response is wrong, and the lock does not hide it.
+        let mut bad = toy(1.0, 0.0, Rake::NONE);
+        bad.locked.insert(1);
+        assert!(evaluate(&bad).unwrap().exploitability > 0.1);
     }
 
     #[test]
@@ -432,7 +456,13 @@ mod tests {
             nodes.push(GameNode::Showdown { put: [5.0, 5.0] });
         }
         nodes[0] = GameNode::Chance { children };
-        PostflopGame { board, ranges: [r(ranges[0]), r(ranges[1])], rake: Rake::NONE, nodes }
+        PostflopGame {
+            board,
+            ranges: [r(ranges[0]), r(ranges[1])],
+            rake: Rake::NONE,
+            nodes,
+            locked: Default::default(),
+        }
     }
 
     #[test]

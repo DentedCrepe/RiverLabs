@@ -71,3 +71,31 @@ describe("spots from played hands", () => {
     expect(matchAction(labels, { player: 0, kind: "check", to_mbb: 0, all_in: false })).toBeNull();
   });
 });
+
+describe("node lock helpers", () => {
+  it("reads percentages that add up to 100 and rejects anything else", async () => {
+    const { lockFrequencies } = await import("./solve");
+    expect(lockFrequencies(["25", "75"])).toEqual({ ok: true, value: [0.25, 0.75] });
+    expect(lockFrequencies(["33.3", "33.3", "33.4"]).ok).toBe(true);
+    expect(lockFrequencies(["50", "60"])).toEqual({ ok: false, error: "The percentages add up to 110%, not 100%." });
+    expect(lockFrequencies(["-1", "101"]).ok).toBe(false);
+    expect(lockFrequencies(["", "100"]).ok).toBe(false);
+  });
+
+  it("adds a lock, replacing one at the same decision and keeping the others", async () => {
+    const { withLock } = await import("./solve");
+    const spec = {
+      locks: [
+        { path: [0], frequencies: [1, 0] },
+        { path: [], frequencies: [0.5, 0.5] },
+      ],
+    };
+    expect(withLock(spec, [0], [0.2, 0.8]).locks).toEqual([
+      { path: [], frequencies: [0.5, 0.5] },
+      { path: [0], frequencies: [0.2, 0.8] },
+    ]);
+    expect(withLock({} as { locks?: { path: number[]; frequencies: number[] }[] }, [1], [1, 0]).locks).toEqual([
+      { path: [1], frequencies: [1, 0] },
+    ]);
+  });
+});

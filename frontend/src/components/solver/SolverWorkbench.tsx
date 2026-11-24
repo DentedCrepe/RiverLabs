@@ -117,7 +117,15 @@ function Workbench({ query }: { query: SpotQuery | null }) {
         <Card className="xl:col-span-2">
           <CardHeader title="Result" />
           <CardBody>
-            <ResultView key={selected} jobId={selected} follow={follow} />
+            <ResultView
+              key={selected}
+              jobId={selected}
+              follow={follow}
+              onLocked={(job) => {
+                setAwaiting(job.id);
+                jobs.reload();
+              }}
+            />
           </CardBody>
         </Card>
       )}

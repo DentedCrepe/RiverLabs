@@ -191,6 +191,8 @@ class LocalSolverBackend:
                 "elapsed_ms": progress["elapsed_ms"],
                 "memory_bytes": outcome["memory_bytes"],
                 "independent_check": outcome["independent_check"],
+                # Node-locked solves: the unlocked solve the locks were applied to.
+                **({"unlocked": outcome["unlocked"]} if outcome.get("unlocked") else {}),
             },
         )
         session.add(result)

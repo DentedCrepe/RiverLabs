@@ -172,7 +172,7 @@ impl<'a> Fast<'a> {
                         .map(|i| {
                             if !live(i) {
                                 0.0
-                            } else if best {
+                            } else if best && !self.game.locked.contains(&node) {
                                 vals.iter().map(|v| v[i]).fold(f64::NEG_INFINITY, f64::max)
                             } else {
                                 vals.iter().enumerate().map(|(a, v)| strategy[a * n + i] * v[i]).sum()

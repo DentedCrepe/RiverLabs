@@ -40,6 +40,7 @@ fn main() {
                 add_all_in: false,
             },
             solver,
+            locks: Vec::new(),
         };
         let t = Instant::now();
         let s = solve(&spec, &AtomicBool::new(false), |_| {}).unwrap();

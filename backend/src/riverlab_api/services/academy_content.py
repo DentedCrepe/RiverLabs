@@ -227,6 +227,12 @@ def solve_query(params: dict[str, Any]) -> dict[str, Any]:
     result: dict[str, Any] = {
         "exploitability_pct_pot": expl,
         "values_bb": [v / 1000.0 for v in outcome["values_mbb"]],
+        # A node-locked solve: the values of the unlocked solve the locks were applied to.
+        **(
+            {"unlocked_values_bb": [v / 1000.0 for v in outcome["unlocked"]["values_mbb"]]}
+            if outcome.get("unlocked")
+            else {}
+        ),
         "share": everyone,
         "actions": node["actions"],
     }
@@ -379,7 +385,8 @@ def lesson_solves(lesson: str, table: Any, errors: list[str]) -> dict[str, dict[
     solve (compute kind "solve" with `solve = "<name>"`). Fields: `board` (turn or river),
     `ranges` ([oop, ip]), `pot_bb`, `stack_bb`, `oop_bets`, `ip_bets` (% of pot on the board's
     street and after), optional `oop_raises`, `ip_raises` (% of pot) and `max_raises` (per street;
-    1 when raise sizes are given, else 0), `iterations`. No rake."""
+    1 when raise sizes are given, else 0), optional `locks` (node locks: `{path, frequencies}`),
+    `iterations`. No rake."""
     out: dict[str, dict[str, Any]] = {}
     if not isinstance(table, dict):
         errors.append(f"{lesson}: solves must be a table of named spots")
@@ -416,6 +423,7 @@ def lesson_solves(lesson: str, table: Any, errors: list[str]) -> dict[str, dict[
                     "all_in_threshold_pct_stack": 100,
                     "add_all_in": False,
                 },
+                **({"locks": list(sp["locks"])} if sp.get("locks") else {}),
                 "solver": {
                     "schema_version": 1,
                     "variant": {"algorithm": "discounted", "alpha": 1.5, "beta": 0.0, "gamma": 2.0},

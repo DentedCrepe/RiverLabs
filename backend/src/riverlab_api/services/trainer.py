@@ -141,6 +141,8 @@ def postflop_sources(db: Session) -> list[dict[str, Any]]:
         if not trees.path_from_uri(result.storage_uri or "").exists():
             continue
         spec = result.assumptions["spec"]
+        if spec.get("locks"):
+            continue  # a node-locked solve is an exploit, not an equilibrium: never a drill answer key
         out.append(
             {
                 "job_id": job.id,
@@ -158,6 +160,8 @@ def _solve(db: Session, job_id: uuid.UUID) -> tuple[Any, dict[str, Any], SolverR
     _, result, _ = compute.JobService(db).result(job_id)
     if result.job.kind != "postflop":
         raise ConflictError("Postflop drills need a postflop solve")
+    if result.assumptions["spec"].get("locks"):
+        raise ConflictError("Drills are not dealt from node-locked solves: they are exploits, not equilibria")
     return trees.game(result), result.assumptions["spec"], result
 
 

@@ -132,7 +132,20 @@ export type SolverResult = {
   };
   root: { player: number; street: string; board: string; actions: string[]; by_class: ClassStrategy[] } | null;
   tree_available: boolean;
+  /** Node locks the solve was run with (empty for an ordinary solve). */
+  locks: NodeLock[];
+  /** For a node-locked solve, the unlocked solve the locks were applied to. */
+  unlocked: {
+    iterations: number;
+    exploitability_mbb: number;
+    exploitability_pct_pot: number;
+    values_mbb: number[];
+  } | null;
+  spec: Record<string, unknown>;
 };
+
+/** Fixes how often the acting player takes each action at one decision, across their range. */
+export type NodeLock = { path: number[]; frequencies: number[] };
 
 export type NodeView = {
   kind: "decision" | "chance" | "fold" | "showdown";

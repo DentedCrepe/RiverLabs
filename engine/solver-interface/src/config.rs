@@ -193,7 +193,24 @@ pub struct SolveSpec {
     pub effective_stack_mbb: u64,
     pub tree: TreeAbstraction,
     pub solver: SolverConfig,
+    /// Node locks: decisions whose range-wide action frequencies are fixed, so the other player's
+    /// strategy becomes a response to them (an exploit, not an equilibrium). Empty for a normal solve.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub locks: Vec<NodeLock>,
 }
+
+/// Fixes how often the player acting at one decision takes each action, across their whole range.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodeLock {
+    /// Action indices from the root, on the root's street only (no dealt cards).
+    pub path: Vec<usize>,
+    /// The share of the acting range taking each action at that decision (sums to 1).
+    pub frequencies: Vec<f64>,
+}
+
+/// At most this many locks per solve.
+pub const MAX_LOCKS: usize = 8;
 
 impl SolveSpec {
     pub fn validate(&self) -> Result<(), SolverError> {
@@ -208,7 +225,26 @@ impl SolveSpec {
             return invalid("starting pot and effective stack must be positive");
         }
         self.tree.validate()?;
-        self.solver.validate()
+        self.solver.validate()?;
+        if self.locks.len() > MAX_LOCKS {
+            return invalid(format!("at most {MAX_LOCKS} node locks"));
+        }
+        for (i, lock) in self.locks.iter().enumerate() {
+            if lock.path.len() > 32 {
+                return invalid(format!("lock {i}: path is too long"));
+            }
+            if lock.frequencies.len() < 2 || lock.frequencies.iter().any(|f| !f.is_finite() || *f < 0.0) {
+                return invalid(format!("lock {i}: give a non-negative frequency for each action"));
+            }
+            let total: f64 = lock.frequencies.iter().sum();
+            if (total - 1.0).abs() > 1e-6 {
+                return invalid(format!("lock {i}: frequencies must add up to 1 (they add up to {total})"));
+            }
+            if self.locks[..i].iter().any(|other| other.path == lock.path) {
+                return invalid(format!("lock {i}: that decision is already locked"));
+            }
+        }
+        Ok(())
     }
 }
 

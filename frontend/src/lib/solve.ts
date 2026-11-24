@@ -215,3 +215,29 @@ export function matchAction(labels: string[], step: LineStep): number | null {
   });
   return best;
 }
+
+/**
+ * Reads lock frequencies typed as percentages (one per action) and returns fractions that add up
+ * to exactly 1, or an error. The percentages must add up to 100 (to within 0.01).
+ */
+export function lockFrequencies(percent: string[]): { ok: true; value: number[] } | { ok: false; error: string } {
+  const values = percent.map((p) => Number(p.trim()));
+  if (percent.some((p) => p.trim() === "") || values.some((v) => !Number.isFinite(v) || v < 0 || v > 100)) {
+    return { ok: false, error: "Give each action a percentage between 0 and 100." };
+  }
+  const total = values.reduce((s, v) => s + v, 0);
+  if (Math.abs(total - 100) > 0.01) {
+    return { ok: false, error: `The percentages add up to ${Number(total.toFixed(2))}%, not 100%.` };
+  }
+  return { ok: true, value: values.map((v) => v / total) };
+}
+
+/** The spec with a lock at `path` (replacing any lock already there; other locks are kept). */
+export function withLock<T extends { locks?: { path: number[]; frequencies: number[] }[] }>(
+  spec: T,
+  path: number[],
+  frequencies: number[],
+): T {
+  const same = (p: number[]) => p.length === path.length && p.every((x, i) => x === path[i]);
+  return { ...spec, locks: [...(spec.locks ?? []).filter((l) => !same(l.path)), { path, frequencies }] };
+}

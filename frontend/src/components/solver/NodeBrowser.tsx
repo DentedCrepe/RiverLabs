@@ -1,9 +1,9 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Lock } from "lucide-react";
 import { useState } from "react";
-import { type LineStep, matchAction } from "@/lib/solve";
-import type { NodeView } from "@/lib/types";
+import { type LineStep, lockFrequencies, matchAction } from "@/lib/solve";
+import type { NodeLock, NodeView } from "@/lib/types";
 import { useApi } from "@/lib/useApi";
 import { formatBb } from "@/lib/units";
 import { Button } from "@/components/ui/Button";
@@ -14,6 +14,8 @@ import { actionColors } from "./actionColors";
 import { StrategyMatrix } from "./StrategyMatrix";
 
 type Step = { token: string; label: string };
+
+const sameLockPath = (a: number[], b: number[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 const PLAYER = ["OOP", "IP"];
 
 function overall(node: NodeView): number[] {
@@ -61,8 +63,105 @@ function YourHand({ node, follow, atDecision }: { node: NodeView; follow: Follow
   );
 }
 
+/**
+ * Lock this decision: fix how often the acting player takes each action across their range, then
+ * solve again so the other player's strategy becomes a response to it.
+ */
+function LockPanel({
+  node,
+  path,
+  existing,
+  onLock,
+}: {
+  node: NodeView;
+  path: number[];
+  existing: NodeLock | undefined;
+  onLock: (path: number[], frequencies: number[]) => Promise<void>;
+}) {
+  const start = (existing?.frequencies ?? overall(node)).map((f) => (f * 100).toFixed(1));
+  const [percent, setPercent] = useState<string[]>(start);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  async function submit() {
+    const r = lockFrequencies(percent);
+    if (!r.ok) return setError(r.error);
+    setError(null);
+    setBusy(true);
+    try {
+      await onLock(path, r.value);
+      setDone(true);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <details className="rounded-md border border-line px-3 py-2">
+      <summary className="flex cursor-pointer items-center gap-2 text-sm text-accent">
+        <Lock aria-hidden className="size-3.5" /> Lock this decision
+      </summary>
+      <div className="mt-2 flex flex-col gap-2">
+        <p className="text-xs text-muted">
+          Set how often {PLAYER[node.player ?? 0]} takes each action here, across their whole range (for example, an
+          opponent who bets too often). RiverLab solves the spot again with these frequencies fixed, so the other
+          player&apos;s strategy becomes the best response to them. Each hand keeps its relative preferences from this
+          solve.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          {node.actions.map((a, i) => (
+            <label key={a} className="flex items-center gap-1.5 text-xs text-fg">
+              {a}
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={0.1}
+                inputMode="decimal"
+                aria-label={`${a} (%)`}
+                value={percent[i]}
+                onChange={(e) => setPercent((p) => p.map((x, k) => (k === i ? e.target.value : x)))}
+                className="h-7 w-20 rounded-md border border-line bg-canvas px-2 font-mono text-xs tabular"
+              />
+              %
+            </label>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button size="sm" variant="primary" loading={busy} onClick={submit} icon={<Lock className="size-3.5" />}>
+            Solve with this lock
+          </Button>
+          {done && (
+            <span role="status" className="text-xs text-accent">
+              Queued. The locked solve opens here when it finishes.
+            </span>
+          )}
+        </div>
+        {error && (
+          <p role="alert" className="text-xs text-danger">
+            {error}
+          </p>
+        )}
+      </div>
+    </details>
+  );
+}
+
 /** Walks a saved solve tree: actions at decisions, dealt cards at chance nodes. */
-export function NodeBrowser({ jobId, follow }: { jobId: string; follow?: Follow }) {
+export function NodeBrowser({
+  jobId,
+  follow,
+  locks = [],
+  onLock,
+}: {
+  jobId: string;
+  follow?: Follow;
+  /** Locks the solve was run with: locked decisions are marked. */
+  locks?: NodeLock[];
+  /** Offers "Lock this decision" at decisions on the first street, when given. */
+  onLock?: (path: number[], frequencies: number[]) => Promise<void>;
+}) {
   const [steps, setSteps] = useState<Step[]>([]);
   // Following the real line until it reaches your decision or you navigate yourself.
   const [auto, setAuto] = useState(Boolean(follow));
@@ -95,6 +194,9 @@ export function NodeBrowser({ jobId, follow }: { jobId: string; follow?: Follow 
     }
   }
   const atDecision = Boolean(follow && auto && loaded && steps.length === follow.line.length);
+  // Locks apply to decisions reached by actions only (the first street of the solve).
+  const actionPath = steps.every((s) => s.token.startsWith("a")) ? steps.map((s) => Number(s.token.slice(1))) : null;
+  const lockedHere = actionPath !== null && locks.some((l) => sameLockPath(l.path, actionPath));
 
   return (
     <div className="flex flex-col gap-3">
@@ -144,6 +246,12 @@ export function NodeBrowser({ jobId, follow }: { jobId: string; follow?: Follow 
               {follow && node.player === follow.heroPlayer && (
                 <YourHand node={node} follow={follow} atDecision={atDecision} />
               )}
+              {lockedHere && (
+                <p className="flex items-center gap-2 text-sm text-warn">
+                  <Lock aria-hidden className="size-3.5" /> Locked: {PLAYER[node.player]} plays these frequencies
+                  whatever the other player does.
+                </p>
+              )}
               <p className="text-sm text-fg">{PLAYER[node.player]} to act — choose an action to continue:</p>
               <div className="flex flex-wrap gap-2">
                 {node.actions.map((a, i) => {
@@ -167,6 +275,15 @@ export function NodeBrowser({ jobId, follow }: { jobId: string; follow?: Follow 
                 })}
               </div>
               <StrategyMatrix actions={node.actions} byClass={node.by_class} />
+              {onLock && actionPath && loaded && (
+                <LockPanel
+                  key={path}
+                  node={loaded}
+                  path={actionPath}
+                  existing={locks.find((l) => sameLockPath(l.path, actionPath))}
+                  onLock={onLock}
+                />
+              )}
             </>
           )}
           {node.kind === "chance" && (

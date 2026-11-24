@@ -146,6 +146,7 @@ oop_bets = []                 # % of pot, on the board's street and after; no ra
 ip_bets = [33, 75, 150]
 oop_raises = []               # optional raise sizes (% of pot); with any, max_raises defaults to 1
 ip_raises = []
+locks = []                    # optional node locks: [{ path = [0], frequencies = [0.0, 1.0] }]
 iterations = 1000
 ~~~
 
@@ -160,7 +161,9 @@ is a list of steps from the root, as in the solver API. The result has:
 - with `subset` (hand-class labels, e.g. `["76s", "T8s"]`): `subset_share` (the same, within the
   subset) and `subset_of_action` (the part of each action that comes from the subset, e.g. the
   bluff share of a bet);
-- `exploitability_pct_pot`, `values_bb` and `actions`.
+- `exploitability_pct_pot`, `values_bb` and `actions`; for a locked solve also
+  `unlocked_values_bb` (the unlocked solve's values). A locked solve's exploitability bound is
+  checked with the locked decisions held fixed (`docs/solver-validation.md`, "Node locking").
 
 `field` is a dotted path into the result (list indexes allowed, e.g. `0.current.0`); an empty
 `field` means the result is the number itself. `scale` multiplies it. The stated `answer` must agree within `tolerance`. Use `compute` for every

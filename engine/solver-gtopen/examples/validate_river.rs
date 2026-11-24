@@ -42,6 +42,7 @@ fn run(spot: Spot) {
             add_all_in: false,
         },
         solver,
+        locks: Vec::new(),
     };
     let s = solve(&spec, &AtomicBool::new(false), |_| {}).unwrap();
     let ours = evaluate(&s.postflop_game().unwrap()).unwrap();
@@ -81,6 +82,7 @@ fn run_turn(label: &str, board: &str, rake: RakeConfig) {
             add_all_in: false,
         },
         solver,
+        locks: Vec::new(),
     };
     let s = solve(&spec, &AtomicBool::new(false), |_| {}).unwrap();
     let ours = evaluate(&s.postflop_game().unwrap()).unwrap();

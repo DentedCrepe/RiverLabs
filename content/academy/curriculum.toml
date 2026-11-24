@@ -88,8 +88,8 @@ summary = "Beyond two-player equilibria: multiway games, subgames, locking and e
 topics = [
   { slug = "multiway-game-theory", title = "Multiway game theory" },
   { slug = "subgame-solving", title = "Subgame solving" },
-  { slug = "node-locking", title = "Node locking" },
-  { slug = "exploitative-adjustments", title = "Exploitative adjustments" },
+  { slug = "node-locking", title = "Node locking", lesson = "node-locking" },
+  { slug = "exploitative-adjustments", title = "Exploitative adjustments", lesson = "node-locking" },
   { slug = "population-tendencies", title = "Population tendencies" },
   { slug = "equilibrium-refinements", title = "Equilibrium refinements" },
   { slug = "advanced-range-construction", title = "Advanced range construction" },

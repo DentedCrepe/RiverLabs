@@ -439,3 +439,29 @@ def test_preflop_drills_are_dealt_from_saved_preflop_solves(live: TestClient, db
     stats = live.get("/api/v1/analytics/preflop").json()
     assert stats["total"]["answers"] == 1
     assert stats["by_spot"][0] == {"spot": "open", **stats["total"]}
+
+
+def test_node_locked_solve_reports_the_unlocked_base_and_is_never_a_drill(live: TestClient) -> None:
+    spec = {**toy_spec(), "locks": [{"path": [0], "frequencies": [0.5, 0.5]}]}
+    bad = {**toy_spec(), "locks": [{"path": [0], "frequencies": [0.5, 0.6]}]}
+    assert live.post("/api/v1/solver/jobs", json={"spec": bad}).status_code == 422
+    job = wait(
+        live, live.post("/api/v1/solver/jobs", json={"spec": spec}).json()["id"], {"succeeded", "failed"}
+    )
+    assert job["status"] == "succeeded", job
+    res = live.get(f"/api/v1/solver/jobs/{job['id']}/result").json()
+    assert res["locks"] == spec["locks"]
+    assert abs(res["unlocked"]["values_mbb"][1] + 2000) < 1, "the unlocked base is the ordinary solve"
+    assert res["values_mbb"][0] > res["unlocked"]["values_mbb"][0], "OOP exploits IP's over-bluffing"
+    assert any(a.startswith("Node-locked") for a in res["approximations"])
+    assert res["independent_check"]["performed"] is True
+    # The locked decision shows the locked frequencies.
+    node = live.get(f"/api/v1/solver/jobs/{job['id']}/node", params={"path": "a0"}).json()
+    total = sum(c["weight"] for c in node["by_class"])
+    bet = sum(c["weight"] * c["frequencies"][1] for c in node["by_class"]) / total
+    assert abs(bet - 0.5) < 1e-3
+    # An exploit is never an answer key for drills.
+    sources = live.get("/api/v1/trainer/postflop/sources").json()
+    assert job["id"] not in [s["job_id"] for s in sources]
+    r = live.post("/api/v1/trainer/postflop/drill", json={"job_id": job["id"], "seed": 1})
+    assert r.status_code == 409

@@ -174,6 +174,9 @@ def get_result(job_id: uuid.UUID, db: DbSession) -> SolverResultOut:
         if root
         else None,
         tree_available=_tree_available(result),
+        locks=result.assumptions["spec"].get("locks", []),
+        unlocked=summary.get("unlocked"),
+        spec=result.assumptions["spec"],
     )
 
 

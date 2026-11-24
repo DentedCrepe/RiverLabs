@@ -99,6 +99,26 @@ Every solve in the app is now re-checked automatically. The check is skipped, wi
 note, only when the exported tree (about the size of GTOpen's own arenas) would not fit in the
 memory limit alongside the solve.
 
+## Node locking
+A solve can fix one or more decisions on its first street to range-wide action frequencies
+(`SolveSpec::locks`). RiverLab first solves the spot unlocked, turns the solved strategy at each
+locked decision into one with the requested frequencies (GTOpen's range lock: each hand's
+frequencies are scaled from the solved ones, so hands keep their relative preferences), then
+solves again **from scratch** with only the locks carried over, so the averages hold no
+pre-lock iterations.
+
+What is checked, and how:
+- **Exploitability is constrained.** GTOpen's best response cannot deviate at a locked node, and
+  RiverLab's validator does the same (`PostflopGame::locked`): the figure measures how far the
+  rest of the strategy is from answering the locks, not how exploitable the locks are.
+- **Tests** (`solver-gtopen/tests/validation.rs`, `solver-validation`): on the hand-solved river
+  spot, a 50% bet lock is reproduced exactly across the range; GTOpen and the independent
+  validator agree on values and on the constrained exploitability; the out-of-position player
+  gains against the over-bluffing lock; and the same profile with the lock not marked is
+  clearly exploitable, so the check is not vacuous.
+- A locked solve's result is labelled "an exploit, not an equilibrium", shows the unlocked
+  solve's values beside its own, and is never used as a drill answer key.
+
 ## Miri (undefined-behaviour check) on GTOpen
 Run on 2026-11-23 with nightly Miri; reproduce with `tools/solver-audit/miri/run-miri.sh`.
 The test (`tools/solver-audit/miri/miri_smoke.rs`) covers the GTOpen paths RiverLab uses, on

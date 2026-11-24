@@ -286,6 +286,7 @@ pub fn street_spec(
         effective_stack_mbb: stack,
         tree: tree_at(&observed, s, TREES[0]),
         solver,
+        locks: Vec::new(),
     };
     let mut chosen = (0, 0);
     for (k, shape) in TREES.iter().enumerate() {
