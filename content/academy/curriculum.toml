@@ -7,14 +7,14 @@ number = 1
 title = "Poker Foundations"
 summary = "The rules, the vocabulary and the first pieces of arithmetic every decision uses."
 topics = [
-  { slug = "terminology", title = "Poker terminology" },
+  { slug = "terminology", title = "Poker terminology", lesson = "terminology" },
   { slug = "hand-rankings", title = "Hand rankings", lesson = "hand-rankings" },
   { slug = "positions", title = "Positions", lesson = "positions" },
-  { slug = "preflop-fundamentals", title = "Preflop fundamentals" },
+  { slug = "preflop-fundamentals", title = "Preflop fundamentals", lesson = "preflop-fundamentals" },
   { slug = "pot-odds", title = "Pot odds", lesson = "pot-odds" },
   { slug = "equity", title = "Equity", lesson = "equity" },
   { slug = "outs-and-draws", title = "Outs and draws", lesson = "outs-and-draws" },
-  { slug = "starting-hands", title = "Starting hand selection" },
+  { slug = "starting-hands", title = "Starting hand selection", lesson = "starting-hands" },
 ]
 
 [[levels]]
@@ -57,10 +57,10 @@ topics = [
   { slug = "board-textures", title = "Board textures", lesson = "range-advantage" },
   { slug = "polarised-ranges", title = "Polarised ranges", lesson = "polarised-ranges" },
   { slug = "merged-ranges", title = "Merged ranges", lesson = "polarised-ranges" },
-  { slug = "range-checking", title = "Range checking" },
+  { slug = "range-checking", title = "Range checking", lesson = "range-checking" },
   { slug = "bet-sizing-theory", title = "Bet sizing theory", lesson = "polarised-ranges" },
   { slug = "overbets", title = "Overbets", lesson = "polarised-ranges" },
-  { slug = "check-raises", title = "Check-raises" },
+  { slug = "check-raises", title = "Check-raises", lesson = "check-raises" },
   { slug = "turn-and-river-strategy", title = "Turn and river strategy" },
 ]
 

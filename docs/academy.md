@@ -144,6 +144,8 @@ pot_bb = "10"                 # exact bb amounts
 stack_bb = "20"
 oop_bets = []                 # % of pot, on the board's street and after; no raises
 ip_bets = [33, 75, 150]
+oop_raises = []               # optional raise sizes (% of pot); with any, max_raises defaults to 1
+ip_raises = []
 iterations = 1000
 ~~~
 

@@ -76,9 +76,7 @@ def test_lessons_hide_answers_and_grade_attempts(synced: Session, db_client: Tes
 def test_progress_bookmarks_and_dashboard(synced: Session, db_client: TestClient) -> None:
     dash = db_client.get("/api/v1/academy/dashboard").json()
     assert dash["lessons_published"] == len(list((CONTENT / "lessons").glob("*.md")))
-    assert dash["recommended"]["slug"] == "hand-rankings", (
-        "level 1 in order; its prerequisite topic (terminology) has no lesson, so it doesn't block"
-    )
+    assert dash["recommended"]["slug"] == "terminology", "level 1 in order: the first lesson"
     assert dash["current_level"] == 1
     r = db_client.post(
         "/api/v1/academy/lessons/pot-odds/progress",
@@ -99,8 +97,9 @@ def test_progress_bookmarks_and_dashboard(synced: Session, db_client: TestClient
     )
     dash = db_client.get("/api/v1/academy/dashboard").json()
     assert dash["lessons_completed"] == 1
-    assert dash["recommended"]["slug"] == "hand-rankings", "still the first unfinished lesson in order"
-    db_client.post("/api/v1/academy/lessons/hand-rankings/progress", json={"completed": True})
+    assert dash["recommended"]["slug"] == "terminology", "still the first unfinished lesson in order"
+    for done in ("terminology", "hand-rankings"):
+        db_client.post(f"/api/v1/academy/lessons/{done}/progress", json={"completed": True})
     assert db_client.get("/api/v1/academy/dashboard").json()["recommended"]["slug"] == "positions"
     assert dash["saved"] == [{"slug": "pot-odds", "title": "Pot odds and break-even equity"}]
     assert dash["bookmarks"][0]["section"] == "break-even"
@@ -108,7 +107,9 @@ def test_progress_bookmarks_and_dashboard(synced: Session, db_client: TestClient
     curriculum = db_client.get("/api/v1/academy/curriculum").json()
     topic = next(t for t in curriculum[0]["topics"] if t["slug"] == "pot-odds")
     assert topic["status"] == "completed"
-    assert next(t for t in curriculum[0]["topics"] if t["slug"] == "starting-hands")["status"] == "planned"
+    assert (
+        next(t for t in curriculum[1]["topics"] if t["slug"] == "equity-realisation")["status"] == "planned"
+    )
     lesson = db_client.get("/api/v1/academy/lessons/pot-odds").json()
     assert lesson["explanation_level"] == "math"
     assert lesson["progress"]["last_section"] == "assumptions"

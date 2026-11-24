@@ -378,7 +378,8 @@ def lesson_solves(lesson: str, table: Any, errors: list[str]) -> dict[str, dict[
     """`[solves.<name>]` in a lesson's front matter: small heads-up spots the lesson's questions
     solve (compute kind "solve" with `solve = "<name>"`). Fields: `board` (turn or river),
     `ranges` ([oop, ip]), `pot_bb`, `stack_bb`, `oop_bets`, `ip_bets` (% of pot on the board's
-    street and after), `iterations`. No rake, no raises."""
+    street and after), optional `oop_raises`, `ip_raises` (% of pot) and `max_raises` (per street;
+    1 when raise sizes are given, else 0), `iterations`. No rake."""
     out: dict[str, dict[str, Any]] = {}
     if not isinstance(table, dict):
         errors.append(f"{lesson}: solves must be a table of named spots")
@@ -393,10 +394,10 @@ def lesson_solves(lesson: str, table: Any, errors: list[str]) -> dict[str, dict[
             if first not in (1, 2):
                 raise ValueError("board must be a turn or a river")
 
-            def sizing(bets: list[int], first: int = first) -> dict[str, Any]:
+            def sizing(bets: list[int], raises: list[int], first: int = first) -> dict[str, Any]:
                 return {
                     "bet_pct_pot": [list(bets) if i >= first else [] for i in range(3)],
-                    "raise_pct_pot": [[], [], []],
+                    "raise_pct_pot": [list(raises) if i >= first else [] for i in range(3)],
                 }
 
             iterations = int(sp.get("iterations", 1000))
@@ -407,9 +408,11 @@ def lesson_solves(lesson: str, table: Any, errors: list[str]) -> dict[str, dict[
                 "starting_pot_mbb": _mbb(sp["pot_bb"], f"{where} pot_bb", errors),
                 "effective_stack_mbb": _mbb(sp["stack_bb"], f"{where} stack_bb", errors),
                 "tree": {
-                    "oop": sizing(sp.get("oop_bets", [])),
-                    "ip": sizing(sp.get("ip_bets", [])),
-                    "max_raises_per_street": 0,
+                    "oop": sizing(sp.get("oop_bets", []), sp.get("oop_raises", [])),
+                    "ip": sizing(sp.get("ip_bets", []), sp.get("ip_raises", [])),
+                    "max_raises_per_street": int(
+                        sp.get("max_raises", 1 if sp.get("oop_raises") or sp.get("ip_raises") else 0)
+                    ),
                     "all_in_threshold_pct_stack": 100,
                     "add_all_in": False,
                 },
