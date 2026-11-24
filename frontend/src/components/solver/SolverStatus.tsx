@@ -23,7 +23,12 @@ export function SolverStatus() {
               <StatusBadge status={data.available_backends.length ? "partial" : "interface_only"} />
               <span className="text-sm text-fg">
                 {data.engines.length
-                  ? data.engines.map((e) => `${e.name} @ ${e.commit.slice(0, 10)}`).join(", ")
+                  ? data.engines
+                      .map(
+                        (e) =>
+                          `${e.name} @ ${e.commit.slice(0, 10)}${e.patches?.length ? ` + ${e.patches.join(", ")}` : ""}`,
+                      )
+                      .join(", ")
                   : "No backend enabled"}
               </span>
             </div>

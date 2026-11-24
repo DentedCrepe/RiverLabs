@@ -2,13 +2,17 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from pydantic import Field
+
 from riverlab_api.schemas.common import StrictModel
 
 
 class SolverBackendInfo(StrictModel):
     name: str
     repository: str
+    # The upstream commit, and RiverLab's patches applied to it (third_party/gtopen).
     commit: str
+    patches: list[str] = Field(default_factory=list)
     scope: str
 
 

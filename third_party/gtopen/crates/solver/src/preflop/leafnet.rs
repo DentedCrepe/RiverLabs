@@ -1,0 +1,541 @@
+//! Learned heads-up flop leaf values (the pooled value-net, feature #14).
+//!
+//! A small MLP trained on exact flop solves (`tools/datagen/gonogo.py`)
+//! predicts, for a heads-up flop leaf, how far each class's solved value is
+//! from the balanced realization model's value. The file format and the
+//! feature layout are defined in `tools/datagen/leafnet_io.py`; this module
+//! reads the same file and computes the same features, so a net trained in
+//! numpy gives the same numbers here.
+//!
+//! A file can hold several nets (an ensemble: header key "ensemble" lists
+//! each member's layer sizes, and the members follow back to back). Its
+//! output is the mean of the members' outputs. Nets trained the same way
+//! from different seeds disagree at a solve's leaves by about as much as
+//! they improve on each other, and their mean is steadier and scores better.
+//!
+//! Two input layouts. The first is the 686 inputs of [`LeafNet::features`].
+//! The second ("near zero", 1,024 inputs) adds one input per class and
+//! player after them: `exp(-weight / NEAR_ZERO_TAU)`, 1 for a hand the range
+//! does not hold and close to 0 from a tenth of the range's most played hand
+//! up. A preflop solve reads the net hardest exactly there, at hands it does
+//! not play yet, and a weight on a linear scale cannot tell such a hand from
+//! one that is played a little. A net's first layer says which layout it
+//! was trained with, and the loader builds the extra inputs itself, so every
+//! caller hands over the same 686.
+use super::equity::NUM_CLASSES;
+use super::leaf_total::TotalRule;
+use std::path::Path;
+
+const MAGIC: &[u8; 8] = b"GTOLEAF1";
+/// Pot types in the one-hot order the net was trained with.
+pub const POT_TYPES: [&str; 4] = ["limped", "srp", "3bet", "4bet"];
+const META: usize = 10;
+/// Inputs of the first layout, which is also what [`LeafNet::features`] returns.
+const INPUTS: usize = 4 * NUM_CLASSES + META;
+/// Inputs of the "near zero" layout: the first layout, then one more per class and player.
+const INPUTS_NEAR_ZERO: usize = INPUTS + 2 * NUM_CLASSES;
+/// Scale of the "near zero" inputs, `exp(-weight / NEAR_ZERO_TAU)`, on range
+/// weights whose largest is 1. The same constant as `leafnet_io.NEAR_ZERO_TAU`.
+pub const NEAR_ZERO_TAU: f32 = 0.02;
+
+struct Layer {
+    rows: usize,
+    cols: usize,
+    /// Row-major, input-major: `w[i * cols + j]` links input i to output j.
+    w: Vec<f32>,
+    b: Vec<f32>,
+}
+
+/// One net: input normalization and a Linear/ReLU stack.
+struct Member {
+    mu: Vec<f32>,
+    sd: Vec<f32>,
+    layers: Vec<Layer>,
+}
+
+/// A loaded leaf-value net (one member) or ensemble (the mean of several).
+pub struct LeafNet {
+    pub header: serde_json::Value,
+    /// The header's "total_rule", if the file carries one (leaf_total.rs).
+    pub total_rule: Option<TotalRule>,
+    members: Vec<Member>,
+}
+
+/// One heads-up flop leaf, out of position first.
+pub struct LeafSpot<'a> {
+    /// Per-class range weights (any scale; normalized so the largest is 1).
+    pub range: [&'a [f32]; 2],
+    /// The balanced model's per-class values, as a fraction of the pot.
+    pub balanced: [&'a [f32]; 2],
+    pub pot_bb: f64,
+    /// Effective stack behind at the flop.
+    pub stack_bb: f64,
+    /// Rake as a fraction (0.05 = 5%) and its cap in bb (0 = none).
+    pub rake_frac: f64,
+    pub rake_cap_bb: f64,
+    /// Index into [`POT_TYPES`].
+    pub pot_type: usize,
+}
+
+/// Pot type of a flop reached after `raises` preflop raises.
+pub fn pot_type_for_raises(raises: u8) -> usize {
+    (raises as usize).min(3)
+}
+
+impl LeafNet {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, String> {
+        if bytes.len() < 12 || &bytes[..8] != MAGIC {
+            return Err("not a GTOpen leaf net file".into());
+        }
+        let hlen = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
+        let body = 12 + hlen;
+        if bytes.len() < body {
+            return Err("leaf net header is truncated".into());
+        }
+        let header: serde_json::Value =
+            serde_json::from_slice(&bytes[12..body]).map_err(|e| format!("leaf net header: {e}"))?;
+        let sizes_of = |v: &serde_json::Value| -> Result<Vec<usize>, String> {
+            let sizes: Vec<usize> = v.as_array().ok_or("leaf net header has no sizes")?
+                .iter().map(|v| v.as_u64().map(|x| x as usize)).collect::<Option<_>>()
+                .ok_or("leaf net sizes must be integers")?;
+            let known = sizes.first().is_some_and(|&n| n == INPUTS || n == INPUTS_NEAR_ZERO);
+            if sizes.len() < 2 || !known || *sizes.last().unwrap() != 2 * NUM_CLASSES {
+                return Err(format!("leaf net sizes {sizes:?} do not match the feature layout"));
+            }
+            Ok(sizes)
+        };
+        let all_sizes: Vec<Vec<usize>> = match header.get("ensemble") {
+            None => vec![sizes_of(&header["sizes"])?],
+            Some(list) => {
+                let list = list.as_array().filter(|l| !l.is_empty()).ok_or("leaf net ensemble must list its members' sizes")?;
+                list.iter().map(sizes_of).collect::<Result<_, _>>()?
+            }
+        };
+        let data = &bytes[body..];
+        if data.len() % 4 != 0 {
+            return Err("leaf net data is not whole f32 values".into());
+        }
+        let vals: Vec<f32> = data.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
+        let mut pos = 0usize;
+        let mut take = |n: usize| -> Result<Vec<f32>, String> {
+            let out = vals.get(pos..pos + n).ok_or("leaf net data is truncated")?.to_vec();
+            pos += n;
+            Ok(out)
+        };
+        let mut members = Vec::new();
+        for sizes in &all_sizes {
+            let mu = take(sizes[0])?;
+            let sd = take(sizes[0])?;
+            let mut layers = Vec::new();
+            for win in sizes.windows(2) {
+                let (rows, cols) = (win[0], win[1]);
+                layers.push(Layer { rows, cols, w: take(rows * cols)?, b: take(cols)? });
+            }
+            if sd.iter().any(|&s| !(s > 0.0)) {
+                return Err("leaf net has invalid numbers".into());
+            }
+            members.push(Member { mu, sd, layers });
+        }
+        if pos != vals.len() {
+            return Err(format!("leaf net has {} unexpected trailing values", vals.len() - pos));
+        }
+        if vals.iter().any(|v| !v.is_finite()) {
+            return Err("leaf net has invalid numbers".into());
+        }
+        let total_rule = TotalRule::from_header(&header).map_err(|e| format!("leaf net header: {e}"))?;
+        Ok(LeafNet { header, total_rule, members })
+    }
+
+    /// How many nets the file holds (1 unless it is an ensemble).
+    pub fn members(&self) -> usize {
+        self.members.len()
+    }
+
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, String> {
+        let p = path.as_ref();
+        let bytes = std::fs::read(p).map_err(|e| format!("{}: {e}", p.display()))?;
+        Self::from_bytes(&bytes).map_err(|e| format!("{}: {e}", p.display()))
+    }
+
+    /// A shipped net's file under cache/ (the server runs from the repo
+    /// root, tests from crates/solver).
+    fn load_shipped(file: &str) -> Result<Self, String> {
+        Self::load(format!("cache/{file}")).or_else(|_| Self::load(format!("../../cache/{file}")))
+    }
+
+    /// `LEAF_NET`, else the first shipped net (v1) under cache/: the net of
+    /// a game that names none.
+    pub fn load_default() -> Result<Self, String> {
+        if let Ok(p) = std::env::var("LEAF_NET") {
+            return Self::load(p);
+        }
+        Self::load_shipped("leaf_net_v1.bin")
+    }
+
+    /// The net a game names (`PreflopConfig::leaf_net`): None or "v1" is
+    /// [`Self::load_default`]; "v3" is the net a new Preflop Lab game uses
+    /// and "v2" the one before it;
+    /// "SNAPSHOT/RUN" is a net the leaf-net harness kept (see
+    /// leafnet_catalog.rs).
+    pub fn load_named(name: Option<&str>) -> Result<Self, String> {
+        use super::leafnet_catalog::{research_net_path, shipped, SHIPPED};
+        match name {
+            None | Some("") | Some(SHIPPED) => Self::load_default(),
+            Some(n) => match shipped(n) {
+                Some(net) => Self::load_shipped(net.file),
+                None => Self::load(research_net_path(n)?),
+            },
+        }
+    }
+
+    /// The file bytes (tests).
+    #[cfg(test)]
+    pub(crate) fn to_bytes(&self) -> Vec<u8> {
+        let blob = serde_json::to_vec(&self.header).unwrap();
+        let mut bytes = MAGIC.to_vec();
+        bytes.extend((blob.len() as u32).to_le_bytes());
+        bytes.extend(&blob);
+        for m in &self.members {
+            let vals = m.mu.iter().chain(&m.sd).chain(m.layers.iter().flat_map(|l| l.w.iter().chain(&l.b)));
+            for v in vals {
+                bytes.extend(v.to_le_bytes());
+            }
+        }
+        bytes
+    }
+
+    /// The mean of several nets, as one ensemble (tests).
+    #[cfg(test)]
+    pub(crate) fn ensemble(nets: Vec<LeafNet>) -> LeafNet {
+        let members: Vec<Member> = nets.into_iter().flat_map(|n| n.members).collect();
+        let sizes: Vec<Vec<usize>> = members.iter()
+            .map(|m| std::iter::once(m.layers[0].rows).chain(m.layers.iter().map(|l| l.cols)).collect())
+            .collect();
+        LeafNet { header: serde_json::json!({"sizes": sizes[0], "ensemble": sizes}), total_rule: None, members }
+    }
+
+    /// The input vector, exactly as tools/datagen/gonogo.py builds it. A
+    /// net of the "near zero" layout takes the same vector and adds its
+    /// extra inputs itself.
+    pub fn features(spot: &LeafSpot) -> Vec<f32> {
+        let mut x = Vec::with_capacity(INPUTS);
+        for r in spot.range {
+            let max = r.iter().cloned().fold(0f32, f32::max);
+            let scale = if max > 0.0 { 1.0 / max } else { 0.0 };
+            x.extend(r.iter().map(|w| w * scale));
+        }
+        for b in spot.balanced {
+            x.extend_from_slice(b);
+        }
+        let (pot, stack) = (spot.pot_bb, spot.stack_bb);
+        let meta = [
+            pot.ln(), stack.ln(), (stack / pot).ln(), 10.0 * spot.rake_frac,
+            spot.rake_cap_bb / pot, if spot.rake_frac > 0.0 { 1.0 } else { 0.0 },
+        ];
+        x.extend(meta.iter().map(|&v| v as f32));
+        for t in 0..POT_TYPES.len() {
+            x.push(if t == spot.pot_type { 1.0 } else { 0.0 });
+        }
+        x
+    }
+
+    /// Raw net output for one input vector: solved minus balanced, oop then ip.
+    pub fn residual(&self, x: &[f32]) -> Vec<f32> {
+        mean_of(self.members.iter().map(|m| m.residual(x)))
+    }
+
+    /// `residual` for many inputs at once (`xs` holds them back to back).
+    /// Each weight row is read once per batch instead of once per input,
+    /// which is several times faster for the thousands of leaves of a big
+    /// preflop tree. Same numbers as calling `residual` on each input.
+    pub fn residual_batch(&self, xs: &[f32]) -> Vec<f32> {
+        mean_of(self.members.iter().map(|m| m.residual_batch(xs)))
+    }
+
+    /// Predicted per-class values (fraction of the pot), out of position first.
+    pub fn values(&self, spot: &LeafSpot) -> [Vec<f32>; 2] {
+        let r = self.residual(&Self::features(spot));
+        let mut out = [spot.balanced[0].to_vec(), spot.balanced[1].to_vec()];
+        for p in 0..2 {
+            for k in 0..NUM_CLASSES {
+                out[p][k] += r[p * NUM_CLASSES + k];
+            }
+        }
+        out
+    }
+}
+
+/// Element-wise mean of equally long vectors (a single vector is returned
+/// as it is, so a one-member net gives exactly its own output).
+fn mean_of(mut outs: impl Iterator<Item = Vec<f32>>) -> Vec<f32> {
+    let mut sum = outs.next().expect("a leaf net has at least one member");
+    let mut n = 1usize;
+    for out in outs {
+        for (s, v) in sum.iter_mut().zip(&out) {
+            *s += v;
+        }
+        n += 1;
+    }
+    if n > 1 {
+        let inv = 1.0 / n as f32;
+        sum.iter_mut().for_each(|s| *s *= inv);
+    }
+    sum
+}
+
+impl Member {
+    /// One input vector of [`LeafNet::features`], normalized, with the
+    /// "near zero" inputs after it when this net was trained with them.
+    fn normalized<'a>(&'a self, x: &'a [f32]) -> impl Iterator<Item = f32> + 'a {
+        debug_assert_eq!(x.len(), INPUTS);
+        let extra = if self.mu.len() == INPUTS_NEAR_ZERO { 2 * NUM_CLASSES } else { 0 };
+        let near_zero = x[..extra].iter().map(|w| (-w.clamp(0.0, 1.0) / NEAR_ZERO_TAU).exp());
+        x.iter().cloned().chain(near_zero).zip(&self.mu).zip(&self.sd).map(|((v, m), s)| (v - m) / s)
+    }
+
+    fn residual(&self, x: &[f32]) -> Vec<f32> {
+        let mut h: Vec<f32> = self.normalized(x).collect();
+        for (k, layer) in self.layers.iter().enumerate() {
+            let mut out = layer.b.clone();
+            for i in 0..layer.rows {
+                let xi = h[i];
+                if xi == 0.0 {
+                    continue;
+                }
+                let row = &layer.w[i * layer.cols..(i + 1) * layer.cols];
+                for (o, w) in out.iter_mut().zip(row) {
+                    *o += xi * w;
+                }
+            }
+            if k + 1 < self.layers.len() {
+                for o in &mut out {
+                    *o = o.max(0.0);
+                }
+            }
+            h = out;
+        }
+        h
+    }
+
+    fn residual_batch(&self, xs: &[f32]) -> Vec<f32> {
+        let n = xs.len() / INPUTS;
+        let mut h: Vec<f32> = xs.chunks_exact(INPUTS).flat_map(|x| self.normalized(x)).collect();
+        for (k, layer) in self.layers.iter().enumerate() {
+            let mut out: Vec<f32> = (0..n).flat_map(|_| layer.b.iter().cloned()).collect();
+            for i in 0..layer.rows {
+                let row = &layer.w[i * layer.cols..(i + 1) * layer.cols];
+                for s in 0..n {
+                    let xi = h[s * layer.rows + i];
+                    if xi == 0.0 {
+                        continue;
+                    }
+                    for (o, w) in out[s * layer.cols..(s + 1) * layer.cols].iter_mut().zip(row) {
+                        *o += xi * w;
+                    }
+                }
+            }
+            if k + 1 < self.layers.len() {
+                for o in &mut out {
+                    *o = o.max(0.0);
+                }
+            }
+            h = out;
+        }
+        h
+    }
+}
+
+/// A net whose output ignores its input: `bias[k]` for output k (oop 169
+/// then ip 169). For tests of the solver's use of the net.
+#[cfg(test)]
+pub(crate) fn constant_net(bias: &[f32]) -> LeafNet {
+    let inputs = INPUTS;
+    assert_eq!(bias.len(), 2 * NUM_CLASSES);
+    LeafNet {
+        header: serde_json::json!({"sizes": [inputs, 1, 2 * NUM_CLASSES]}),
+        total_rule: None,
+        members: vec![Member {
+            mu: vec![0.0; inputs],
+            sd: vec![1.0; inputs],
+            layers: vec![
+                Layer { rows: inputs, cols: 1, w: vec![0.0; inputs], b: vec![0.0] },
+                Layer { rows: 1, cols: 2 * NUM_CLASSES, w: vec![0.0; 2 * NUM_CLASSES], b: bias.to_vec() },
+            ],
+        }],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tiny_net(seed: u32) -> Vec<u8> {
+        tiny_net_of(seed, INPUTS)
+    }
+
+    fn tiny_net_of(seed: u32, inputs: usize) -> Vec<u8> {
+        // inputs -> 3 -> 338 with deterministic weights
+        let sizes = [inputs, 3, 2 * NUM_CLASSES];
+        let header = serde_json::json!({"format": "gtopen-leaf-net", "version": 1, "sizes": sizes});
+        let blob = serde_json::to_vec(&header).unwrap();
+        let mut bytes = MAGIC.to_vec();
+        bytes.extend((blob.len() as u32).to_le_bytes());
+        bytes.extend(&blob);
+        let mut k = seed;
+        let mut next = || {
+            k = k.wrapping_mul(1664525).wrapping_add(1013904223);
+            ((k >> 8) as f32 / (1u32 << 24) as f32 - 0.5) * 0.2
+        };
+        let mut vals: Vec<f32> = Vec::new();
+        vals.extend((0..sizes[0]).map(|_| 0.1));
+        vals.extend((0..sizes[0]).map(|_| 2.0));
+        for w in sizes.windows(2) {
+            vals.extend((0..w[0] * w[1]).map(|_| next()));
+            vals.extend((0..w[1]).map(|_| next()));
+        }
+        for v in vals {
+            bytes.extend(v.to_le_bytes());
+        }
+        bytes
+    }
+
+    #[test]
+    fn loads_and_runs_a_net() {
+        let net = LeafNet::from_bytes(&tiny_net(7)).unwrap();
+        let r = vec![0.5f32; NUM_CLASSES];
+        let b = vec![0.4f32; NUM_CLASSES];
+        let spot = LeafSpot { range: [&r, &r], balanced: [&b, &b], pot_bb: 6.0, stack_bb: 97.0,
+                              rake_frac: 0.05, rake_cap_bb: 3.0, pot_type: 1 };
+        let x = LeafNet::features(&spot);
+        assert_eq!(x.len(), INPUTS);
+        assert_eq!(x[0], 1.0, "ranges are scaled so the largest weight is 1");
+        assert_eq!(&x[x.len() - 4..], &[0.0, 1.0, 0.0, 0.0]);
+        let v = net.values(&spot);
+        assert!(v.iter().flatten().all(|x| x.is_finite()));
+        // residual is the difference from balanced
+        let res = net.residual(&x);
+        assert!((v[1][5] - (0.4 + res[NUM_CLASSES + 5])).abs() < 1e-6);
+        // a batch gives exactly the per-input numbers
+        let b2 = vec![0.1f32; NUM_CLASSES];
+        let other = LeafSpot { balanced: [&b2, &b], pot_bb: 20.0, pot_type: 2, ..spot };
+        let mut xs = x.clone();
+        xs.extend(LeafNet::features(&other));
+        let batch = net.residual_batch(&xs);
+        assert_eq!(&batch[..2 * NUM_CLASSES], &res[..]);
+        assert_eq!(&batch[2 * NUM_CLASSES..], &net.residual(&LeafNet::features(&other))[..]);
+    }
+
+    #[test]
+    fn an_ensemble_is_the_mean_of_its_members() {
+        let (a, b, c) = (tiny_net(3), tiny_net(11), tiny_net(29));
+        let nets = || [&a, &b, &c].map(|bytes| LeafNet::from_bytes(bytes).unwrap());
+        let ens = LeafNet::ensemble(nets().into());
+        assert_eq!(ens.members(), 3);
+        // the file round trip keeps every member
+        let ens = LeafNet::from_bytes(&ens.to_bytes()).unwrap();
+        assert_eq!(ens.members(), 3);
+        let r = vec![0.5f32; NUM_CLASSES];
+        let bal = vec![0.4f32; NUM_CLASSES];
+        let spot = LeafSpot { range: [&r, &r], balanced: [&bal, &bal], pot_bb: 6.0, stack_bb: 97.0,
+                              rake_frac: 0.05, rake_cap_bb: 3.0, pot_type: 1 };
+        let x = LeafNet::features(&spot);
+        let singles: Vec<Vec<f32>> = nets().iter().map(|n| n.residual(&x)).collect();
+        assert!(singles[0] != singles[1], "the members differ");
+        let got = ens.residual(&x);
+        for k in 0..2 * NUM_CLASSES {
+            let want = (singles[0][k] + singles[1][k] + singles[2][k]) / 3.0;
+            assert!((got[k] - want).abs() < 1e-6, "output {k}: {} vs {want}", got[k]);
+        }
+        let mut xs = x.clone();
+        xs.extend(x.iter().map(|v| v * 0.5));
+        let batch = ens.residual_batch(&xs);
+        assert_eq!(&batch[..2 * NUM_CLASSES], &got[..]);
+        // a member list that does not match the data is refused
+        let mut bytes = LeafNet::ensemble(nets().into()).to_bytes();
+        bytes.truncate(bytes.len() - 4);
+        assert!(LeafNet::from_bytes(&bytes).is_err());
+        // one net read as an ensemble of two (trailing data missing) is refused too
+        let single = LeafNet::from_bytes(&a).unwrap();
+        let sizes = single.header["sizes"].clone();
+        let two = LeafNet { header: serde_json::json!({"sizes": sizes, "ensemble": [sizes, sizes]}), total_rule: None,
+                            members: single.members };
+        assert!(LeafNet::from_bytes(&two.to_bytes()).is_err());
+    }
+
+    #[test]
+    fn a_total_rule_in_the_header_is_read_with_the_net() {
+        let mut net = LeafNet::from_bytes(&tiny_net(7)).unwrap();
+        assert!(net.total_rule.is_none());
+        net.header["total_rule"] = serde_json::json!({"form": "share",
+            "coef": {"limped": [0.4, 0, 0, 0], "srp": [0.5, 0, 0, 0], "3bet": [0.8, 0, 0, 0], "4bet": [0.3, 0, 0, 0]},
+            "valid": {"rake_frac": [0.05, 0.05], "cap_over_pot": [0.05, 2.0], "pot_bb": [2, 100], "stack_over_pot": [0.3, 60]}});
+        let read = LeafNet::from_bytes(&net.to_bytes()).unwrap();
+        assert!(read.total_rule.is_some());
+        // a rule that cannot be read refuses the file instead of being dropped
+        net.header["total_rule"]["form"] = serde_json::json!("cubic");
+        let err = LeafNet::from_bytes(&net.to_bytes()).err().unwrap();
+        assert!(err.contains("total_rule"), "{err}");
+    }
+
+    #[test]
+    fn a_near_zero_net_builds_its_extra_inputs_itself() {
+        // output k of this net is the "near zero" input of class k, and nothing else
+        let mut first = vec![0f32; INPUTS_NEAR_ZERO * 2 * NUM_CLASSES];
+        for k in 0..2 * NUM_CLASSES {
+            first[(INPUTS + k) * 2 * NUM_CLASSES + k] = 1.0;
+        }
+        let net = LeafNet {
+            header: serde_json::json!({"sizes": [INPUTS_NEAR_ZERO, 2 * NUM_CLASSES]}),
+            total_rule: None,
+            members: vec![Member {
+                mu: vec![0.0; INPUTS_NEAR_ZERO],
+                sd: vec![1.0; INPUTS_NEAR_ZERO],
+                layers: vec![Layer { rows: INPUTS_NEAR_ZERO, cols: 2 * NUM_CLASSES, w: first, b: vec![0.0; 2 * NUM_CLASSES] }],
+            }],
+        };
+        let net = LeafNet::from_bytes(&net.to_bytes()).unwrap();
+        // out of position: class 0 not held, class 1 at a thousandth, class 2 at a fiftieth, class 3 the most played
+        let mut oop = vec![0.5f32; NUM_CLASSES];
+        (oop[0], oop[1], oop[2], oop[3]) = (0.0, 0.002, 0.04, 2.0);
+        let ip = vec![1.0f32; NUM_CLASSES];
+        let bal = vec![0.4f32; NUM_CLASSES];
+        let spot = LeafSpot { range: [&oop, &ip], balanced: [&bal, &bal], pot_bb: 6.0, stack_bb: 97.0,
+                              rake_frac: 0.05, rake_cap_bb: 3.0, pot_type: 1 };
+        let x = LeafNet::features(&spot);
+        assert_eq!(x.len(), INPUTS, "callers hand over the first layout whatever the net");
+        let r = net.residual(&x);
+        let want = |w: f32| (-w / NEAR_ZERO_TAU).exp();
+        assert_eq!(r[0], 1.0, "a hand the range does not hold");
+        assert!((r[1] - want(0.001)).abs() < 1e-6 && r[1] > 0.95, "{}", r[1]);
+        assert!((r[2] - want(0.02)).abs() < 1e-6, "{}", r[2]);
+        assert!(r[3] < 1e-20, "the most played hand: {}", r[3]);
+        assert!((r[4] - want(0.25)).abs() < 1e-9);
+        assert!(r[NUM_CLASSES..].iter().all(|&v| v < 1e-20), "in position every hand is at full weight");
+        // a batch gives exactly the per-input numbers
+        let other = LeafSpot { range: [&ip, &oop], ..spot };
+        let mut xs = x.clone();
+        xs.extend(LeafNet::features(&other));
+        let batch = net.residual_batch(&xs);
+        assert_eq!(&batch[..2 * NUM_CLASSES], &r[..]);
+        assert_eq!(&batch[2 * NUM_CLASSES..], &net.residual(&LeafNet::features(&other))[..]);
+        // both layouts in one ensemble: each member builds what it was trained with
+        let plain = LeafNet::from_bytes(&tiny_net(7)).unwrap();
+        let wide = LeafNet::from_bytes(&tiny_net_of(7, INPUTS_NEAR_ZERO)).unwrap();
+        let (a, b) = (plain.residual(&x), wide.residual(&x));
+        let both = LeafNet::from_bytes(&LeafNet::ensemble(vec![plain, wide]).to_bytes()).unwrap();
+        let got = both.residual(&x);
+        for k in 0..2 * NUM_CLASSES {
+            assert!((got[k] - (a[k] + b[k]) / 2.0).abs() < 1e-6);
+        }
+        // any other first layer is refused
+        assert!(LeafNet::from_bytes(&tiny_net_of(7, INPUTS + 1)).is_err());
+    }
+
+    #[test]
+    fn rejects_bad_files() {
+        assert!(LeafNet::from_bytes(b"nope").is_err());
+        let mut bytes = tiny_net(1);
+        bytes.truncate(bytes.len() - 4);
+        assert!(LeafNet::from_bytes(&bytes).is_err());
+    }
+}

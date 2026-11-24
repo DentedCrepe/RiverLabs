@@ -126,8 +126,16 @@ CFR's regret and strategy storage) is therefore undefined behaviour. The fix,
 `Box::into_raw` and frees it in `Drop`; GTOpen's own `store` tests pass with it.
 
 **Practical risk.** Today's compiler produced correct results in every check on this page, so
-the bug has not shown up as wrong output. It could start to on a future compiler. Options: send
-the patch upstream, or build from a patched fork pinned the same way.
+the bug had not shown up as wrong output. It could have started to on a future compiler.
+
+**Fixed in RiverLab (2026-11-24).** RiverLab now builds from `third_party/gtopen`: GTOpen's
+`solver` crate at the audited commit with this one patch and nothing else
+(`tools/solver-audit/check-vendored.sh` proves it against a fresh clone). Results record the
+solver as `eb5ccd67…+arenabuf-provenance`, so they can be told apart from earlier ones. With the
+patched build, every figure in the GTOpen tables above (river, turn, push/fold at 10bb and 20bb,
+and all three flops) was reproduced exactly, and GTOpen's own `store` tests pass. The Miri runs
+of the fixed code are the rows marked "`ArenaBuf` fixed" above. The patch has not yet been
+offered upstream.
 
 One of GTOpen's storage unit tests (`i16_roundtrip_accuracy`) also fails under Miri. Miri
 deliberately perturbs the results of functions such as `sin`, and the test's tolerance is

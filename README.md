@@ -23,7 +23,7 @@ configurable.
 | Seven-card evaluator | ✅ | Checked against all 133,784,560 seven-card hands plus two independent evaluators |
 | Range engine | ✅ | 169 classes, 1,326 combos, weights, notation, card removal, blockers |
 | Equity | ✅ | Exact enumeration (bounded) or seeded Monte Carlo with standard error |
-| Postflop solver | ✅ Heads-up | GTOpen (Apache-2.0, pinned) behind RiverLab's solver interface; local worker with queue, progress and cancel; results stored with provenance |
+| Postflop solver | ✅ Heads-up | GTOpen (Apache-2.0, audited commit plus one memory-safety fix) behind RiverLab's solver interface; local worker with queue, progress and cancel; results stored with provenance |
 | Preflop solver | ⚠️ Approximate model | GTOpen's preflop model for 2–6 players with RiverLab's blinds, ante, stack, rake and sizes; browsable tree. Heads-up push/fold is validated; everything else is labelled approximate |
 | Independent validation | ✅ | Best response and exploitability for river/turn/flop trees; exact heads-up push/fold (see `docs/solver-validation.md`) |
 | Academy | 🚧 Foundation | Six-level curriculum map, dashboard (progress, streaks, saved lessons, bookmarks, revision), lessons with four explanation levels, KaTeX maths, labelled claims and live engine-backed widgets, knowledge checks with spaced revision. Five demonstration lessons, awaiting review by a person (`docs/academy.md`) |

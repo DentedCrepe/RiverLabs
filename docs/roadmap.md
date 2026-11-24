@@ -14,10 +14,8 @@
 | 8 | Accounts | Authentication, per-user settings, quotas | Security review passed |
 
 ## Follow-ups (noted, not scheduled)
-- **GTOpen `ArenaBuf` fix** (Miri finding, `docs/solver-validation.md`): build RiverLab from a
-  patched GTOpen pinned to a commit in a fork (`tools/solver-audit/miri/arenabuf-provenance.patch`),
-  re-run the validation, and offer the fix upstream. Results are correct today; this guards
-  against future compilers.
+- **GTOpen `ArenaBuf` fix:** done in RiverLab (`third_party/gtopen`, `docs/solver-validation.md`).
+  Still to do: offer the patch upstream, and drop RiverLab's copy if GTOpen takes it.
 - **Android:** confirm `scripts/termux/setup.sh` on a real phone (docs/android.md).
 
 ## Risks

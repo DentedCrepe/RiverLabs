@@ -8,7 +8,8 @@ RiverLab is a six-max no-limit hold'em theory, solving and training platform. Re
   "example" solver output — not in the UI, fixtures, seeds or docs. Unfinished features show a
   labelled empty state ("Planned", "Interface only").
 - **Solver output is always shown with its exploitability** and its approximations. Postflop
-  solves come from GTOpen (pinned commit, `engine/solver-gtopen`); results are re-checked by
+  solves come from GTOpen (audited commit plus one memory-safety patch, vendored in
+  `third_party/gtopen`, adapter `engine/solver-gtopen`); results are re-checked by
   `engine/solver-validation` (skipped, with a note, only when memory does not allow). Never call a result "GTO" without qualification:
   it is an approximate equilibrium for the configured bet sizes. GTOpen's preflop solver
   runs in the app (Preflop page, `kind = "preflop"` jobs) and is a **modelled approximation**:
@@ -26,8 +27,10 @@ RiverLab is a six-max no-limit hold'em theory, solving and training platform. Re
   - Bump `version` on any change to a published lesson.
   - Never mark a lesson `reviewed` unless a person reviewed it.
   - Run `uv run pytest tests/unit/test_academy_content.py` after editing content.
-- **Changing the GTOpen commit** requires re-running `tools/solver-audit/run.sh` and the
-  validation examples (`docs/solver-validation.md`) before updating the pin.
+- **Changing GTOpen** (a new commit, or any edit to `third_party/gtopen`) requires re-running
+  `tools/solver-audit/run.sh`, `tools/solver-audit/check-vendored.sh` and the validation
+  examples (`docs/solver-validation.md`). Never edit the vendored code except through a patch
+  in `tools/solver-audit/`.
 - **Poker mathematics lives only in `engine/` (Rust).** The backend calls it through
   `backend/src/riverlab_api/services/engine.py`; the frontend calls the backend. Do not
   re-implement rules, evaluation, combinatorics or rake in Python or TypeScript.
@@ -49,6 +52,7 @@ engine/    Rust workspace: poker-core, hand-evaluator, range-engine, equity-engi
 content/   Academy curriculum and lessons (TOML front matter + Markdown; docs/academy.md)
 backend/   FastAPI (package riverlab_api), SQLAlchemy models, Alembic migrations, pytest
 frontend/  Next.js 16 App Router, React 19, Tailwind 4, Vitest
+third_party/gtopen/  GTOpen's solver crate (Apache-2.0) at the audited commit + the ArenaBuf patch
 tests/validation/  differential tests vs independent evaluators (phevaluator, pokerkit)
 scripts/   setup.sh, dev.sh, test.sh, validate-engine.sh
 docs/      architecture, ADRs, poker-rules, rake, hand-evaluator, equity, roadmap

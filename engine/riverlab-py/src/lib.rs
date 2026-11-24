@@ -366,6 +366,7 @@ fn solver_backends() -> PyResult<String> {
         "name": solver_gtopen::BACKEND,
         "repository": solver_gtopen::GTOPEN_REPOSITORY,
         "commit": solver_gtopen::GTOPEN_COMMIT,
+        "patches": solver_gtopen::GTOPEN_PATCHES,
         "scope": "heads-up postflop (flop, turn or river root); preflop as an approximate model",
     }]))
 }

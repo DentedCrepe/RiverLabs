@@ -75,7 +75,7 @@ fn toy_spot_matches_the_hand_solution_and_independent_check() {
         panic!("node 1 should be IP's decision");
     }
     assert!(s.outcome.approximations.is_empty());
-    assert_eq!(s.outcome.backend_commit, solver_gtopen::GTOPEN_COMMIT);
+    assert_eq!(s.outcome.backend_commit, solver_gtopen::GTOPEN_BUILD);
 }
 
 #[test]

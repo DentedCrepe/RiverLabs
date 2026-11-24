@@ -1,0 +1,44 @@
+//! GTO postflop solver core: game tree construction, discounted CFR,
+//! exploitability measurement and strategy inspection.
+
+/// Hot paths use pooled scratch buffers (see `scratch`), but tree building
+/// and queries still allocate from many threads; mimalloc removes the
+/// resulting allocator contention.
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
+pub mod best_response;
+pub mod cards;
+pub mod cfr;
+pub mod datagen;
+pub mod datagen_mix;
+mod contextual_postflop;
+pub mod evaluator;
+pub mod fit;
+pub mod game;
+pub mod gpu_turn;
+pub mod icm;
+pub mod lock_history;
+pub mod multiway;
+#[cfg(feature = "gpu")]
+pub mod gpu;
+pub mod preflop;
+pub mod query;
+pub mod range;
+pub mod report;
+pub mod rnr;
+pub mod save;
+pub mod scratch;
+pub mod size_sweep;
+pub mod store;
+pub mod sysmem;
+pub mod tree;
+
+pub use cards::*;
+pub use cfr::{Algorithm, Progress, RunOptions, Solver};
+pub use game::{Spot, SpotConfig};
+pub use lock_history::{LockHistoryView, LockView, LocksView};
+pub use query::{LockMode, NodeView, PathStep};
+pub use range::Range;
+pub use store::Storage;
+pub use tree::{parse_sizes, BetSize, StreetSizing, TreeConfig};

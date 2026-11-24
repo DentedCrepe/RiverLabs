@@ -25,7 +25,7 @@ Status: Milestone 1 (foundation). Last updated 2026-11-22.
 │   ├── equity-engine/       exact enumeration equity (+ seeded Monte Carlo)
 │   ├── solver-interface/    traits + specs (SolveSpec, PreflopSpec, SolverConfig)
 │   ├── solver-validation/   independent best response / exploitability; exact HU push/fold
-│   ├── solver-gtopen/       adapter to GTOpen (pinned): postflop solves, preflop model
+│   ├── solver-gtopen/       adapter to GTOpen (third_party/gtopen): postflop solves, preflop model
 │   ├── play-engine/         games against bots: sessions, bots, records, reports (docs/play.md)
 │   ├── poker-theory/        closed-form theory for the Academy (docs/academy.md)
 │   └── riverlab-py/         PyO3 bindings → Python module `riverlab_engine`

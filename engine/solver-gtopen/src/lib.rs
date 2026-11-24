@@ -1,5 +1,6 @@
 //! Runs RiverLab [`SolveSpec`]s on GTOpen, the audited third-party postflop solver
-//! (Apache-2.0, pinned commit [`GTOPEN_COMMIT`]; see `docs/solver-comparison.md`).
+//! (Apache-2.0, commit [`GTOPEN_COMMIT`] with RiverLab's [`GTOPEN_PATCHES`], vendored in
+//! `third_party/gtopen`; see `docs/solver-comparison.md` and `docs/solver-validation.md`).
 //!
 //! Contract:
 //! - Inputs are converted **exactly** (integer milli-big-blinds become `f64` chips, which is
@@ -28,7 +29,12 @@ pub mod preflop;
 
 pub const BACKEND: &str = "gtopen";
 pub const GTOPEN_REPOSITORY: &str = "https://github.com/MatthewPDingle/GTOpen";
+/// The upstream GTOpen commit RiverLab's copy is taken from.
 pub const GTOPEN_COMMIT: &str = "eb5ccd671223293527f36d219cfe33baf0b0475c";
+/// RiverLab's changes to that commit, applied in `third_party/gtopen` (docs/solver-validation.md).
+pub const GTOPEN_PATCHES: &[&str] = &["arenabuf-provenance"];
+/// What results record as the solver that produced them: the commit plus RiverLab's patches.
+pub const GTOPEN_BUILD: &str = "eb5ccd671223293527f36d219cfe33baf0b0475c+arenabuf-provenance";
 
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum AdapterError {
@@ -377,7 +383,7 @@ pub fn solve_with_limits(
     let outcome = SolveOutcome {
         backend: BACKEND.into(),
         backend_repository: GTOPEN_REPOSITORY.into(),
-        backend_commit: GTOPEN_COMMIT.into(),
+        backend_commit: GTOPEN_BUILD.into(),
         algorithm: prepared.algorithm.name().into(),
         stop_reason: reason,
         progress,
@@ -547,7 +553,7 @@ pub fn load(spec: &SolveSpec, path: &str) -> Result<Solved, AdapterError> {
     let outcome = SolveOutcome {
         backend: BACKEND.into(),
         backend_repository: GTOPEN_REPOSITORY.into(),
-        backend_commit: GTOPEN_COMMIT.into(),
+        backend_commit: GTOPEN_BUILD.into(),
         algorithm: prepared.algorithm.name().into(),
         stop_reason: StopReason::MaxIterations,
         progress: Progress {

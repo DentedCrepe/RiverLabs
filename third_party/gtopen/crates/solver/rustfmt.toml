@@ -1,0 +1,2 @@
+# Vendored third-party code: keep upstream formatting so the diff against GTOpen stays one patch.
+disable_all_formatting = true

@@ -15,14 +15,15 @@ solver-validation.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 rayon.workspace = true
-# GTOpen, pinned to the audited commit (docs/solver-comparison.md). Apache-2.0; see
-# THIRD_PARTY_NOTICES.md. Change the rev only after re-running tools/solver-audit/run.sh.
-gtopen = { package = "solver", git = "https://github.com/MatthewPDingle/GTOpen.git", rev = "eb5ccd671223293527f36d219cfe33baf0b0475c" }
+# GTOpen's solver crate at the audited commit eb5ccd67 (docs/solver-comparison.md), vendored in
+# third_party/gtopen with one fix (ArenaBuf pointer provenance, docs/solver-validation.md).
+# Apache-2.0; see THIRD_PARTY_NOTICES.md. Update it only after re-running tools/solver-audit/run.sh.
+gtopen = { package = "solver", path = "../../third_party/gtopen/crates/solver" }
 
 [dev-dependencies]
 serde_json.workspace = true
 # Only to read the algorithm name in a test.
-gtopen = { package = "solver", git = "https://github.com/MatthewPDingle/GTOpen.git", rev = "eb5ccd671223293527f36d219cfe33baf0b0475c" }
+gtopen = { package = "solver", path = "../../third_party/gtopen/crates/solver" }
 
 [lints]
 workspace = true

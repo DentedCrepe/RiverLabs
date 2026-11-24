@@ -1,0 +1,1257 @@
+//! Training data for a Preflop Lab leaf-value net (TODO item M6).
+//!
+//! Every example is one heads-up flop solve: two random 169-class ranges, a
+//! pot, a stack, a rake and a canonical flop go in; each class's solved
+//! value (pot-share convention, as a fraction of the starting pot), equity
+//! and reach mass for both players come out. The postflop solve is exact
+//! for whatever ranges go in, so the ranges only decide where a net trained
+//! on the data is accurate; they are sampled broadly on purpose.
+//!
+//! Examples are fully determined by `(job, index)`: anyone can regenerate a
+//! job's inputs from its number, which is what lets pooled community
+//! uploads be checked (`solve-cli datagen verify`).
+//!
+//! From generator v5 on, WHAT is drawn (pot sizes, stacks, rake, or a
+//! published list of situations) is data: a "game mix" from the published
+//! list of mixes (`crate::datagen_mix`, tools/datagen/mixes.json). A running
+//! generator reads that list before every job and moves to the newest mix by
+//! itself, so a new mix needs no update on contributors' machines. Bump
+//! [`GENERATOR_VERSION`] only when the code that draws or solves changes
+//! what a job number produces (the menu, the solver, how a mix is read);
+//! older versions' sampling stays in the code so their uploads can still be
+//! regenerated and checked.
+
+use crate::cards::{rank, suit};
+use crate::preflop::equity::{class_index, class_label, class_parts, NUM_CLASSES};
+use crate::tree::TreeConfig;
+use crate::{Solver, SpotConfig};
+use serde::{Deserialize, Serialize};
+
+/// Format name written in every file header.
+pub const FORMAT: &str = "gtopen-leaf-values";
+/// Version of the file layout.
+pub const FORMAT_VERSION: u32 = 1;
+/// Version of the sampling + menu + solver behaviour. Bump on any change
+/// that alters the inputs or values a given job number produces.
+///
+/// - v2: pot types limped 15% / single-raised 45% / 3-bet 28% / 4-bet 12%,
+///   rake either none or 5% capped at 3 bb.
+/// - v3: pot types 10% / 65% / 15% / 10% (close to how often each reaches
+///   a heads-up flop in a 6-max solve); 20% of pots scaled up 1.6x to 2.6x
+///   to cover straddled games and big live opens; rake none, 5% (cap 2 to
+///   4 bb), 10% (cap 6 to 10 bb) or anything from 3% to 10% (cap 1 to 10 bb).
+/// - v4: common live and online games. Pot types 10% / 55% / 20% / 15%. Each
+///   pot comes from an online table (40%, pots as in v3, starting stacks 25
+///   to 200 bb), a live table (40%, pots 1.3x to 2x for 3 to 6 bb opens and
+///   live re-raise sizes, stacks 50 to 300 bb) or a straddled table (20%,
+///   pots 2x to 4x, stacks 50 to 400 bb). Rake none (20%: no-rake solves and
+///   games paid by the hour), 5% capped at 0.5 to 12 bb (35%: online, the
+///   cap in big blinds falling as stakes rise), 10% capped at 1 to 10 bb
+///   (35%: live rooms) or anything from 3% to 10% capped at 0.5 to 12 bb
+///   (10%). Caps are drawn log-uniform, so low live caps (2 to 4 bb at 10%)
+///   are well covered.
+/// - v5: the mix is data (see the module text and `crate::datagen_mix`).
+///   Mix 1 draws the same games as v4. A job's number carries its mix, so no
+///   two mixes share a job number or a file name.
+pub const GENERATOR_VERSION: u32 = 5;
+/// The last generator whose mix was written in code ([`example_inputs_for`]).
+pub const LAST_CODED_GENERATOR: u32 = 4;
+/// Generator versions whose uploads are still accepted: the current one and
+/// the two before, so jobs finished before an update still count (v5 changed
+/// how a mix reaches contributors, not which games are wanted, so nobody's
+/// work is turned away because of it).
+pub const ACCEPTED_GENERATORS: [u32; 3] = [3, 4, 5];
+/// Where generator v4's jobs started inside each contributor block, so a new
+/// version never reused a job number (and file name) an older one uploaded.
+/// v2 used offset 0, v3 offset 2^23. From v5 on the mix sits above the block
+/// instead ([`mix_job`]).
+const VERSION_JOB_OFFSET: u64 = 3 << 22;
+/// Name of the fixed postflop bet menu (see [`menu_tree`]).
+pub const MENU: &str = "lean-v2";
+/// Chips per big blind in generated spots (the M5 configs' convention).
+pub const CHIPS_PER_BB: f64 = 10.0;
+/// Default examples per job.
+pub const DEFAULT_PER_JOB: u32 = 100;
+/// Jobs per contributor block (contributor blocks never overlap in practice).
+const BLOCK_BITS: u32 = 24;
+/// A v5 job number is `mix << MIX_SHIFT` plus a number in the contributor's
+/// block (blocks end below 2^44, and so do all older job numbers).
+pub const MIX_SHIFT: u32 = 44;
+/// Largest mix id: keeps every job number below 2^53, exact in any JSON reader.
+pub const MAX_MIX_ID: u32 = 511;
+
+// ------------------------------------------------------------------ rng ----
+
+/// SplitMix64: tiny, fast and identical on every platform.
+#[derive(Clone)]
+pub struct Rng(u64);
+
+impl Rng {
+    pub fn new(seed: u64) -> Self {
+        Rng(seed)
+    }
+    pub fn next_u64(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+    /// Uniform in [0, 1).
+    pub fn f64(&mut self) -> f64 {
+        (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64
+    }
+    pub fn range(&mut self, lo: f64, hi: f64) -> f64 {
+        lo + (hi - lo) * self.f64()
+    }
+    pub fn log_range(&mut self, lo: f64, hi: f64) -> f64 {
+        (lo.ln() + (hi.ln() - lo.ln()) * self.f64()).exp()
+    }
+    /// Approximately normal(0, 1) (sum of four uniforms, scaled).
+    pub fn normal(&mut self) -> f64 {
+        let s: f64 = (0..4).map(|_| self.f64()).sum::<f64>() - 2.0;
+        s * (3.0f64).sqrt()
+    }
+    pub fn below(&mut self, n: u64) -> u64 {
+        self.next_u64() % n.max(1)
+    }
+}
+
+/// FNV-1a over bytes, for contributor blocks.
+pub(crate) fn fnv1a(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in bytes {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h
+}
+
+/// First job number of a contributor's block. Logins are case-insensitive.
+pub fn contributor_base(login: &str) -> u64 {
+    let h = fnv1a(login.trim().to_lowercase().as_bytes()) % (1u64 << 20);
+    h << BLOCK_BITS
+}
+
+/// The `k`-th job of a contributor's block as generators up to v4 numbered it.
+pub fn contributor_job(login: &str, k: u64) -> u64 {
+    contributor_base(login) + ((k + VERSION_JOB_OFFSET) % (1u64 << BLOCK_BITS))
+}
+
+/// The `k`-th job a contributor solves under mix `mix` (generator v5 on).
+pub fn mix_job(login: &str, mix: u32, k: u64) -> u64 {
+    ((mix as u64) << MIX_SHIFT) | (contributor_base(login) + (k % (1u64 << BLOCK_BITS)))
+}
+
+/// The mix a job number belongs to (0 for the job numbers of generators up to v4).
+pub fn job_mix(job: u64) -> u32 {
+    (job >> MIX_SHIFT) as u32
+}
+
+/// The seed of draw `attempt` of example `index` of job `job`.
+pub(crate) fn attempt_seed(version: u32, job: u64, index: u32, attempt: u32) -> u64 {
+    let seed = example_seed(version, job, index);
+    if attempt == 0 {
+        seed
+    } else {
+        Rng::new(seed ^ (attempt as u64).wrapping_mul(0xD6E8_FEB8_6659_FD93)).next_u64()
+    }
+}
+
+fn example_seed(version: u32, job: u64, index: u32) -> u64 {
+    let mut r = Rng::new(job ^ ((version as u64) << 56));
+    let a = r.next_u64();
+    let mut r2 = Rng::new(a ^ (index as u64).wrapping_mul(0xA24B_AED4_963E_E407));
+    r2.next_u64()
+}
+
+// --------------------------------------------------------------- inputs ----
+
+/// Everything that determines one example's solve.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExampleInputs {
+    pub job: u64,
+    pub index: u32,
+    pub board: String,
+    /// Pot type the pot was drawn from (limped, srp, 3bet, 4bet).
+    pub pot_type: String,
+    pub pot_bb: f64,
+    /// Effective stack behind at the flop, in bb.
+    pub stack_bb: f64,
+    pub rake_pct: f64,
+    pub rake_cap_bb: f64,
+    /// 169-class range weights (preflop class index), 0 = OOP, 1 = IP.
+    /// Rounded to 3 decimals so the range text round-trips exactly.
+    pub range: [Vec<f32>; 2],
+    /// Draws rejected before this one because the tree was over the job's
+    /// memory cap (0 = first draw). Training can reweight by it.
+    #[serde(default)]
+    pub attempt: u32,
+    /// How much the pot range of `pot_type` was scaled up (v3: 1.6 to 2.6
+    /// for straddled games and big live opens; 1 = not scaled, omitted).
+    #[serde(default = "one", skip_serializing_if = "is_one")]
+    pub pot_scale: f64,
+    /// For an example drawn from a published list of situations (ranges of a
+    /// GTOpen preflop solve, see `crate::datagen_mix`): "LIST/ID". Absent on
+    /// examples with random ranges.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub situation: Option<String>,
+}
+
+fn one() -> f64 {
+    1.0
+}
+
+fn is_one(x: &f64) -> bool {
+    *x == 1.0
+}
+
+/// Strength score used only to order classes for range sampling.
+fn class_strength(k: usize) -> f64 {
+    let (hi, lo, suited) = class_parts(k);
+    let (h, l) = (hi as f64, lo as f64);
+    if hi == lo {
+        return 10.0 + 2.2 * h;
+    }
+    let gap = (h - l - 1.0).max(0.0);
+    let mut s = 1.6 * h + 0.75 * l - 0.9 * gap.min(4.0);
+    if suited {
+        s += 3.0;
+    }
+    if hi == 12 {
+        s += 2.5; // any ace
+    }
+    s
+}
+
+fn combos(k: usize) -> f64 {
+    let (hi, lo, suited) = class_parts(k);
+    if hi == lo {
+        6.0
+    } else if suited {
+        4.0
+    } else {
+        12.0
+    }
+}
+
+/// Classes ordered strongest first, with per-range noise on the scores.
+fn noisy_order(rng: &mut Rng, noise: f64) -> Vec<usize> {
+    let mut scored: Vec<(f64, usize)> = (0..NUM_CLASSES)
+        .map(|k| (class_strength(k) + noise * rng.normal(), k))
+        .collect();
+    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap().then(a.1.cmp(&b.1)));
+    scored.into_iter().map(|x| x.1).collect()
+}
+
+/// Top `frac` of combos in `order` get weight 1, with a soft edge.
+fn threshold_weights(order: &[usize], frac: f64, edge: f64) -> Vec<f64> {
+    let total: f64 = order.iter().map(|&k| combos(k)).sum();
+    let mut w = vec![0f64; NUM_CLASSES];
+    let mut cum = 0.0;
+    for &k in order {
+        let mid = (cum + combos(k) / 2.0) / total; // position in [0, 1]
+        cum += combos(k);
+        let x = if edge <= 1e-9 {
+            if mid <= frac { 1.0 } else { 0.0 }
+        } else {
+            (0.5 - (mid - frac) / edge).clamp(0.0, 1.0)
+        };
+        w[k] = x;
+    }
+    w
+}
+
+/// DeepStack-style recursive split of probability mass over ordered classes.
+/// `spread` in (0, 1] scales how lopsided each split may be: 1 is
+/// DeepStack's uniform split (spiky ranges), small values give smooth ones.
+fn recursive_weights(rng: &mut Rng, order: &[usize]) -> Vec<f64> {
+    fn split(rng: &mut Rng, order: &[usize], mass: f64, spread: f64, out: &mut [f64]) {
+        if order.len() == 1 {
+            out[order[0]] = mass / combos(order[0]);
+            return;
+        }
+        let mid = order.len() / 2;
+        let u = 0.5 + (rng.f64() - 0.5) * spread;
+        split(rng, &order[..mid], mass * u, spread, out);
+        split(rng, &order[mid..], mass * (1.0 - u), spread, out);
+    }
+    let spread = rng.range(0.15, 1.0);
+    let mut w = vec![0f64; NUM_CLASSES];
+    split(rng, order, 1.0, spread, &mut w);
+    w
+}
+
+/// One random 169-class range, normalized so its largest weight is 1.
+pub fn sample_range(rng: &mut Rng) -> Vec<f32> {
+    let pick = rng.f64();
+    let noise = rng.range(0.0, 4.0);
+    let order = noisy_order(rng, noise);
+    let mut w = if pick < 0.40 {
+        // linear or capped "top x%" range
+        let frac = rng.log_range(0.03, 0.9);
+        let edge = rng.range(0.0, 0.15);
+        let mut w = threshold_weights(&order, frac, edge);
+        if rng.f64() < 0.4 {
+            // capped: thin out the very top (flatting ranges)
+            let top = threshold_weights(&order, frac * rng.range(0.05, 0.35), 0.0);
+            let keep = rng.range(0.0, 0.5);
+            for k in 0..NUM_CLASSES {
+                if top[k] > 0.0 {
+                    w[k] *= keep;
+                }
+            }
+        }
+        w
+    } else if pick < 0.80 {
+        recursive_weights(rng, &order)
+    } else if pick < 0.90 {
+        // polarized: a value block plus a bluff block lower down
+        let value = rng.log_range(0.03, 0.3);
+        let bluff_lo = value + rng.range(0.1, 0.5);
+        let bluff_hi = (bluff_lo + rng.range(0.03, 0.2)).min(1.0);
+        let a = threshold_weights(&order, value, 0.02);
+        let b = threshold_weights(&order, bluff_hi, 0.02);
+        let c = threshold_weights(&order, bluff_lo, 0.02);
+        let bw = rng.range(0.2, 1.0);
+        (0..NUM_CLASSES)
+            .map(|k| a[k] + bw * (b[k] - c[k]).max(0.0))
+            .collect()
+    } else {
+        // noisy mixed frequencies inside a threshold
+        let frac = rng.log_range(0.1, 1.0);
+        let base = threshold_weights(&order, frac, 0.1);
+        let p = rng.range(1.0, 4.0);
+        (0..NUM_CLASSES).map(|k| base[k] * rng.f64().powf(p)).collect()
+    };
+    let max = w.iter().cloned().fold(0.0f64, f64::max);
+    if max <= 0.0 {
+        w = vec![1.0; NUM_CLASSES];
+    } else {
+        for x in w.iter_mut() {
+            *x /= max;
+        }
+    }
+    // Round to 3 decimals; tiny weights become 0 so the range text stays short.
+    w.iter()
+        .map(|&x| {
+            let r = (x * 1000.0).round() / 1000.0;
+            if r < 0.02 { 0.0 } else { r as f32 }
+        })
+        .collect()
+}
+
+/// Range text for a 169-class weight vector (classes with weight 0 omitted).
+pub fn range_text(w: &[f32]) -> String {
+    let mut parts = Vec::new();
+    for (k, &x) in w.iter().enumerate() {
+        if x <= 0.0 {
+            continue;
+        }
+        if x >= 0.9995 {
+            parts.push(class_label(k));
+        } else {
+            parts.push(format!("{}:{}", class_label(k), x));
+        }
+    }
+    parts.join(",")
+}
+
+/// Largest stack-to-pot ratio sampled: deeper spots add tree size but
+/// little information (leaf values flatten out as SPR grows).
+pub const MAX_SPR: f64 = 40.0;
+/// Draws tried before a capped example gives up and keeps the smallest.
+const MAX_ATTEMPTS: u32 = 64;
+
+/// The inputs of example `index` of job `job` as generator v4 drew them (no
+/// memory cap). Jobs of v5 on are drawn from a mix: `datagen_mix::Book::inputs`.
+pub fn example_inputs(job: u64, index: u32) -> ExampleInputs {
+    draw_inputs(LAST_CODED_GENERATOR, job, index, 0)
+}
+
+/// [`example_inputs`] for a contributor whose GPU holds trees up to `cap_gb`
+/// (estimated, see `Spot::vram_estimate_bytes`). Draws are rejected
+/// deterministically until one fits, so anyone can regenerate the same
+/// inputs from (job, index, cap).
+pub fn example_inputs_capped(job: u64, index: u32, cap_gb: Option<f64>) -> ExampleInputs {
+    example_inputs_for(LAST_CODED_GENERATOR, job, index, cap_gb)
+}
+
+/// [`example_inputs_capped`] as generator `version` drew it (2 to 4, the
+/// generators whose mix was written in code), for checking their uploads.
+pub fn example_inputs_for(version: u32, job: u64, index: u32, cap_gb: Option<f64>) -> ExampleInputs {
+    capped(cap_gb, |attempt| draw_inputs(version, job, index, attempt))
+}
+
+/// The first of `draw(0)`, `draw(1)`, ... whose tree fits `cap_gb` (the
+/// smallest of [`MAX_ATTEMPTS`] draws when none does); `draw(0)` with no cap.
+pub(crate) fn capped(cap_gb: Option<f64>, draw: impl Fn(u32) -> ExampleInputs) -> ExampleInputs {
+    let Some(cap) = cap_gb else {
+        return draw(0);
+    };
+    let mut best: Option<(u64, ExampleInputs)> = None;
+    for attempt in 0..MAX_ATTEMPTS {
+        let ex = draw(attempt);
+        let bytes = estimated_vram_bytes(&ex);
+        if bytes as f64 <= cap * 1e9 {
+            return ex;
+        }
+        if best.as_ref().map(|b| bytes < b.0).unwrap_or(true) {
+            best = Some((bytes, ex));
+        }
+    }
+    best.unwrap().1
+}
+
+/// Estimated GPU memory of an example's tree, in bytes.
+pub fn estimated_vram_bytes(ex: &ExampleInputs) -> u64 {
+    crate::Spot::new(ex.spot_config())
+        .map(|s| s.vram_estimate_bytes())
+        .unwrap_or(u64::MAX)
+}
+
+fn draw_inputs(version: u32, job: u64, index: u32, attempt: u32) -> ExampleInputs {
+    let mut rng = Rng::new(attempt_seed(version, job, index, attempt));
+    let mut ex = match version {
+        2 => draw_v2(&mut rng),
+        3 => draw_v3(&mut rng),
+        _ => draw_v4(&mut rng),
+    };
+    ex.job = job;
+    ex.index = index;
+    ex.attempt = attempt;
+    ex
+}
+
+/// Pot type: (name, probability, pot range in bb).
+type PotTypes = [(&'static str, f64, f64, f64); 4];
+
+fn pick_pot_type(rng: &mut Rng, types: &PotTypes) -> (&'static str, f64, f64, f64) {
+    let u = rng.f64();
+    let mut acc = 0.0;
+    let mut chosen = types[1];
+    for &t in types {
+        acc += t.1;
+        if u < acc {
+            chosen = t;
+            break;
+        }
+    }
+    chosen
+}
+
+/// Stack behind at the flop: starting stack log-uniform 25 to 200 bb, each
+/// player having put in half the pot, SPR capped at [`MAX_SPR`].
+fn draw_stack(rng: &mut Rng, pot_bb: f64) -> f64 {
+    draw_stack_from(rng, pot_bb, 25.0, 200.0)
+}
+
+/// [`draw_stack`] with the starting stack log-uniform from `lo` to `hi` bb.
+pub(crate) fn draw_stack_from(rng: &mut Rng, pot_bb: f64, lo: f64, hi: f64) -> f64 {
+    let mut start = rng.log_range(lo, hi);
+    if start - pot_bb / 2.0 < 2.0 {
+        start = pot_bb / 2.0 + rng.range(2.0, 20.0);
+    }
+    round2((start - pot_bb / 2.0).min(MAX_SPR * pot_bb))
+}
+
+pub(crate) fn finish(rng: &mut Rng, pot_type: &str, pot_bb: f64, pot_scale: f64, stack_bb: f64, rake: (f64, f64)) -> ExampleInputs {
+    let board = random_flop(rng);
+    let range = [sample_range(rng), sample_range(rng)];
+    ExampleInputs {
+        job: 0,
+        index: 0,
+        board,
+        pot_type: pot_type.to_string(),
+        pot_bb,
+        stack_bb,
+        rake_pct: rake.0,
+        rake_cap_bb: rake.1,
+        range,
+        attempt: 0,
+        pot_scale,
+        situation: None,
+    }
+}
+
+/// Generator v2 sampling, kept so v2 uploads can still be checked.
+fn draw_v2(rng: &mut Rng) -> ExampleInputs {
+    let types: PotTypes = [
+        ("limped", 0.15, 2.0, 3.5),
+        ("srp", 0.45, 4.5, 7.5),
+        ("3bet", 0.28, 15.0, 26.0),
+        ("4bet", 0.12, 38.0, 55.0),
+    ];
+    let chosen = pick_pot_type(rng, &types);
+    let pot_bb = round2(rng.range(chosen.2, chosen.3));
+    let stack_bb = draw_stack(rng, pot_bb);
+    let rake = if rng.f64() < 0.5 { (0.0, 0.0) } else { (0.05, 3.0) };
+    finish(rng, chosen.0, pot_bb, 1.0, stack_bb, rake)
+}
+
+/// Generator v3 sampling (see [`GENERATOR_VERSION`]).
+fn draw_v3(rng: &mut Rng) -> ExampleInputs {
+    let types: PotTypes = [
+        ("limped", 0.10, 2.0, 3.5),
+        ("srp", 0.65, 4.5, 7.5),
+        ("3bet", 0.15, 15.0, 26.0),
+        ("4bet", 0.10, 38.0, 55.0),
+    ];
+    let chosen = pick_pot_type(rng, &types);
+    // Straddled games (2x) and big live opens (7.5 bb opens make 15+ bb
+    // single-raised pots) play every pot type bigger than the blinds suggest.
+    let pot_scale = if rng.f64() < 0.2 { round2(rng.range(1.6, 2.6)) } else { 1.0 };
+    let pot_bb = round2(rng.range(chosen.2, chosen.3) * pot_scale);
+    let stack_bb = draw_stack(rng, pot_bb);
+    let u = rng.f64();
+    let round1 = |x: f64| (x * 10.0).round() / 10.0;
+    let rake = if u < 0.30 {
+        (0.0, 0.0)
+    } else if u < 0.65 {
+        (0.05, round1(rng.range(2.0, 4.0)))
+    } else if u < 0.85 {
+        (0.10, round1(rng.range(6.0, 10.0)))
+    } else {
+        ((rng.range(0.03, 0.10) * 1000.0).round() / 1000.0, round1(rng.log_range(1.0, 10.0)))
+    };
+    finish(rng, chosen.0, pot_bb, pot_scale, stack_bb, rake)
+}
+
+/// Generator v4 sampling (see [`GENERATOR_VERSION`]).
+fn draw_v4(rng: &mut Rng) -> ExampleInputs {
+    let types: PotTypes = [
+        ("limped", 0.10, 2.0, 3.5),
+        ("srp", 0.55, 4.5, 7.5),
+        ("3bet", 0.20, 15.0, 26.0),
+        ("4bet", 0.15, 38.0, 55.0),
+    ];
+    let chosen = pick_pot_type(rng, &types);
+    // Table style: online sizes, live sizes (3 to 6 bb opens, bigger
+    // re-raises, deeper stacks) or a straddled live table (twice that again).
+    let style = rng.f64();
+    let (pot_scale, stack_lo, stack_hi) = if style < 0.4 {
+        (1.0, 25.0, 200.0)
+    } else if style < 0.8 {
+        (round2(rng.range(1.3, 2.0)), 50.0, 300.0)
+    } else {
+        (round2(rng.range(2.0, 4.0)), 50.0, 400.0)
+    };
+    let pot_bb = round2(rng.range(chosen.2, chosen.3) * pot_scale);
+    let stack_bb = draw_stack_from(rng, pot_bb, stack_lo, stack_hi);
+    let u = rng.f64();
+    let cap = |rng: &mut Rng, lo: f64, hi: f64| (rng.log_range(lo, hi) * 20.0).round() / 20.0;
+    let rake = if u < 0.20 {
+        (0.0, 0.0)
+    } else if u < 0.55 {
+        (0.05, cap(rng, 0.5, 12.0))
+    } else if u < 0.90 {
+        (0.10, cap(rng, 1.0, 10.0))
+    } else {
+        ((rng.range(0.03, 0.10) * 1000.0).round() / 1000.0, cap(rng, 0.5, 12.0))
+    };
+    finish(rng, chosen.0, pot_bb, pot_scale, stack_bb, rake)
+}
+
+/// A flop drawn with each strategically distinct flop weighted by how
+/// many deals it stands for.
+pub fn random_flop(rng: &mut Rng) -> String {
+    let canon = crate::cards::canonical_flops();
+    let total: u64 = canon.iter().map(|x| x.1 as u64).sum();
+    let mut pick = rng.below(total);
+    for (b, wt) in &canon {
+        if pick < *wt as u64 {
+            return b.clone();
+        }
+        pick -= *wt as u64;
+    }
+    canon[0].0.clone()
+}
+
+/// A preflop line as one string (its actions in order), the name a leaf keeps from solve to solve.
+pub fn line_key(path: &[String]) -> String {
+    path.join(" | ")
+}
+
+/// The `index`-th flop of a preflop line under `seed`, drawn from the line's name. A leaf's rank in an export
+/// changes from solve to solve; its line does not, so two exports of one game give a line the same flops.
+pub fn line_flop(seed: u64, line: &str, index: u32) -> String {
+    let mut h = 0xcbf2_9ce4_8422_2325u64; // FNV-1a over the line
+    for b in line.bytes() {
+        h = (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    let mut rng = Rng::new(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ h ^ (index as u64 + 1).wrapping_mul(0xD6E8_FEB8_6659_FD93));
+    random_flop(&mut rng)
+}
+
+/// What an earlier leaf export gave one line: the leaf's pot and stack (to tell another game apart) and its
+/// flops in index order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LineBoards {
+    pub pot_bb: f64,
+    pub stack_bb: f64,
+    pub boards: Vec<String>,
+}
+
+/// The flops of an earlier leaf export by line, from the text of its leaves.json and inputs.jsonl, so a
+/// later export of the same game (solved again, or with another model) can put the same flops under the same
+/// lines and the two can be compared flop for flop. Also returns the export's seat names.
+pub fn leaf_boards(leaves_json: &str, inputs_jsonl: &str) -> Result<(Vec<String>, std::collections::HashMap<String, LineBoards>), String> {
+    let v: serde_json::Value = serde_json::from_str(leaves_json).map_err(|e| format!("leaves.json: {e}"))?;
+    let positions: Vec<String> = v["positions"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    let mut by_job: std::collections::HashMap<u64, Vec<(u32, String)>> = std::collections::HashMap::new();
+    for (n, line) in inputs_jsonl.lines().enumerate().filter(|(_, l)| !l.trim().is_empty()) {
+        let ex: ExampleInputs = serde_json::from_str(line).map_err(|e| format!("inputs.jsonl line {}: {e}", n + 1))?;
+        by_job.entry(ex.job).or_default().push((ex.index, ex.board));
+    }
+    let mut out = std::collections::HashMap::new();
+    for leaf in v["leaves"].as_array().ok_or("leaves.json has no leaves")? {
+        let path: Vec<String> = leaf["path"].as_array().ok_or("a leaf has no path (not written by `datagen leaves`)")?
+            .iter().map(|x| x.as_str().map(String::from).unwrap_or_else(|| x.to_string())).collect();
+        let job = leaf["job"].as_u64().ok_or("a leaf has no job number")?;
+        let mut boards = by_job.remove(&job).unwrap_or_default();
+        boards.sort();
+        let entry = LineBoards {
+            pot_bb: leaf["pot_bb"].as_f64().unwrap_or(0.0),
+            stack_bb: leaf["stack_bb"].as_f64().unwrap_or(0.0),
+            boards: boards.into_iter().map(|(_, b)| b).collect(),
+        };
+        if out.insert(line_key(&path), entry).is_some() {
+            return Err(format!("leaves.json lists the line {} twice", line_key(&path)));
+        }
+    }
+    Ok((positions, out))
+}
+
+pub(crate) fn round2(x: f64) -> f64 {
+    (x * 100.0).round() / 100.0
+}
+
+/// The fixed postflop menu `lean-v2`: one bet size per street (flop 33%,
+/// turn and river 75%), raises to 60% of the pot, at most a bet and a raise
+/// per street. Kept lean so most spots fit an 8 to 16 GB GPU.
+pub fn menu_tree(pot_bb: f64, stack_bb: f64, rake_pct: f64, rake_cap_bb: f64) -> TreeConfig {
+    let json = serde_json::json!({
+        "starting_pot": pot_bb * CHIPS_PER_BB,
+        "effective_stack": stack_bb * CHIPS_PER_BB,
+        "rake_pct": rake_pct,
+        "rake_cap": rake_cap_bb * CHIPS_PER_BB,
+        "oop": [
+            { "bet": [{"PotPct": 33}], "raise": [{"PotPct": 60}], "donk": [] },
+            { "bet": [{"PotPct": 75}], "raise": [{"PotPct": 60}], "donk": [] },
+            { "bet": [{"PotPct": 75}], "raise": [{"PotPct": 60}], "donk": [] }
+        ],
+        "ip": [
+            { "bet": [{"PotPct": 33}], "raise": [{"PotPct": 60}], "donk": [] },
+            { "bet": [{"PotPct": 75}], "raise": [{"PotPct": 60}], "donk": [] },
+            { "bet": [{"PotPct": 75}], "raise": [{"PotPct": 60}], "donk": [] }
+        ],
+        "allin_threshold": 0.85,
+        "add_allin": false,
+        "max_raises": 2
+    });
+    serde_json::from_value(json).expect("menu json")
+}
+
+impl ExampleInputs {
+    pub fn spot_config(&self) -> SpotConfig {
+        SpotConfig {
+            board: self.board.clone(),
+            range_oop: range_text(&self.range[0]),
+            range_ip: range_text(&self.range[1]),
+            tree: menu_tree(self.pot_bb, self.stack_bb, self.rake_pct, self.rake_cap_bb),
+        }
+    }
+}
+
+// -------------------------------------------------------------- outputs ----
+
+/// Per-class results of one solved example, both players.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExampleValues {
+    /// Combo mass (range weight after board removal) per class.
+    pub reach: [Vec<f32>; 2],
+    /// Equity vs the opponent's range per class (null when absent).
+    pub eq: [Vec<Option<f32>>; 2],
+    /// Value per class as a fraction of the starting pot, pot-share
+    /// convention (OOP + IP = 1 minus rake for range averages).
+    pub value: [Vec<Option<f32>>; 2],
+}
+
+fn r5(x: f64) -> f32 {
+    ((x * 100_000.0).round() / 100_000.0) as f32
+}
+
+/// Extract per-class values at the root of a solved (symmetric) solver.
+pub fn extract_values(solver: &Solver) -> Result<ExampleValues, String> {
+    let view = solver.node_view(&[])?;
+    let pot = solver.spot.tree.config.starting_pot;
+    let mut reach: [Vec<f32>; 2] = [vec![0.0; NUM_CLASSES], vec![0.0; NUM_CLASSES]];
+    let mut eq: [Vec<Option<f32>>; 2] = [vec![None; NUM_CLASSES], vec![None; NUM_CLASSES]];
+    let mut value: [Vec<Option<f32>>; 2] = [vec![None; NUM_CLASSES], vec![None; NUM_CLASSES]];
+    for p in 0..2usize {
+        let mut w = vec![0f64; NUM_CLASSES];
+        let mut wv = vec![0f64; NUM_CLASSES];
+        let mut se = vec![0f64; NUM_CLASSES];
+        let mut sv = vec![0f64; NUM_CLASSES];
+        for h in &view.players[p].hands {
+            let (r1, r2) = (rank(h.c1), rank(h.c2));
+            let k = class_index(r1.max(r2), r1.min(r2), suit(h.c1) == suit(h.c2));
+            w[k] += h.reach as f64;
+            let (e, v) = match (h.eq, h.ev) {
+                (Some(a), Some(b)) if a.is_finite() && b.is_finite() => (a as f64, b as f64),
+                _ => continue,
+            };
+            // per-hand values are normalized by valid: aggregate by reach x valid
+            let pw = h.reach as f64 * h.valid as f64;
+            wv[k] += pw;
+            se[k] += pw * e;
+            sv[k] += pw * v;
+        }
+        for k in 0..NUM_CLASSES {
+            reach[p][k] = r5(w[k]);
+            if wv[k] > 0.0 {
+                eq[p][k] = Some(r5(se[k] / wv[k]));
+                value[p][k] = Some(r5(sv[k] / wv[k] / pot));
+            }
+        }
+    }
+    Ok(ExampleValues { reach, eq, value })
+}
+
+/// One line of an output file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExampleRecord {
+    #[serde(rename = "type")]
+    pub kind: String,
+    #[serde(flatten)]
+    pub inputs: ExampleInputs,
+    #[serde(flatten)]
+    pub values: ExampleValues,
+    pub iterations: u32,
+    pub exploit_pct_pot: f64,
+    pub seconds: f64,
+}
+
+/// File header line.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JobHeader {
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub format: String,
+    pub format_version: u32,
+    pub generator_version: u32,
+    pub menu: String,
+    pub job: u64,
+    pub contributor: String,
+    pub examples: u32,
+    pub target_pct: f64,
+    pub max_iterations: u32,
+    pub engine: String,
+    pub gtopen_version: String,
+    /// Memory cap (GB) the examples were drawn under; None = uncapped.
+    #[serde(default)]
+    pub max_vram_gb: Option<f64>,
+    /// The game mix the job was drawn from (generator v5 on) and that mix's
+    /// key (`datagen_mix::Mix::key`), so a file says what it was drawn from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mix: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mix_key: Option<String>,
+}
+
+impl JobHeader {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(job: u64, contributor: &str, examples: u32, target_pct: f64, max_iterations: u32, engine: &str,
+               max_vram_gb: Option<f64>, mix: Option<(u32, String)>) -> Self {
+        JobHeader {
+            kind: "header".into(),
+            format: FORMAT.into(),
+            format_version: FORMAT_VERSION,
+            generator_version: GENERATOR_VERSION,
+            menu: MENU.into(),
+            job,
+            contributor: contributor.into(),
+            examples,
+            target_pct,
+            max_iterations,
+            engine: engine.into(),
+            gtopen_version: env!("CARGO_PKG_VERSION").into(),
+            max_vram_gb,
+            mix: mix.as_ref().map(|m| m.0),
+            mix_key: mix.map(|m| m.1),
+        }
+    }
+}
+
+/// Format name of a real-range game file: the exact flop solves of one
+/// solved preflop game's heads-up flop leaves (`solve-cli datagen leaves`
+/// then `datagen solve`, gathered by `tools/leafnet/realrange.py publish`).
+/// Its ranges come from a preflop solve, so unlike a pooled job its inputs
+/// cannot be regenerated from a number: every example carries them, and
+/// `datagen verify` checks them for sanity and re-solves a sample.
+pub const REAL_FORMAT: &str = "gtopen-real-range";
+/// Version of the real-range file layout.
+pub const REAL_FORMAT_VERSION: u32 = 1;
+/// First job number `datagen leaves` gives a game's leaves (leaf rank is
+/// added); real-range examples keep those numbers inside their game file.
+pub const LEAF_JOB_BASE: u64 = 900_000_000_000;
+
+/// Header line of a real-range game file. The file also describes the game
+/// (its preflop config, the model and net it was solved with, the leaves'
+/// lines): readers use those, the verifier does not need them.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RealHeader {
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub format: String,
+    pub format_version: u32,
+    pub menu: String,
+    pub contributor: String,
+    /// The contributor's name for a batch of games (one round of solves).
+    pub set: String,
+    /// The game's id within the set.
+    pub game: String,
+    pub examples: u32,
+    pub target_pct: f64,
+    pub max_iterations: u32,
+}
+
+/// True for names that are safe as one path component of the dataset.
+/// A leaf's range as `datagen leaves` writes it: weights to three decimals.
+/// With a `token` above 0, every class the rounded range does not hold gets
+/// that share of the range's largest weight (0.0001 = a ten-thousandth of
+/// the most played hand). A flop solve gives no value to a hand at weight
+/// zero, so without tokens nothing can be learned about the hands just
+/// outside a range, which are the ones a preflop solve asks about when it
+/// decides whether a hand enters. Small enough tokens leave the solve of the
+/// played hands as it was.
+pub fn export_range(range: &[f32], token: f32) -> Vec<f32> {
+    let mut out: Vec<f32> = range.iter().map(|&x| (x * 1000.0).round() / 1000.0).collect();
+    let max = out.iter().cloned().fold(0f32, f32::max);
+    if token > 0.0 && max > 0.0 {
+        // seven decimals: enough for a ten-thousandth of a weight of 0.001
+        let t = ((token * max) as f64 * 1e7).round() / 1e7;
+        for w in out.iter_mut().filter(|w| **w <= 0.0) {
+            *w = t as f32;
+        }
+    }
+    out
+}
+
+pub fn plain_name(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 64 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// Plausibility of a real-range example's inputs (they cannot be
+/// regenerated): a real flop, two usable 169-class ranges, sane sizes.
+pub fn check_real_inputs(ex: &ExampleInputs) -> Option<String> {
+    match crate::cards::parse_cards(&ex.board) {
+        Ok(cards) if cards.len() == 3 && cards[0] != cards[1] && cards[0] != cards[2] && cards[1] != cards[2] => {}
+        _ => return Some(format!("board {:?} is not a flop", ex.board)),
+    }
+    if !crate::preflop::leafnet::POT_TYPES.contains(&ex.pot_type.as_str()) {
+        return Some(format!("unknown pot type {:?}", ex.pot_type));
+    }
+    if !(ex.pot_bb.is_finite() && ex.pot_bb > 0.0 && ex.pot_bb <= 10_000.0) {
+        return Some(format!("pot {} bb out of range", ex.pot_bb));
+    }
+    if !(ex.stack_bb.is_finite() && ex.stack_bb > 0.0 && ex.stack_bb <= 10_000.0) {
+        return Some(format!("stack {} bb out of range", ex.stack_bb));
+    }
+    if !(ex.rake_pct.is_finite() && (0.0..=0.25).contains(&ex.rake_pct)) {
+        return Some(format!("rake {} out of range (a fraction of the pot)", ex.rake_pct));
+    }
+    if !(ex.rake_cap_bb.is_finite() && ex.rake_cap_bb >= 0.0) {
+        return Some(format!("rake cap {} bb out of range", ex.rake_cap_bb));
+    }
+    for p in 0..2 {
+        if ex.range[p].len() != NUM_CLASSES {
+            return Some(format!("range {p} has {} classes", ex.range[p].len()));
+        }
+        if ex.range[p].iter().any(|w| !w.is_finite() || !(0.0..=1.0).contains(w)) {
+            return Some(format!("range {p} has a weight outside 0..1"));
+        }
+        if ex.range[p].iter().all(|&w| w <= 0.0) {
+            return Some(format!("range {p} is empty"));
+        }
+    }
+    None
+}
+
+/// Comparison of a re-solve against an uploaded example.
+#[derive(Debug, Clone, Serialize)]
+pub struct VerifyResult {
+    pub index: u32,
+    /// Reach-weighted mean |value difference| over both players, in pot.
+    pub mean_abs_diff: f64,
+    /// Largest |value difference| among classes with reach >= 5% of the max.
+    pub max_abs_diff: f64,
+}
+
+/// Compare two value sets (same inputs).
+pub fn compare_values(a: &ExampleValues, b: &ExampleValues) -> (f64, f64) {
+    let (mut num, mut den, mut max) = (0f64, 0f64, 0f64);
+    for p in 0..2 {
+        let rmax = a.reach[p].iter().cloned().fold(0f32, f32::max) as f64;
+        for k in 0..NUM_CLASSES {
+            if let (Some(x), Some(y)) = (a.value[p][k], b.value[p][k]) {
+                let r = a.reach[p][k] as f64;
+                let d = (x as f64 - y as f64).abs();
+                num += r * d;
+                den += r;
+                if r >= 0.05 * rmax {
+                    max = max.max(d);
+                }
+            }
+        }
+    }
+    (if den > 0.0 { num / den } else { 0.0 }, max)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exported_ranges_get_tokens_only_where_they_hold_nothing() {
+        let mut range = vec![0f32; NUM_CLASSES];
+        (range[0], range[1], range[2], range[3]) = (0.5004, 0.2, 0.0004, 0.0006);
+        // without a token: three decimals, zeros stay zeros (what every export so far wrote)
+        let plain = export_range(&range, 0.0);
+        assert_eq!(&plain[..4], &[0.5, 0.2, 0.0, 0.001]);
+        assert!(plain[4..].iter().all(|&w| w == 0.0));
+        // with one: every class the rounded range does not hold gets that share of the largest weight
+        let tok = export_range(&range, 0.0001);
+        assert_eq!(&tok[..2], &[0.5, 0.2]);
+        assert_eq!(tok[3], 0.001, "a hand the range holds keeps its weight");
+        assert!((tok[2] - 0.00005).abs() < 1e-9 && tok[4..].iter().all(|&w| w == tok[2]), "{}", tok[2]);
+        // the tokens together stay a sliver of the range
+        let (held, tokens): (f32, f32) = (tok[..2].iter().sum::<f32>() + tok[3], tok[2] + tok[4..].iter().sum::<f32>());
+        assert!(tokens < 0.02 * held, "{tokens} against {held}");
+        // an empty range stays empty, and the result passes the checks a pooled example must pass
+        assert!(export_range(&vec![0f32; NUM_CLASSES], 0.0001).iter().all(|&w| w == 0.0));
+        let ex = ExampleInputs { job: 1, index: 0, board: "AsKd7c".into(), pot_type: "srp".into(), pot_bb: 6.5, stack_bb: 97.0,
+                                 rake_pct: 0.05, rake_cap_bb: 3.0, range: [tok.clone(), tok], attempt: 0, pot_scale: 1.0,
+                                 situation: None };
+        assert_eq!(check_real_inputs(&ex), None);
+    }
+
+    #[test]
+    fn real_range_inputs_are_checked_for_plausibility() {
+        // a generated example passes whatever job number it carries
+        let mut ok = example_inputs(42, 7);
+        ok.job = LEAF_JOB_BASE + 3;
+        assert_eq!(check_real_inputs(&ok), None);
+        let bad = |change: &dyn Fn(&mut ExampleInputs)| {
+            let mut ex = ok.clone();
+            change(&mut ex);
+            check_real_inputs(&ex)
+        };
+        assert!(bad(&|ex| ex.board = "AcAc5h".into()).unwrap().contains("not a flop"));
+        assert!(bad(&|ex| ex.board = "Ac5h".into()).unwrap().contains("not a flop"));
+        assert!(bad(&|ex| ex.board = "Ac5h7d9s".into()).unwrap().contains("not a flop"));
+        assert!(bad(&|ex| ex.pot_type = "5bet".into()).unwrap().contains("pot type"));
+        assert!(bad(&|ex| ex.pot_bb = 0.0).unwrap().contains("pot"));
+        assert!(bad(&|ex| ex.stack_bb = f64::NAN).unwrap().contains("stack"));
+        assert!(bad(&|ex| ex.rake_pct = 5.0).unwrap().contains("rake"));
+        assert!(bad(&|ex| ex.rake_cap_bb = -1.0).unwrap().contains("rake cap"));
+        assert!(bad(&|ex| ex.range[0].truncate(100)).unwrap().contains("classes"));
+        assert!(bad(&|ex| ex.range[1][5] = 1.5).unwrap().contains("outside 0..1"));
+        assert!(bad(&|ex| ex.range[1][5] = f32::NAN).unwrap().contains("outside 0..1"));
+        assert!(bad(&|ex| ex.range[0].iter_mut().for_each(|w| *w = 0.0)).unwrap().contains("empty"));
+    }
+
+    #[test]
+    fn a_line_keeps_its_flops_whatever_its_rank() {
+        let line = line_key(&["UTG Raise 2.5".to_string(), "BB Call 2.5".to_string()]);
+        assert_eq!(line, "UTG Raise 2.5 | BB Call 2.5");
+        // the same line, seed and index always give the same flop; nothing else goes in
+        assert_eq!(line_flop(1000, &line, 0), line_flop(1000, &line, 0));
+        let canon: std::collections::HashSet<String> = crate::cards::canonical_flops().into_iter().map(|x| x.0).collect();
+        let mut seen = std::collections::HashSet::new();
+        for index in 0..40 {
+            let flop = line_flop(1000, &line, index);
+            assert!(canon.contains(&flop), "{flop}");
+            seen.insert(flop);
+        }
+        assert!(seen.len() >= 35, "40 draws gave only {} flops", seen.len());
+        // another seed or another line draws other flops
+        let same = |a: &dyn Fn(u32) -> String| (0..40).filter(|&i| a(i) == line_flop(1000, &line, i)).count();
+        assert!(same(&|i| line_flop(1001, &line, i)) <= 3);
+        assert!(same(&|i| line_flop(1000, "UTG Raise 2.5 | SB Call 2.5", i)) <= 3);
+    }
+
+    #[test]
+    fn an_earlier_exports_flops_are_read_by_line() {
+        let leaves = serde_json::json!({
+            "positions": ["BTN", "SB", "BB"],
+            "leaves": [
+                {"job": LEAF_JOB_BASE, "path": ["BTN Raise 2.5", "BB Call 2.5"], "pot_bb": 5.5, "stack_bb": 97.5},
+                {"job": LEAF_JOB_BASE + 1, "path": ["SB Raise 3", "BB Call 3"], "pot_bb": 6.0, "stack_bb": 97.0},
+                {"job": LEAF_JOB_BASE + 2, "path": ["BTN Limp 1", "BB Check"], "pot_bb": 2.5, "stack_bb": 99.0},
+            ]
+        }).to_string();
+        let mut ex = example_inputs(42, 7);
+        let mut inputs = String::new();
+        for (job, index, board) in [(1, 1, "KsQs2d"), (0, 0, "AsKd7c"), (1, 0, "9h8h7h"), (0, 1, "2c2d5s")] {
+            ex.job = LEAF_JOB_BASE + job;
+            ex.index = index;
+            ex.board = board.to_string();
+            inputs.push_str(&serde_json::to_string(&ex).unwrap());
+            inputs.push('\n');
+        }
+        let (positions, kept) = leaf_boards(&leaves, &inputs).unwrap();
+        assert_eq!(positions, ["BTN", "SB", "BB"]);
+        assert_eq!(kept.len(), 3);
+        assert_eq!(kept["BTN Raise 2.5 | BB Call 2.5"],
+                   LineBoards { pot_bb: 5.5, stack_bb: 97.5, boards: vec!["AsKd7c".into(), "2c2d5s".into()] });
+        assert_eq!(kept["SB Raise 3 | BB Call 3"].boards, ["9h8h7h", "KsQs2d"]);      // in index order
+        assert!(kept["BTN Limp 1 | BB Check"].boards.is_empty());                     // a leaf without examples
+        assert!(leaf_boards("{}", "").unwrap_err().contains("no leaves"));
+        let twice = serde_json::json!({"leaves": [{"job": 1, "path": ["a"]}, {"job": 2, "path": ["a"]}]}).to_string();
+        assert!(leaf_boards(&twice, "").unwrap_err().contains("twice"));
+    }
+
+    #[test]
+    fn plain_names_are_single_path_components() {
+        for good in ["g01", "g02-bal", "round_1", "MatthewPDingle"] {
+            assert!(plain_name(good), "{good}");
+        }
+        for bad in ["", "..", "a/b", "a\\b", "round 1", "g01.jsonl", "é"] {
+            assert!(!plain_name(bad), "{bad}");
+        }
+        assert!(!plain_name(&"x".repeat(65)));
+    }
+
+    #[test]
+    fn inputs_are_deterministic_and_vary() {
+        let a = example_inputs(42, 7);
+        let b = example_inputs(42, 7);
+        assert_eq!(a, b);
+        let c = example_inputs(42, 8);
+        assert_ne!(a.range, c.range);
+        let d = example_inputs(43, 7);
+        assert_ne!(a.range, d.range);
+    }
+
+    #[test]
+    fn ranges_round_trip_through_text() {
+        for i in 0..50 {
+            let ex = example_inputs(1, i);
+            for p in 0..2 {
+                let text = range_text(&ex.range[p]);
+                let parsed = crate::Range::parse(&text).expect("range parses");
+                assert!(!parsed.is_empty(), "empty range for example {i}");
+                // every class keeps its weight exactly
+                for k in 0..NUM_CLASSES {
+                    let (hi, lo, suited) = class_parts(k);
+                    let s = if hi == lo {
+                        crate::range::Suitedness::Pair
+                    } else if suited {
+                        crate::range::Suitedness::Suited
+                    } else {
+                        crate::range::Suitedness::Offsuit
+                    };
+                    for (c1, c2) in crate::range::class_combo_list(hi, lo, s) {
+                        let w = parsed.weights[crate::cards::combo_index(c1, c2)];
+                        assert_eq!(w, ex.range[p][k], "class {} example {i}", class_label(k));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn spots_are_valid() {
+        for i in 0..20 {
+            let ex = example_inputs(9, i);
+            assert!(ex.pot_bb > 0.0 && ex.stack_bb > 0.0);
+            let spot = crate::Spot::new(ex.spot_config());
+            assert!(spot.is_ok(), "example {i}: {:?}", spot.err());
+        }
+    }
+
+    #[test]
+    fn capped_examples_fit_and_regenerate() {
+        for i in 0..8 {
+            let ex = example_inputs_capped(11, i, Some(4.0));
+            assert!(estimated_vram_bytes(&ex) as f64 <= 4.0e9 || ex.attempt == MAX_ATTEMPTS - 1);
+            assert_eq!(ex, example_inputs_capped(11, i, Some(4.0)));
+            if ex.attempt == 0 {
+                assert_eq!(ex, example_inputs(11, i));
+            }
+        }
+    }
+
+    /// v2 uploads are checked by regenerating their inputs, so the v2 draws
+    /// must never change: this hash was taken before v3 was added.
+    #[test]
+    fn v2_inputs_are_unchanged() {
+        let mut s = String::new();
+        for job in [42u64, 16861638950914, 900_000_000_123] {
+            for i in 0..40 {
+                s.push_str(&serde_json::to_string(&example_inputs_for(2, job, i, None)).unwrap());
+                s.push_str(&serde_json::to_string(&example_inputs_for(2, job, i, Some(6.0))).unwrap());
+            }
+        }
+        assert_eq!((fnv1a(s.as_bytes()), s.len()), (0xf3b9_96f0_c8bb_a227, 413_200));
+    }
+
+    /// v3 uploads are checked the same way: this hash was taken before v4 was added.
+    #[test]
+    fn v3_inputs_are_unchanged() {
+        let mut s = String::new();
+        for job in [42u64, 16861638950914, 900_000_000_123] {
+            for i in 0..40 {
+                s.push_str(&serde_json::to_string(&example_inputs_for(3, job, i, None)).unwrap());
+                s.push_str(&serde_json::to_string(&example_inputs_for(3, job, i, Some(6.0))).unwrap());
+            }
+        }
+        assert_eq!((fnv1a(s.as_bytes()), s.len()), (0x64a2_6454_5b00_e782, 417_855));
+    }
+
+    /// v4 uploads are checked the same way: this hash was taken before v5 was added.
+    #[test]
+    fn v4_inputs_are_unchanged() {
+        let mut s = String::new();
+        for job in [42u64, 16861638950914, 900_000_000_123] {
+            for i in 0..40 {
+                s.push_str(&serde_json::to_string(&example_inputs_for(4, job, i, None)).unwrap());
+                s.push_str(&serde_json::to_string(&example_inputs_for(4, job, i, Some(6.0))).unwrap());
+            }
+        }
+        assert_eq!((fnv1a(s.as_bytes()), s.len()), (0xc8d9_c8b1_49b2_d91c, 419_276));
+    }
+
+    #[test]
+    fn v3_mix_matches_its_description() {
+        let n = 4000;
+        let mut count = std::collections::HashMap::new();
+        let (mut scaled, mut raked10) = (0, 0);
+        for i in 0..n {
+            let ex = example_inputs_for(3, 7, i, None);
+            *count.entry(ex.pot_type.clone()).or_insert(0) += 1;
+            scaled += (ex.pot_scale > 1.0) as usize;
+            raked10 += (ex.rake_pct == 0.10) as usize;
+            assert!(ex.pot_scale == 1.0 || (1.6..=2.6).contains(&ex.pot_scale));
+            assert!(ex.stack_bb > 0.0 && ex.stack_bb <= MAX_SPR * ex.pot_bb + 1e-9);
+            assert!((0.0..=0.10).contains(&ex.rake_pct) && ex.rake_cap_bb <= 10.0);
+        }
+        let share = |t: &str| count.get(t).copied().unwrap_or(0) as f64 / n as f64;
+        for (t, want) in [("limped", 0.10), ("srp", 0.65), ("3bet", 0.15), ("4bet", 0.10)] {
+            assert!((share(t) - want).abs() < 0.025, "{t}: {}", share(t));
+        }
+        assert!((scaled as f64 / n as f64 - 0.2).abs() < 0.025);
+        assert!((raked10 as f64 / n as f64 - 0.2).abs() < 0.025);
+        // An unscaled v3 record serializes without pot_scale, like v2 ones.
+        let plain = (0..n).map(|i| example_inputs_for(3, 7, i, None)).find(|e| e.pot_scale == 1.0).unwrap();
+        assert!(!serde_json::to_string(&plain).unwrap().contains("pot_scale"));
+    }
+
+    #[test]
+    fn v4_mix_matches_its_description() {
+        let n = 6000;
+        let mut count = std::collections::HashMap::new();
+        let (mut online, mut live, mut straddled) = (0, 0, 0);
+        let (mut none, mut five, mut ten, mut low_live_cap, mut deep) = (0, 0, 0, 0, 0);
+        for i in 0..n {
+            let ex = example_inputs(7, i);
+            *count.entry(ex.pot_type.clone()).or_insert(0) += 1;
+            match ex.pot_scale {
+                s if s == 1.0 => online += 1,
+                s if (1.3..2.0).contains(&s) => live += 1,
+                s => {
+                    assert!((2.0..=4.0).contains(&s), "pot_scale {s}");
+                    straddled += 1
+                }
+            }
+            assert!(ex.stack_bb > 0.0 && ex.stack_bb <= MAX_SPR * ex.pot_bb + 1e-9);
+            assert!(ex.stack_bb + ex.pot_bb / 2.0 <= 400.0 + 1e-9);
+            assert!((0.0..=0.10).contains(&ex.rake_pct) && ex.rake_cap_bb <= 12.0);
+            assert!(ex.rake_pct == 0.0 || ex.rake_cap_bb >= 0.5);
+            none += (ex.rake_pct == 0.0) as usize;
+            five += (ex.rake_pct == 0.05) as usize;
+            ten += (ex.rake_pct == 0.10) as usize;
+            low_live_cap += (ex.rake_pct == 0.10 && (2.5..=4.5).contains(&ex.rake_cap_bb)) as usize;
+            deep += (ex.stack_bb + ex.pot_bb / 2.0 > 200.0) as usize;
+            assert!(ex.pot_type != "srp" || ex.pot_bb <= 7.5 * 4.0 + 1e-9);
+        }
+        let share = |x: usize| x as f64 / n as f64;
+        let by_type = |t: &str| share(count.get(t).copied().unwrap_or(0));
+        for (t, want) in [("limped", 0.10), ("srp", 0.55), ("3bet", 0.20), ("4bet", 0.15)] {
+            assert!((by_type(t) - want).abs() < 0.025, "{t}: {}", by_type(t));
+        }
+        for (got, want, what) in [(online, 0.4, "online"), (live, 0.4, "live"), (straddled, 0.2, "straddled"),
+                                   (none, 0.2, "no rake"), (five, 0.35, "5%"), (ten, 0.35, "10%")] {
+            assert!((share(got) - want).abs() < 0.025, "{what}: {}", share(got));
+        }
+        // 10% rake with a live room's low cap (Pan's 8-max game: 3.4 bb) is no longer rare.
+        assert!(share(low_live_cap) > 0.07, "low live caps {}", share(low_live_cap));
+        // live and straddled tables reach past the 200 bb v3 stopped at
+        assert!(share(deep) > 0.1, "deep {}", share(deep));
+    }
+
+    #[test]
+    fn contributor_blocks_differ() {
+        assert_ne!(contributor_base("alice"), contributor_base("bob"));
+        assert_eq!(contributor_base("Alice"), contributor_base("alice"));
+        assert_eq!(contributor_job("alice", 3), contributor_base("alice") + VERSION_JOB_OFFSET + 3);
+        // v4 jobs never land on the job numbers v2 (from 0) or v3 (from 2^23) handed out.
+        assert!(contributor_job("alice", 0) - contributor_base("alice") >= 3 << 22);
+    }
+
+    #[test]
+    fn a_job_number_carries_its_mix() {
+        let base = contributor_base("alice");
+        // every older job number is below 2^44 and reads as "no mix"
+        assert_eq!(job_mix(contributor_job("alice", 5)), 0);
+        assert_eq!(job_mix(LEAF_JOB_BASE + 7), 0);
+        assert!(contributor_base(&"z".repeat(30)) + (1 << BLOCK_BITS) <= 1 << MIX_SHIFT);
+        for (mix, k) in [(1u32, 0u64), (1, 1_000_000), (7, 3), (MAX_MIX_ID, (1 << BLOCK_BITS) - 1)] {
+            let job = mix_job("alice", mix, k);
+            assert_eq!(job_mix(job), mix);
+            // below the mix it is still a number of the contributor's own block
+            assert_eq!(job & ((1 << MIX_SHIFT) - 1), base + k);
+            assert!(job < 1 << 53, "exact in any JSON reader");
+        }
+        // two mixes never share a job number, so never a file name or a seed
+        assert_ne!(mix_job("alice", 1, 0), mix_job("alice", 2, 0));
+        assert_ne!(attempt_seed(5, mix_job("alice", 1, 0), 0, 0), attempt_seed(5, mix_job("alice", 2, 0), 0, 0));
+    }
+
+    #[test]
+    fn river_example_values_are_consistent() {
+        // A tiny river spot: values for both players must add up to 1 (no rake).
+        let cfg = SpotConfig {
+            board: "AsKd7c2h3s".into(),
+            range_oop: "QQ,JJ,AQs".into(),
+            range_ip: "TT,AJs,KQs".into(),
+            tree: menu_tree(10.0, 50.0, 0.0, 0.0),
+        };
+        let spot = std::sync::Arc::new(crate::Spot::new(cfg).unwrap());
+        let mut solver = Solver::new(spot);
+        let stop = std::sync::atomic::AtomicBool::new(false);
+        solver.run(
+            &crate::RunOptions { max_iterations: 300, target_exploit_pct: 0.05, check_every: 50 },
+            &stop,
+            |_| {},
+        );
+        solver.ensure_symmetric();
+        let v = extract_values(&solver).unwrap();
+        let mut total = 0.0;
+        for p in 0..2 {
+            let (mut num, mut den) = (0.0, 0.0);
+            for k in 0..NUM_CLASSES {
+                if let Some(x) = v.value[p][k] {
+                    num += v.reach[p][k] as f64 * x as f64;
+                    den += v.reach[p][k] as f64;
+                }
+            }
+            total += num / den;
+        }
+        // range averages weighted by plain reach are close but not exact
+        // (card removal); they should still land near 1
+        assert!((total - 1.0).abs() < 0.15, "total {total}");
+    }
+}

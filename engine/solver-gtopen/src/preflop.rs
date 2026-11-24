@@ -12,7 +12,7 @@
 //!
 //! Chips: RiverLab's integer mbb become GTOpen's `f64` big blinds (`mbb / 1000`).
 
-use crate::{AdapterError, BACKEND, ClassStrategy, GTOPEN_COMMIT, GTOPEN_REPOSITORY, StopReason};
+use crate::{AdapterError, BACKEND, ClassStrategy, GTOPEN_BUILD, GTOPEN_REPOSITORY, StopReason};
 use gtopen::preflop::equity::{EquityTable, NUM_CLASSES, class_combos, class_label};
 use gtopen::preflop::{PreflopConfig, PreflopSolver, estimate_tree};
 use poker_core::{Chips, GameConfig};
@@ -268,7 +268,7 @@ pub fn solve_preflop(
     let outcome = PreflopOutcome {
         backend: BACKEND.into(),
         backend_repository: GTOPEN_REPOSITORY.into(),
-        backend_commit: GTOPEN_COMMIT.into(),
+        backend_commit: GTOPEN_BUILD.into(),
         stop_reason: reason,
         progress,
         positions: prepared.positions.clone(),

@@ -124,6 +124,7 @@ def test_solve_end_to_end_matches_the_hand_solution(live: TestClient) -> None:
     caps = live.get("/api/v1/solver/capabilities").json()
     assert caps["status"] == "available"
     assert caps["engines"][0]["name"] == "gtopen"
+    assert caps["engines"][0]["patches"] == ["arenabuf-provenance"]
     meta = {c["key"]: c["status"] for c in live.get("/api/v1/meta").json()["capabilities"]}
     assert meta["solver"] == "available"
 
@@ -142,7 +143,7 @@ def test_solve_end_to_end_matches_the_hand_solution(live: TestClient) -> None:
     assert check["performed"] is True
     assert check["exploitability_mbb"] == pytest.approx(res["exploitability_mbb"], abs=0.5)
     assert res["solver_backend"] == "gtopen"
-    assert len(res["solver_version"]) == 40
+    assert res["solver_version"] == "eb5ccd671223293527f36d219cfe33baf0b0475c+arenabuf-provenance"
     assert res["root"]["actions"] == ["check"]
     assert {c["label"] for c in res["root"]["by_class"]} == {"AQs", "AQo"}
 

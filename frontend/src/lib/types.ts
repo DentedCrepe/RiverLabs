@@ -84,7 +84,7 @@ export type SolverCapabilities = {
   status: string;
   message: string;
   available_backends: string[];
-  engines: { name: string; repository: string; commit: string; scope: string }[];
+  engines: { name: string; repository: string; commit: string; patches?: string[]; scope: string }[];
   planned_algorithms: string[];
 };
 
