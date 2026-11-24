@@ -26,6 +26,12 @@ migration 0008): verdicts and EV lost overall, by street, by position (in or out
 the ten hand class and street pairs that cost you the most. EV losses are the engine's, from the
 saved solves the drills came from.
 
+## Preflop drills
+`GET /analytics/preflop`: your preflop drill answers compared with GTOpen's preflop model (an
+approximate model; see `trainer.md`): how often your action was the model's most frequent one,
+mixed or rare, by spot and position, and the hands that most often differed. These are not EV
+losses: the model gives no value for each action.
+
 ## Guest mode
 
 What a guest does in guest mode never counts here; see [guest-mode.md](guest-mode.md).

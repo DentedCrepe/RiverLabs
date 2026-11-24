@@ -20,6 +20,7 @@ from riverlab_api.db.models import (
     PlayHand,
     PlaySession,
     PostflopAnswer,
+    PreflopAnswer,
     PushFoldAnswer,
 )
 from riverlab_api.services import academy, engine, leaks
@@ -53,7 +54,7 @@ def _counts(db: Session, since: datetime) -> tuple[Counter[date], Counter[date]]
         )
     )
     study: Counter[date] = Counter()
-    for model in (AcademyAttempt, PushFoldAnswer, PostflopAnswer):
+    for model in (AcademyAttempt, PushFoldAnswer, PostflopAnswer, PreflopAnswer):
         study.update(
             _local_day(t) for t in db.scalars(select(model.created_at).where(model.created_at >= since))
         )

@@ -23,10 +23,14 @@ const noLeaks = {
   costliest: [],
 };
 
+const noPreflop = { answers: 0, matches: 0, mixed: 0, differs: 0 };
+const emptyPreflop = { total: noPreflop, by_spot: [], by_position: [], most_differing: [] };
+
 /** Answers for the endpoints every Analytics section loads besides the one under test. */
 function common(url: string): Response | null {
   if (url.includes("/reviews/status")) return Response.json({ reviews: zero });
   if (url.includes("/analytics/leaks")) return Response.json(noLeaks);
+  if (url.includes("/analytics/preflop")) return Response.json(emptyPreflop);
   return null;
 }
 
@@ -51,7 +55,7 @@ describe("Analytics", () => {
     );
     render(<Analytics />);
     expect(await screen.findByText("No hands yet")).toBeInTheDocument();
-    expect((await screen.findAllByText("No answers yet")).length).toBe(2);
+    expect((await screen.findAllByText("No answers yet")).length).toBe(3);
   });
 
   it("summarises trainer answers by seat, stack and costliest hand", async () => {

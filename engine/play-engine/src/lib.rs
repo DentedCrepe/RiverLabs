@@ -13,6 +13,7 @@ pub mod config;
 pub mod drill;
 pub mod judge;
 pub mod model;
+pub mod preflop_drill;
 pub mod push_fold;
 pub mod record;
 pub mod report;

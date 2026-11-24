@@ -72,7 +72,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "Trainer",
     icon: Target,
     status: "partial",
-    description: "Heads-up push/fold drills graded against the exact equilibrium; more drills planned",
+    description:
+      "Push/fold graded against the exact equilibrium; postflop drills from your solves; preflop drills against an approximate model",
   },
   {
     href: "/hand-analysis",

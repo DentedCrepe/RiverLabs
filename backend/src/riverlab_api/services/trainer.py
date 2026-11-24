@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from riverlab_api.config import get_settings
-from riverlab_api.db.models import PlayHand, PostflopAnswer, SolverJob, SolverResult
+from riverlab_api.db.models import PlayHand, PostflopAnswer, PreflopAnswer, SolverJob, SolverResult
 from riverlab_api.errors import ConflictError
 from riverlab_api.services import activity, compute, engine, hand_review, trees
 
@@ -212,3 +212,92 @@ def postflop_answer(
     )
     db.commit()
     return grade
+
+
+# ---- preflop drills from saved preflop solves (GTOpen's preflop model: an approximate model) ----
+
+
+def _model_label(result: SolverResult) -> dict[str, Any]:
+    """What a preflop drill is graded against, stated with every drill and grade."""
+    return {
+        "model": result.assumptions["model"],
+        "validated_scope": result.assumptions["validated_scope"],
+        "model_notes": result.assumptions["model_notes"],
+        "model_gap_mbb": result.summary.get("model_gap_mbb"),
+        "iterations": result.iterations,
+    }
+
+
+def preflop_sources(db: Session) -> list[dict[str, Any]]:
+    """Saved preflop solves whose trees are on disk, newest first."""
+    rows = db.execute(
+        select(SolverJob, SolverResult)
+        .join(SolverResult, SolverResult.job_id == SolverJob.id)
+        .where(SolverJob.kind == "preflop", SolverResult.storage_uri.is_not(None))
+        .order_by(SolverJob.finished_at.desc().nulls_last(), SolverJob.id)
+    ).all()
+    out = []
+    for job, result in rows:
+        if not trees.path_from_uri(result.storage_uri or "").exists():
+            continue
+        game = result.assumptions["spec"]["game"]
+        out.append(
+            {
+                "job_id": job.id,
+                "positions": result.summary.get("positions", []),
+                "effective_stack_mbb": game["stack"]["effective_stack"],
+                "rake_bps": game["rake"]["percentage_bps"],
+                "finished_at": job.finished_at,
+                **_model_label(result),
+            }
+        )
+    return out
+
+
+def _preflop_solve(db: Session, job_id: uuid.UUID) -> tuple[Any, SolverResult]:
+    _, result, _ = compute.JobService(db).result(job_id)
+    if result.job.kind != "preflop":
+        raise ConflictError("Preflop drills need a preflop solve")
+    return trees.game(result), result
+
+
+def preflop_drill(db: Session, job_id: uuid.UUID | None, spot: str, seed: int) -> dict[str, Any]:
+    if job_id is None:
+        sources = preflop_sources(db)
+        if not sources:
+            raise ConflictError("No saved preflop solves yet: run one on the Preflop page first")
+        job_id = sources[seed % len(sources)]["job_id"]
+    game, result = _preflop_solve(db, job_id)
+    drill: dict[str, Any] = engine.play_call(game.drill, spot, seed)
+    return {
+        "job_id": job_id,
+        "drill": drill,
+        "effective_stack_mbb": result.assumptions["spec"]["game"]["stack"]["effective_stack"],
+        **_model_label(result),
+    }
+
+
+def preflop_answer(
+    db: Session, job_id: uuid.UUID, drill: dict[str, Any], choice: int, store: bool = True
+) -> dict[str, Any]:
+    game, result = _preflop_solve(db, job_id)
+    grade: dict[str, Any] = engine.play_call(game.grade, json.dumps(drill), choice)
+    out = {**grade, **_model_label(result)}
+    if not store:
+        return out
+    d = grade["drill"]
+    db.add(
+        PreflopAnswer(
+            job_id=job_id,
+            spot=d["spot"],
+            position=d["position"],
+            cards="".join(d["cards"]),
+            hand_class=d["class"],
+            choice=grade["choice_label"][:40],
+            verdict=grade["verdict"],
+            model_frequency=min(max(float(grade["your_frequency"]), 0.0), 1.0),
+            grade=grade,
+        )
+    )
+    db.commit()
+    return out

@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { cn } from "@/components/ui/cn";
 import { PostflopTrainer } from "./PostflopTrainer";
+import { PreflopTrainer } from "./PreflopTrainer";
 import { PushFoldTrainer } from "./PushFoldTrainer";
 
 const TABS = [
   ["push-fold", "Push/fold"],
+  ["preflop", "Preflop"],
   ["postflop", "Postflop"],
 ] as const;
 
@@ -31,7 +33,7 @@ export function TrainerTabs() {
           </button>
         ))}
       </div>
-      {tab === "push-fold" ? <PushFoldTrainer /> : <PostflopTrainer />}
+      {tab === "push-fold" ? <PushFoldTrainer /> : tab === "preflop" ? <PreflopTrainer /> : <PostflopTrainer />}
     </div>
   );
 }

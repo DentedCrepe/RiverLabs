@@ -10,7 +10,7 @@ export default function Page() {
       <PageHeader
         title="Trainer"
         status="partial"
-        description="Drills graded by EV: heads-up push/fold against the exact equilibrium, and postflop decisions dealt from your own saved solves, each shown with its exploitability. Nothing is graded against invented answers."
+        description="Heads-up push/fold graded by EV against the exact equilibrium; postflop decisions from your saved solves, graded by EV with their exploitability; and preflop decisions from your saved preflop solves, compared with GTOpen's preflop model (an approximate model). Nothing is graded against invented answers."
       />
       <TrainerTabs />
     </>

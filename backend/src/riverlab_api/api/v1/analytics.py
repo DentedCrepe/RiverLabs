@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from riverlab_api.db.models import PlayHand, PlaySession, PostflopAnswer, PushFoldAnswer
+from riverlab_api.db.models import PlayHand, PlaySession, PostflopAnswer, PreflopAnswer, PushFoldAnswer
 from riverlab_api.db.session import get_db
 from riverlab_api.services import engine, leaks
 
@@ -158,6 +158,37 @@ def postflop(db: DbSession) -> dict[str, Any]:
         "by_street": by_street,
         "by_position": by_position,
         "costliest": [{"hand_class": r[0], "street": r[1], **_summary(r[2:])} for r in costly],
+    }
+
+
+@router.get("/preflop")
+def preflop(db: DbSession) -> dict[str, Any]:
+    """Your preflop drill answers, graded against GTOpen's preflop model (an approximate model):
+    how often your action matched the model's most frequent one, by spot and position, and the
+    hands that most often differed."""
+    a = PreflopAnswer
+
+    def counts(*where: Any) -> dict[str, int]:
+        rows = db.execute(select(a.verdict, func.count(a.id)).where(*where).group_by(a.verdict)).all()
+        c = {"matches": 0, "mixed": 0, "differs": 0}
+        c.update({v: int(n) for v, n in rows})
+        return {"answers": sum(c.values()), **c}
+
+    positions = [p for (p,) in db.execute(select(a.position).distinct().order_by(a.position)).all()]
+    differs = db.execute(
+        select(a.hand_class, a.position, a.spot, func.count(a.id))
+        .where(a.verdict == "differs")
+        .group_by(a.hand_class, a.position, a.spot)
+        .order_by(func.count(a.id).desc(), a.hand_class)
+        .limit(10)
+    ).all()
+    return {
+        "total": counts(),
+        "by_spot": [{"spot": s, **counts(a.spot == s)} for s in ("open", "facing_raise", "any")],
+        "by_position": [{"position": p, **counts(a.position == p)} for p in positions],
+        "most_differing": [
+            {"hand_class": r[0], "position": r[1], "spot": r[2], "count": int(r[3])} for r in differs
+        ],
     }
 
 

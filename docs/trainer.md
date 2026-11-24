@@ -77,3 +77,40 @@ solver's mix for your hand, and the solve's exploitability. A solve is an approx
 for its own bet sizes and starting ranges; differences between actions smaller than its
 exploitability are within its error, which is why near-equal options all count as correct or
 close. Every answer is stored for Analytics (`docs/analytics.md`).
+
+## Preflop drills
+The **Preflop** tab deals decisions from your saved preflop solves (Preflop page, `kind =
+"preflop"` jobs). Those solves are **GTOpen's preflop model, an approximate model**: pots that
+reach the flop are valued by a model, not played out, and RiverLab has validated only heads-up
+push/fold without ante or rake. Every drill and grade carries that label (the same banner as the
+Preflop page), the model's notes and its own best-response gap.
+
+**Dealing** (`play_engine::preflop_drill::deal`, seeded):
+- *Open or fold*: a position other than the big blind is picked at random and everyone before it
+  folds;
+- *Facing a raise*: a first-in raiser is picked at random, its raise size is drawn from how often
+  the model uses each size, and everyone between it and a randomly picked later player folds;
+- *Any decision*: the tree is walked from the start, each action drawn from the model's own
+  frequencies, stopping at each decision with probability 0.35.
+
+Decisions the model never reaches, or has no strategy for, are skipped. Your hand is drawn from
+the model's range at the decision, every combo in it equally likely, so hands you would never
+hold there are not dealt.
+
+**Grading** (`play_engine::preflop_drill::grade`). The preflop model gives each hand class's
+strategy but no value for each action, so preflop drills are **not graded by EV**. Instead:
+
+| Verdict | Rule |
+|---|---|
+| Matches the model | your action is the one the model takes most often with your hand class |
+| Mixed | not the most frequent, but the model takes it at least 15% of the time (`MIXED_MIN`) |
+| Differs | the model takes it less than 15% of the time |
+
+The 15% line is RiverLab's choice, to separate actions the model mixes in from ones it rarely
+uses; it is not a measure of how costly a play is. After answering you see the model's frequency
+for every action with your hand and its whole range at the decision.
+
+Answers are stored in `preflop_answers` (not in guest mode) and count towards the daily study
+goal. Analytics shows how often you matched the model, by spot and position, and the hands that
+most often differed.
+

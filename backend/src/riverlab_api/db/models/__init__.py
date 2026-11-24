@@ -14,7 +14,7 @@ from riverlab_api.db.models.config import GameConfig, Position, RakeConfig, Stac
 from riverlab_api.db.models.goals import DailyGoals
 from riverlab_api.db.models.history import HandHistory, PerformanceStat
 from riverlab_api.db.models.play import HandReview, PlayHand, PlaySession
-from riverlab_api.db.models.push_fold import PostflopAnswer, PushFoldAnswer
+from riverlab_api.db.models.push_fold import PostflopAnswer, PreflopAnswer, PushFoldAnswer
 from riverlab_api.db.models.ranges import Range, RangeCombo
 from riverlab_api.db.models.solver import (
     JobStatus,
@@ -46,6 +46,7 @@ __all__ = [
     "PlaySession",
     "Position",
     "PostflopAnswer",
+    "PreflopAnswer",
     "PushFoldAnswer",
     "RakeConfig",
     "Range",

@@ -264,12 +264,102 @@ function PostflopSection() {
   );
 }
 
+type PreflopCounts = { answers: number; matches: number; mixed: number; differs: number };
+type PreflopAnalytics = {
+  total: PreflopCounts;
+  by_spot: (PreflopCounts & { spot: "open" | "facing_raise" | "any" })[];
+  by_position: (PreflopCounts & { position: string })[];
+  most_differing: { hand_class: string; position: string; spot: string; count: number }[];
+};
+
+const SPOT_LABEL: Record<string, string> = {
+  open: "Open or fold",
+  facing_raise: "Facing a raise",
+  any: "Any decision",
+};
+
+function PreflopSection() {
+  const { data, error, loading } = useApi<PreflopAnalytics>("/api/v1/analytics/preflop");
+  const row = (label: string, c: PreflopCounts) => (
+    <tr key={label}>
+      <td className="pr-3 text-fg">{label}</td>
+      <td className="pr-3 font-mono tabular">{c.answers}</td>
+      <td className="pr-3 font-mono tabular">{pctOf(c.matches, c.answers)}</td>
+      <td className="pr-3 font-mono tabular">{c.mixed}</td>
+      <td className="font-mono tabular">{c.differs}</td>
+    </tr>
+  );
+  return (
+    <Card>
+      <CardHeader
+        title="Preflop drills"
+        subtitle="Your answers compared with GTOpen's preflop model, an approximate model (not graded by EV)"
+      />
+      <CardBody className="flex flex-col gap-4">
+        {error ? (
+          <ErrorState message={error.message} />
+        ) : loading && !data ? (
+          <LoadingState label="Loading your answers…" />
+        ) : !data || data.total.answers === 0 ? (
+          <EmptyState title="No answers yet" description="Preflop drills on the Trainer page are counted here." />
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+              <Metric label="Answers" value={String(data.total.answers)} />
+              <Metric
+                label="Matched the model"
+                value={pctOf(data.total.matches, data.total.answers)}
+                sub="its most frequent play with the hand"
+              />
+              <Metric label="Mixed" value={String(data.total.mixed)} sub="a play the model also makes" />
+              <Metric label="Differs" value={String(data.total.differs)} sub="a play the model rarely makes" />
+            </div>
+            <div className="overflow-x-auto">
+              <table className="text-xs text-muted" aria-label="Preflop results by spot and position">
+                <thead>
+                  <tr className="text-left">
+                    <th className="pr-3 font-normal" />
+                    <th className="pr-3 font-normal">Answers</th>
+                    <th className="pr-3 font-normal">Matched</th>
+                    <th className="pr-3 font-normal">Mixed</th>
+                    <th className="font-normal">Differs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.by_spot.filter((s) => s.answers > 0).map((s) => row(SPOT_LABEL[s.spot], s))}
+                  {data.by_position.map((p) => row(p.position, p))}
+                </tbody>
+              </table>
+            </div>
+            {data.most_differing.length > 0 && (
+              <ul
+                className="flex flex-col gap-0.5 font-mono text-xs text-muted tabular"
+                aria-label="Preflop hands that most often differed"
+              >
+                {data.most_differing.map((c) => (
+                  <li key={`${c.hand_class}-${c.position}-${c.spot}`} className="flex gap-3">
+                    <span className="w-10 text-fg">{c.hand_class}</span>
+                    <span className="w-10">{c.position}</span>
+                    <span className="w-28">{SPOT_LABEL[c.spot]}</span>
+                    <span>{c.count} differed</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
 export function Analytics() {
   return (
     <div className="grid gap-6">
       <PlaySection />
       <LeaksSection />
       <TrainerSection />
+      <PreflopSection />
       <PostflopSection />
     </div>
   );

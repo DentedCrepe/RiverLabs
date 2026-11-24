@@ -110,3 +110,38 @@ def postflop_answer(body: PostflopAnswerIn, db: DbSession, guest: Guest) -> dict
     """Grades a choice by its EV for your hand from the solve. Stored for Analytics, except in
     guest mode."""
     return trainer.postflop_answer(db, body.job_id, body.drill, body.choice, store=not guest)
+
+
+preflop = APIRouter(prefix="/trainer/preflop", tags=["trainer"])
+
+
+class PreflopDrillIn(StrictModel):
+    job_id: uuid.UUID | None = None
+    spot: Literal["open", "facing_raise", "any"] = "any"
+    seed: int | None = None
+
+
+class PreflopAnswerIn(StrictModel):
+    job_id: uuid.UUID
+    drill: dict[str, Any]
+    choice: int
+
+
+@preflop.get("/sources")
+def preflop_sources(db: DbSession) -> list[dict[str, Any]]:
+    """Saved preflop solves (GTOpen's approximate model) that drills can be dealt from."""
+    return trainer.preflop_sources(db)
+
+
+@preflop.post("/drill")
+def preflop_drill(body: PreflopDrillIn, db: DbSession) -> dict[str, Any]:
+    """A preflop decision and a hand, dealt from a saved preflop solve."""
+    seed = body.seed if body.seed is not None else secrets.randbits(63)
+    return trainer.preflop_drill(db, body.job_id, body.spot, seed)
+
+
+@preflop.post("/answer")
+def preflop_answer(body: PreflopAnswerIn, db: DbSession, guest: Guest) -> dict[str, Any]:
+    """Grades a choice by how often the model takes it with your hand (not by EV: the model
+    gives no action values). Stored for Analytics, except in guest mode."""
+    return trainer.preflop_answer(db, body.job_id, body.drill, body.choice, store=not guest)

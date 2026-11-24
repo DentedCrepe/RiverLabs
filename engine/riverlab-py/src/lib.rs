@@ -444,6 +444,21 @@ impl PreflopGame {
         let view = py.detach(|| self.inner.node(&path));
         to_json(&view.map_err(err)?)
     }
+
+    /// Deals a preflop drill (`spot`: "open", "facing_raise" or "any") from this solve, as JSON.
+    fn drill(&self, py: Python<'_>, spot: &str, seed: u64) -> PyResult<String> {
+        let spot: play_engine::preflop_drill::PreflopSpot =
+            serde_json::from_value(serde_json::Value::String(spot.into())).map_err(err)?;
+        let d = py.detach(|| play_engine::preflop_drill::deal(&self.inner, spot, seed));
+        to_json(&d.map_err(play_err)?)
+    }
+
+    /// Grades an action index for a drill dealt by `drill`, against the model's strategy.
+    fn grade(&self, py: Python<'_>, drill_json: &str, choice: usize) -> PyResult<String> {
+        let drill: play_engine::preflop_drill::PreflopDrill = serde_json::from_str(drill_json).map_err(err)?;
+        let g = py.detach(|| play_engine::preflop_drill::grade(&self.inner, &drill, choice));
+        to_json(&g.map_err(play_err)?)
+    }
 }
 
 fn preflop_error(e: solver_gtopen::AdapterError) -> PyErr {

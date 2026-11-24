@@ -171,6 +171,13 @@ describe("RiverLab end to end", () => {
     assert.ok(job.id);
   });
 
+  it("offers preflop drills, pointing to the Preflop page until a preflop solve exists", async () => {
+    await page.goto(`${URL}/trainer`);
+    await page.getByRole("tab", { name: "Preflop" }).click();
+    await page.getByText("No saved preflop solves yet").waitFor();
+    assert.ok(await page.getByRole("link", { name: "Go to the Preflop page" }).isVisible());
+  });
+
   it("deals a postflop drill from that solve and grades it by EV", async () => {
     await page.goto(`${URL}/trainer`);
     await page.getByRole("tab", { name: "Postflop" }).click();

@@ -275,7 +275,7 @@ export function PostflopTrainer() {
           {d && dealt && (
             <div className="flex flex-col gap-3" aria-label="Current postflop drill">
               {dealt.hand && <HandSoFar hand={dealt.hand} />}
-              <div className="max-w-xl self-center sm:w-full">
+              <div className="w-full max-w-xl self-center">
                 <TableFelt t={drillTable(d)} showAll={false} />
               </div>
               <p className="text-xs text-muted">

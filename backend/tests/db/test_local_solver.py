@@ -392,3 +392,50 @@ def test_postflop_drills_are_dealt_from_saved_solves(live: TestClient, db_engine
         "/api/v1/trainer/postflop/answer", json={"job_id": job["id"], "drill": drill, "choice": 7}
     )
     assert bad.status_code == 422
+
+
+def test_preflop_drills_are_dealt_from_saved_preflop_solves(live: TestClient, db_engine: Engine) -> None:
+    with db_engine.begin() as conn:
+        conn.execute(text("DELETE FROM preflop_answers"))
+    spec = preflop_spec(heads_up=False, push_fold=False, iterations=30, rake_bps=500)
+    job = wait(
+        live,
+        live.post("/api/v1/solver/preflop/jobs", json={"spec": spec}).json()["id"],
+        {"succeeded", "failed"},
+        timeout=300,
+    )
+    assert job["status"] == "succeeded", job
+    sources = live.get("/api/v1/trainer/preflop/sources").json()
+    mine = [s for s in sources if s["job_id"] == job["id"]]
+    assert len(mine) == 1
+    assert mine[0]["validated_scope"] == "approximate_model"
+
+    for spot in ("open", "facing_raise", "any"):
+        r = live.post("/api/v1/trainer/preflop/drill", json={"job_id": job["id"], "spot": spot, "seed": 11})
+        assert r.status_code == 200, r.json()
+        dealt = r.json()
+        assert dealt["validated_scope"] == "approximate_model", "every drill states what it is graded against"
+        d = dealt["drill"]
+        assert d["spot"] == spot
+        assert "by_class" not in d, "the drill hides the answer"
+        assert "frequency" not in d["actions"][0]
+        if spot == "open":
+            assert d["position"] != "BB"
+            assert all(h["chosen"] == 0 for h in d["history"]), "only folds before an open"
+
+    d = live.post(
+        "/api/v1/trainer/preflop/drill", json={"job_id": job["id"], "spot": "open", "seed": 3}
+    ).json()
+    body = {"job_id": job["id"], "drill": d["drill"], "choice": 0}
+    g = live.post("/api/v1/trainer/preflop/answer", json=body).json()
+    assert g["verdict"] in ("matches", "mixed", "differs")
+    assert abs(sum(a["frequency"] for a in g["actions"]) - 1) < 1e-3
+    assert g["your_frequency"] == g["actions"][0]["frequency"]
+    assert g["model_notes"][0].startswith("Approximate model")
+    assert live.post("/api/v1/trainer/preflop/answer", json={**body, "choice": 99}).status_code == 422
+    # Guests are graded but not recorded.
+    guest = live.post("/api/v1/trainer/preflop/answer", json=body, headers={"X-RiverLab-Guest": "1"})
+    assert guest.status_code == 200
+    stats = live.get("/api/v1/analytics/preflop").json()
+    assert stats["total"]["answers"] == 1
+    assert stats["by_spot"][0] == {"spot": "open", **stats["total"]}
