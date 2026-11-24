@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from riverlab_api.schemas.common import StrictModel
 
@@ -30,3 +30,18 @@ class BookmarkIn(StrictModel):
 
 class TheoryIn(StrictModel):
     params: dict[str, Any]
+
+
+class ReviewIn(StrictModel):
+    verdict: Literal["reviewed", "changes_requested"]
+    reviewer: str = Field(min_length=1, max_length=100)
+    notes: str = Field(default="", max_length=5000)
+
+    @model_validator(mode="after")
+    def _notes_for_changes(self) -> "ReviewIn":
+        self.reviewer = self.reviewer.strip()
+        if not self.reviewer:
+            raise ValueError("reviewer must name the person who reviewed the lesson")
+        if self.verdict == "changes_requested" and not self.notes.strip():
+            raise ValueError("say what should change in notes")
+        return self

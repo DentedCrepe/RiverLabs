@@ -151,3 +151,26 @@ class AcademyActivity(Base):
 
     day: Mapped[date] = mapped_column(Date, primary_key=True)
     events: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class AcademyReview(UUIDPk, CreatedAt, Base):
+    """A person's review of one lesson version, made in the app's review page.
+
+    A review counts only for the exact content it was made on (`content_hash`): any change to the
+    lesson (which always bumps its version) leaves it as a review of an older version.
+    """
+
+    __tablename__ = "academy_reviews"
+
+    lesson_slug: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    # "reviewed": a person read it and is satisfied; "changes_requested": the notes say what to fix.
+    verdict: Mapped[str] = mapped_column(String(24), nullable=False)
+    reviewer: Mapped[str] = mapped_column(String(100), nullable=False)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    __table_args__ = (
+        CheckConstraint("verdict IN ('reviewed', 'changes_requested')", name="review_verdict"),
+        CheckConstraint("length(reviewer) > 0", name="reviewer_named"),
+    )

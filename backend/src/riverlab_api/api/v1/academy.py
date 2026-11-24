@@ -11,14 +11,15 @@ from riverlab_api.api.guest import Guest, GuestForbiddenError
 from riverlab_api.config import get_settings
 from riverlab_api.db.models import AcademyLesson, AcademyProgress
 from riverlab_api.db.session import get_db
-from riverlab_api.schemas.academy import AttemptIn, BookmarkIn, ProgressUpdate
-from riverlab_api.services import academy
+from riverlab_api.schemas.academy import AttemptIn, BookmarkIn, ProgressUpdate, ReviewIn
+from riverlab_api.services import academy, academy_review
 
 router = APIRouter(prefix="/academy", tags=["academy"])
 DbSession = Annotated[Session, Depends(get_db)]
 
 
-def _summary(row: AcademyLesson, progress: AcademyProgress | None) -> dict[str, Any]:
+def _summary(row: AcademyLesson, progress: AcademyProgress | None, db: Session) -> dict[str, Any]:
+    history = academy_review.reviews_for(db, [row])[row.slug]
     return {
         "slug": row.slug,
         "title": row.title,
@@ -26,7 +27,7 @@ def _summary(row: AcademyLesson, progress: AcademyProgress | None) -> dict[str, 
         "level": row.level,
         "status": row.status,
         "version": row.version,
-        "review": row.meta.get("review", {}),
+        "review": academy_review.review_of(row, history),
         "estimated_minutes": row.meta.get("estimated_minutes"),
         "tags": row.meta.get("tags", []),
         "progress": None
@@ -47,7 +48,7 @@ def curriculum(db: DbSession) -> list[dict[str, Any]]:
 
 @router.get("/lessons")
 def list_lessons(db: DbSession, include_drafts: bool = False) -> list[dict[str, Any]]:
-    return [_summary(r, db.get(AcademyProgress, r.slug)) for r in academy.lessons(db, include_drafts)]
+    return [_summary(r, db.get(AcademyProgress, r.slug), db) for r in academy.lessons(db, include_drafts)]
 
 
 @router.get("/lessons/{slug}")
@@ -55,7 +56,7 @@ def get_lesson(slug: str, db: DbSession, include_drafts: bool = False) -> dict[s
     row = academy.lesson(db, slug, include_drafts)
     p = db.get(AcademyProgress, slug)
     return {
-        **_summary(row, p),
+        **_summary(row, p, db),
         "explanation_level": p.explanation_level if p else "simple",
         "meta": row.meta,
         "sections": row.sections,
@@ -126,3 +127,18 @@ def versions(slug: str, db: DbSession, include_drafts: bool = True) -> list[dict
         {"version": v.version, "status": v.status, "content_hash": v.content_hash, "created_at": v.created_at}
         for v in db.scalars(q.order_by(AcademyLessonVersion.version))
     ]
+
+
+@router.get("/reviews")
+def reviews(db: DbSession) -> dict[str, Any]:
+    """Lessons to review, with their state and every review made in the app."""
+    return academy_review.queue(db)
+
+
+@router.post("/lessons/{slug}/reviews", status_code=201)
+def add_review(slug: str, body: ReviewIn, db: DbSession, guest: Guest) -> dict[str, Any]:
+    """A person's review of the lesson's current version: "reviewed", or "changes_requested"
+    with notes on what to fix."""
+    if guest:
+        raise GuestForbiddenError("Guests cannot review the owner's lessons")
+    return academy_review.add(db, slug, body.verdict, body.reviewer, body.notes)

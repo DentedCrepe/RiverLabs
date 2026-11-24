@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, BookOpen, Flame, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowRight, BookOpen, ClipboardCheck, Flame, RotateCcw, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { type CurriculumLevel, type Dashboard, conceptName } from "@/lib/academy";
@@ -109,6 +109,9 @@ export function AcademyDashboard() {
               <Link href="/academy/revision" className="flex items-center gap-2 text-sm text-accent hover:underline">
                 <RotateCcw className="size-4" aria-hidden /> Revision: {d.revision.due} question
                 {d.revision.due === 1 ? "" : "s"} due
+              </Link>
+              <Link href="/academy/review" className="flex items-center gap-2 text-sm text-accent hover:underline">
+                <ClipboardCheck className="size-4" aria-hidden /> Review lessons
               </Link>
               {d.revision.misconceptions.length > 0 && (
                 <div>

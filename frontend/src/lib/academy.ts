@@ -106,3 +106,38 @@ export function blocksForLevel(section: Section, level: ExplanationLevel): Block
 
 /** Readable concept name from a topic slug ("pot-odds" -> "pot odds"). */
 export const conceptName = (slug: string) => slug.replaceAll("-", " ");
+
+export type ReviewState = "to_review" | "changes_requested" | "outdated" | "reviewed";
+export type ReviewRecord = {
+  id: string;
+  verdict: "reviewed" | "changes_requested";
+  reviewer: string;
+  notes: string;
+  version: number;
+  /** Made on the lesson's current content (false once the lesson has changed). */
+  current: boolean;
+  created_at: string;
+};
+export type ReviewQueueItem = {
+  slug: string;
+  title: string;
+  level: number;
+  version: number;
+  status: LessonSummary["status"];
+  state: ReviewState;
+  file_notes: string;
+  questions: number;
+  history: ReviewRecord[];
+};
+export type ReviewQueue = { totals: Record<ReviewState, number>; lessons: ReviewQueueItem[] };
+
+/** Notes asking for changes, as plain text to paste into a request for fixes. */
+export function changeRequests(queue: ReviewQueue): string {
+  const items = queue.lessons.filter((l) => l.state === "changes_requested");
+  return items
+    .map((l) => {
+      const r = l.history.find((h) => h.current)!;
+      return `${l.title} (${l.slug}, v${l.version}), from ${r.reviewer}:\n${r.notes}`;
+    })
+    .join("\n\n");
+}

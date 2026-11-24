@@ -228,6 +228,25 @@ All current lessons were drafted with AI assistance. They are published with
 Every numeric answer is computed by the engine and every showdown answer is checked by the
 evaluator at each sync; the prose still needs a person's review.
 
+## Review by a person
+
+Every lesson starts as "Not yet reviewed by a person" (`[review] status = "pending"`). A person
+reviews lessons on the **Lesson review** page (`/academy/review`, linked from the Academy
+dashboard):
+- the page lists each published or in-review lesson as *to review*, *changed since review*,
+  *changes requested* or *reviewed*, with every earlier review;
+- the reviewer enters their name, reads the lesson, and either marks it **reviewed** or
+  **requests changes** with notes (notes are required for a change request);
+- **Copy the change requests** gathers every open request as text, to paste into a request for
+  fixes.
+
+Reviews are stored in `academy_reviews` with the lesson's version and content hash. A review
+counts only for that exact content: editing a lesson (which always bumps its version) moves it
+back to *changed since review* and its label back to "Not yet reviewed". A lesson whose front
+matter says `status = "reviewed"` (with `reviewer` and `reviewed_on`) also counts as reviewed.
+Guests (guest mode) cannot review. API: `GET /academy/reviews`,
+`POST /academy/lessons/{slug}/reviews {verdict: "reviewed" | "changes_requested", reviewer, notes}`.
+
 ## Assessment and revision
 - **Question types:** numeric (with tolerance), multiple choice, and decision scenarios
   (multiple choice about a hand). Planned: range identification (picking hands on the 13×13

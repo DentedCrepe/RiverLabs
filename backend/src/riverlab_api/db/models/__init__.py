@@ -8,6 +8,7 @@ from riverlab_api.db.models.academy import (
     AcademyLessonVersion,
     AcademyProgress,
     AcademyQuestion,
+    AcademyReview,
 )
 from riverlab_api.db.models.config import GameConfig, Position, RakeConfig, StackConfig
 from riverlab_api.db.models.goals import DailyGoals
@@ -34,6 +35,7 @@ __all__ = [
     "AcademyLessonVersion",
     "AcademyProgress",
     "AcademyQuestion",
+    "AcademyReview",
     "DailyGoals",
     "GameConfig",
     "HandHistory",
