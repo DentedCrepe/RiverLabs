@@ -107,9 +107,7 @@ def test_progress_bookmarks_and_dashboard(synced: Session, db_client: TestClient
     curriculum = db_client.get("/api/v1/academy/curriculum").json()
     topic = next(t for t in curriculum[0]["topics"] if t["slug"] == "pot-odds")
     assert topic["status"] == "completed"
-    assert (
-        next(t for t in curriculum[1]["topics"] if t["slug"] == "range-construction")["status"] == "planned"
-    )
+    assert next(t for t in curriculum[5]["topics"] if t["slug"] == "subgame-solving")["status"] == "planned"
     lesson = db_client.get("/api/v1/academy/lessons/pot-odds").json()
     assert lesson["explanation_level"] == "math"
     assert lesson["progress"]["last_section"] == "assumptions"
