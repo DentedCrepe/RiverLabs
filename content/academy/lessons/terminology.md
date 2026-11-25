@@ -3,7 +3,7 @@ slug = "terminology"
 title = "Poker terminology"
 level = 1
 order = 1
-version = 1
+version = 2
 status = "published"
 summary = "The words the rest of the Academy uses: the streets, the actions, the blinds and the button, ranges, combinations, equity and position."
 estimated_minutes = 12
@@ -19,7 +19,7 @@ tags = ["rules", "vocabulary"]
 status = "pending"
 reviewer = ""
 reviewed_on = ""
-notes = "Drafted with AI assistance. Definitions follow the betting rules RiverLab's engine implements (docs/poker-rules.md); awaiting review by a person."
+notes = "Drafted with AI assistance. Definitions follow the betting rules RiverLab's engine implements (docs/poker-rules.md); awaiting review by a person. AI review pass (2026-11): checked prose, labels, numbers and questions; fixes applied. Still needs review by a person."
 
 [[tools]]
 href = "/play"
@@ -81,7 +81,7 @@ options = [
   "How much you have put into the pot so far",
 ]
 answer = 0
-explanation = "Equity counts wins and half of ties over every way the remaining cards can come. It ignores future betting; what you actually win also depends on how the hand is played."
+explanation = "Equity counts wins, and an equal share of ties (half, heads-up), over every way the remaining cards can come. It ignores future betting; what you actually win also depends on how the hand is played."
 concepts = ["terminology", "equity"]
 
 [[questions]]
@@ -99,8 +99,9 @@ concepts = ["terminology", "positions"]
 ::: fact
 Each player gets two hole cards. There are four betting rounds: **preflop**, then the
 **flop** (three board cards), the **turn** (a fourth) and the **river** (a fifth). If more than
-one player is left after the river, there is a **showdown**: the best five-card hand made from
-two hole cards and the board wins.
+one player is left after the river, there is a **showdown**: each player makes their best
+five-card hand from the board and any of their hole cards (both, one or none), and the best hand
+wins.
 :::
 
 ```riverlab:question
@@ -113,10 +114,16 @@ two hole cards and the board wins.
 - **Check:** pass without putting chips in (only when nobody has bet on this street).
 - **Bet:** the first chips put in on a street.
 - **Call:** match the current bet.
-- **Raise:** put in more than the current bet. Preflop the first raise is the **open**; a raise
-  over it is a **3-bet**, and a raise over that a **4-bet**.
+- **Raise:** put in more than the current bet. Preflop, the first raise when nobody has limped
+  in (just called the big blind) is the **open**; a raise over it is a **3-bet**, and a raise
+  over that a **4-bet**.
 - **Fold:** give up the hand and anything already put in.
 - **All-in:** put in every remaining chip.
+
+The same actions are used on all four streets, with one difference preflop: the big blind counts
+as the first bet, so before the flop players can fold, call or raise, but not bet. The big blind
+itself may check if nobody has raised, because its blind already matches the bet (this is called
+the big blind's **option**).
 :::
 
 ::: simple
@@ -139,7 +146,9 @@ The **small blind** and **big blind** are forced bets posted before the cards ar
 there is always something to win. Amounts in RiverLab are measured in **big blinds (bb)**. The
 **button** marks the dealer seat and moves one seat to the left each hand. The **pot** is every
 chip put in so far; **rake** is the share the house takes from it. **Effective stack** is the
-smaller of the two stacks in a heads-up pot: nobody can win more than that from the other.
+smaller of the two stacks in a heads-up pot: nobody can win more than that from the other. With
+more players, there is an effective stack between you and each opponent: the smaller of your
+stack and theirs.
 :::
 
 ## Ranges, combinations and equity {#ranges}

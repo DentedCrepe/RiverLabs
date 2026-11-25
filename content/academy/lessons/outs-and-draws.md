@@ -3,7 +3,7 @@ slug = "outs-and-draws"
 title = "Outs and drawing odds"
 level = 1
 order = 7
-version = 2
+version = 3
 status = "published"
 summary = "Count the cards that improve you, turn them into exact probabilities, and know when the rule of 2 and 4 is close enough."
 estimated_minutes = 15
@@ -19,7 +19,7 @@ tags = ["math", "outs", "draws", "probability"]
 status = "pending"
 reviewer = ""
 reviewed_on = ""
-notes = "Drafted with AI assistance. Every probability is computed by poker-theory and re-checked on sync; awaiting review by a person."
+notes = "Drafted with AI assistance. Every probability is computed by poker-theory and re-checked on sync; awaiting review by a person. AI review pass (2026-11): checked prose, labels, numbers and questions; fixes applied. Still needs review by a person."
 
 [[tools]]
 href = "/postflop"
@@ -73,11 +73,11 @@ folded = ["UTG", "HJ", "CO", "SB"]
 [[questions]]
 id = "gutshot"
 type = "numeric"
-prompt = "Turn. You hold 9♣ 8♣ on Q♦ J♥ 5♠ 2♣: only a ten makes your straight, so you have 4 outs among 46 unseen cards. What is the exact chance (in %) that the river is a ten?"
+prompt = "Turn. You hold 9♣ 8♣ on Q♦ J♥ 5♠ 2♣: only a ten makes your straight, so, assuming every ten wins, you have 4 outs among 46 unseen cards. What is the exact chance (in %) that the river is a ten?"
 answer = 8.70
 tolerance = 0.1
 unit = "%"
-explanation = "4 / 46 ≈ 8.70%."
+explanation = "4 / 46 ≈ 8.70%. In a real hand not every ten is a clean out: an opponent holding A K or K 9 would make a higher straight with it."
 concepts = ["outs-and-draws"]
 compute = { kind = "outs", params = { outs = 4, unseen = 46 }, field = "next_card", scale = 100.0 }
 
@@ -101,6 +101,17 @@ options = [
 answer = 1
 explanation = "×4 approximates the chance over two cards. If you may face another bet on the turn, use the next-card figure (×2)."
 concepts = ["outs-and-draws"]
+
+[[questions]]
+id = "rule-of-four-seven"
+type = "numeric"
+prompt = "Flop. You have 7 outs among 47 unseen cards and the money is all in, so you will see the turn and the river. What is the exact chance (in %) that you hit by the river? Compare it with the rule-of-4 estimate, 7 × 4 = 28%."
+answer = 27.84
+tolerance = 0.1
+unit = "%"
+explanation = "You miss both cards with (40/47) × (39/46) ≈ 72.16%, so you hit with about 27.84%: just below the rule's 28%. From 7 outs on, the rule of 4 is a little too high, and the gap grows with more outs."
+concepts = ["outs-and-draws"]
+compute = { kind = "outs", params = { outs = 7, unseen = 47 }, field = "two_cards", scale = 100.0 }
 +++
 
 ## What an out is {#outs}
@@ -113,8 +124,8 @@ An **out** is a card that would give you the best hand. With four hearts after t
 ::: intermediate
 Count the unseen cards that turn your hand into the winner. Common draws:
 a flush draw has 9 outs, an open-ended straight draw 8, a gutshot 4. Cards that help you
-**and** your opponent more (for example, a heart that pairs the board when they may have a
-full house) are not clean outs.
+**and** your opponent more (for example, a heart that pairs the board, which can give an
+opponent holding a set a full house) are not clean outs.
 :::
 
 ::: advanced
@@ -163,9 +174,14 @@ cards (flop to river). It is a quick estimate, not an exact figure.
 :::
 
 ::: intermediate
-The rule is close for small numbers of outs and overestimates as outs grow, because the two
-chances overlap (you can hit on both cards). Try 9 and 15 outs in the calculator above: the
-exact two-card figure for 15 outs is lower than 4 × 15 = 60%.
+The two halves of the rule err in different ways:
+- **×2** is always slightly low. On the flop each out is 1 card in 47, about 2.13% (1 ÷ 47),
+  not 2%; on the turn it is 1 in 46.
+- **×4** is slightly low for up to 6 outs and too high from 7 outs on, and the error grows with
+  the number of outs, because the two chances overlap (you can hit on both cards).
+
+Try 6, 7, 9 and 15 outs in the calculator above: the exact two-card figure for 15 outs is well
+below 4 × 15 = 60%.
 :::
 
 ::: advanced
@@ -173,3 +189,7 @@ Use the two-card figure only when you will certainly see both cards: when the mo
 on the flop. If there may be another bet on the turn, the price you pay now buys only one card,
 so compare your pot odds with the one-card figure.
 :::
+
+```riverlab:question
+{"id": "rule-of-four-seven"}
+```

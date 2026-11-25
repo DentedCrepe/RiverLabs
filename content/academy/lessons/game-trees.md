@@ -3,7 +3,7 @@ slug = "game-trees"
 title = "Game trees, information sets and abstraction"
 level = 5
 order = 1
-version = 1
+version = 2
 status = "published"
 summary = "How a solver represents a poker hand: decision, chance and terminal nodes, information sets, and the bet-size abstraction that keeps the tree small enough to solve."
 estimated_minutes = 15
@@ -19,7 +19,7 @@ tags = ["solvers", "game-trees", "abstraction"]
 status = "pending"
 reviewer = ""
 reviewed_on = ""
-notes = "Drafted with AI assistance. The tree description matches RiverLab's postflop solver (GTOpen) and its node browser; awaiting review by a person."
+notes = "Drafted with AI assistance. The tree description matches RiverLab's postflop solver (GTOpen) and its node browser; awaiting review by a person. AI review pass (2026-11): checked prose, labels, numbers and questions; fixes applied. Still needs review by a person."
 
 [[tools]]
 href = "/solver"
@@ -73,7 +73,7 @@ options = [
   "The 50% bet should be treated exactly like the 33% bet",
 ]
 answer = 1
-explanation = "A solution is an equilibrium of the abstracted game. Sizes outside the tree were never considered, so the solve cannot judge them; mapping them to nearby sizes is an approximation."
+explanation = "A solution is an approximate equilibrium of the abstracted game. Sizes outside the tree were never considered, so the solve cannot judge them; mapping them to nearby sizes is an approximation."
 concepts = ["abstraction", "game-trees"]
 +++
 
@@ -120,21 +120,22 @@ your opponent reasons about every hand you could hold.
 ## Abstraction {#abstraction}
 
 ::: fact
-No-limit hold'em allows any bet size, so its real tree is far too large to solve. Solvers allow a
+No-limit hold'em allows any bet from the minimum up to all-in, in single-chip steps, so its real tree is far too large to solve. Solvers allow a
 small set of sizes (for example 33% and 75% of the pot) and sometimes an all-in. This is a
 **bet-size abstraction**.
 :::
 
 ::: solver
-A solver result is an approximate equilibrium of the abstracted game: the best play given that
-both players may only use those sizes. It says nothing directly about sizes outside the tree.
+A solver result is an approximate equilibrium of the abstracted game: a pair of strategies close
+to an equilibrium of the game in which both players may only use those sizes, starting from the
+ranges and stacks you gave it. It says nothing directly about sizes outside the tree.
 :::
 
-::: intermediate
-Tree size grows quickly. Every extra size adds branches at every decision, and each branch has its
-own subtree with its own turn and river cards. Adding one size on every street can multiply the
-memory a solve needs several times over; RiverLab's "Solve this spot" chooses smaller trees when a
-full one would not fit.
+::: heuristic
+Tree size grows quickly. Every extra size adds a branch at every decision, and each branch has its
+own subtree, which before the river also contains its own turn and river cards. The number of lines
+multiplies at each decision along a line, so a few extra sizes can make a solve need many times the
+memory. RiverLab's "Solve this spot" chooses smaller trees when a full one would not fit.
 :::
 
 ```riverlab:question

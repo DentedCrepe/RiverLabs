@@ -3,7 +3,7 @@ slug = "preflop-fundamentals"
 title = "Preflop fundamentals"
 level = 1
 order = 4
-version = 1
+version = 2
 status = "published"
 summary = "How a preflop hand unfolds: forced blinds, opens, 3-bets, and the price the big blind gets when defending."
 estimated_minutes = 15
@@ -12,14 +12,14 @@ objectives = [
   "Work out the price of calling an open or a 3-bet.",
   "Explain why the big blind can defend more hands than other seats.",
 ]
-prerequisites = ["terminology", "positions", "pot-odds"]
+prerequisites = ["terminology", "positions"]
 tags = ["preflop", "pot-odds"]
 
 [review]
 status = "pending"
 reviewed_on = ""
 reviewer = ""
-notes = "Drafted with AI assistance. Prices are computed by poker-theory (pot_odds) and the table scenes are checked against them on sync; awaiting review by a person."
+notes = "Drafted with AI assistance. Prices are computed by poker-theory (pot_odds) and the table scenes are checked against them on sync; awaiting review by a person. AI review pass (2026-11): checked prose, labels, numbers and questions; fixes applied. Still needs review by a person."
 
 [[tools]]
 href = "/preflop"
@@ -29,7 +29,7 @@ why = "Run GTOpen's preflop model (an approximate model) for your own table and 
 [[tools]]
 href = "/trainer"
 label = "Trainer"
-why = "Preflop drills from your preflop solves, and push/fold drills against the exact heads-up equilibrium."
+why = "Preflop drills from your preflop solves, and push/fold drills graded against RiverLab's computed heads-up push/fold equilibrium (blinds 0.5/1, equal stacks of 2bb to 25bb, no ante, no rake), shown with its exploitability."
 
 [[reading]]
 title = "Modern Poker Theory"
@@ -39,7 +39,7 @@ year = 2019
 [[questions]]
 id = "bb-price"
 type = "numeric"
-prompt = "Six-max, before the flop. Everyone folds to the button, who raises to 2.5bb. The small blind folds. You are in the big blind with 1bb already in. What share of the final pot (in %) must you win to break even on a call, ignoring the rest of the hand?"
+prompt = "Six-max, before the flop. Everyone folds to the button, who raises to 2.5bb. The small blind folds. You are in the big blind with 1bb already in. What share of the pot after your call (in %) must you win to break even on a call, ignoring the rest of the hand?"
 answer = 27.27
 tolerance = 0.05
 unit = "%"
@@ -59,11 +59,11 @@ actions = { BTN = "raises to 2.5bb", SB = "folds" }
 [[questions]]
 id = "facing-3bet"
 type = "numeric"
-prompt = "Six-max, before the flop. You open to 2.5bb on the button, the small blind folds and the big blind 3-bets to 10bb. What share of the final pot (in %) must you win to break even on a call, ignoring the rest of the hand?"
+prompt = "Six-max, before the flop. You open to 2.5bb on the button, the small blind folds and the big blind 3-bets to 10bb. What share of the pot after your call (in %) must you win to break even on a call, ignoring the rest of the hand?"
 answer = 36.59
 tolerance = 0.05
 unit = "%"
-explanation = "You call 7.5bb more to win 0.5 + 2.5 + 10 = 13bb: 7.5 / (13 + 7.5) ≈ 36.6%. Calling a 3-bet costs more of the pot than defending the big blind does."
+explanation = "You call 7.5bb more to win 0.5 + 2.5 + 10 = 13bb: 7.5 / (13 + 7.5) ≈ 36.6%. Calling this 3-bet needs more equity than defending the big blind against a 2.5bb open (about 27.3%)."
 concepts = ["pot-odds", "preflop"]
 compute = { kind = "pot_odds", params = { pot_mbb = 13000, to_call_mbb = 7500 }, field = "required_equity", scale = 100.0 }
 
@@ -82,7 +82,7 @@ type = "multiple_choice"
 prompt = "Six-max, before the flop. Which player acts first, and which acts last if nobody raises?"
 options = ["Under the gun first, the big blind last", "The small blind first, the button last", "The button first, the big blind last"]
 answer = 0
-explanation = "The blinds have already posted, so action starts to the big blind's left (under the gun) and goes around to the big blind."
+explanation = "The blinds have already posted, so action starts to the big blind's left (under the gun) and goes around to the big blind, who can check if nobody has raised. This is the order for the first betting round only; from the flop on, the first player still in the hand to the left of the button acts first."
 concepts = ["positions", "preflop"]
 
 [[questions]]
@@ -102,10 +102,12 @@ concepts = ["preflop", "positions"]
 ## How a preflop hand unfolds {#order}
 
 ::: fact
-The small blind (0.5bb) and big blind (1bb) post before the cards are dealt. Action starts under
-the gun and moves left. Each player folds, calls the current amount, or raises. The first raise
-is the **open**, a re-raise is a **3-bet**, and the next a **4-bet**. The big blind acts last
-before the flop.
+Before the cards are dealt the small blind and big blind post their blinds (in RiverLab, 0.5bb
+and 1bb). Action starts under the gun and moves left. Each player folds, calls the current
+amount, or raises. The big blind counts as the first bet, so the first raise (the **open**) is
+the second bet, a re-raise is a **3-bet**, and the next a **4-bet**. In this first betting round
+the big blind acts last: if nobody has raised, it can check. From the flop on, the order changes
+(see the positions lesson).
 :::
 
 ```riverlab:question
@@ -114,9 +116,20 @@ before the flop.
 
 ## The price of calling {#price}
 
+::: fact
+Say you must call $C$ and the pot already holds $P$, counting every bet made so far (the blinds
+and the raise you face). If you call, the pot after your call is $P + C$, and you have paid $C$
+of it. Ignoring later betting and rake, the call breaks even when your share of that pot covers
+what you paid: you need $\text{equity} \ge \frac{C}{P + C}$. (Your **equity** is the share of
+the pot you would win on average if all the cards were dealt out, with a split pot counting as
+half; the equity lesson covers it.)
+:::
+
 ::: math
-To break even on a call, ignoring later betting, you need $\text{equity} \ge \frac{C}{P + C}$,
-where $C$ is the amount to call and $P$ is the pot including every bet already made.
+With equity $e$, calling wins on average $e\,(P + C)$ and costs $C$, measured from your current
+stack (folding is 0). So, with no later betting and no rake,
+
+$$ e\,(P + C) - C \ge 0 \quad\Longleftrightarrow\quad e \ge \frac{C}{P + C}. $$
 :::
 
 ```riverlab:question
@@ -128,7 +141,7 @@ where $C$ is the amount to call and $P$ is the pot including every bet already m
 ```
 
 ::: approximation
-Preflop equity is not what a hand wins. Position, the rest of the betting and how well a hand
+With betting still to come, a hand does not simply win its preflop equity. Position, the rest of the betting and how well a hand
 plays after the flop all change it (equity realisation, a planned lesson). The price tells you how much
 equity a call needs before those effects.
 :::

@@ -3,7 +3,7 @@ slug = "combinatorics"
 title = "Combinatorics: counting hands"
 level = 2
 order = 6
-version = 2
+version = 3
 status = "published"
 summary = "Why there are 1,326 starting hands but 169 hand classes, and how the cards you see remove combinations from a range."
 estimated_minutes = 20
@@ -19,7 +19,7 @@ tags = ["math", "combinatorics", "ranges", "blockers"]
 status = "pending"
 reviewer = ""
 reviewed_on = ""
-notes = "Drafted with AI assistance. Combo counts are produced by RiverLab's range engine and re-checked on sync; awaiting review by a person."
+notes = "Drafted with AI assistance. Combo counts are produced by RiverLab's range engine and re-checked on sync; awaiting review by a person. AI review pass (2026-11): checked prose, labels, numbers and questions; fixes applied. Still needs review by a person."
 
 [[tools]]
 href = "/preflop"
@@ -76,24 +76,24 @@ compute = { kind = "range", params = { notation = "KK", dead = "Kh7d2c" }, field
 id = "which-more"
 type = "multiple_choice"
 prompt = "Before any cards are seen, is a player more likely to be dealt a pocket pair (any pair) or AK (suited or offsuit)?"
-options = ["Any pocket pair (78 combinations)", "AK (16 combinations)", "They are equally likely"]
+options = ["Any pocket pair", "AK", "They are equally likely"]
 answer = 0
-explanation = "13 pairs × 6 = 78 combinations against 16 for AK."
+explanation = "Each of the 13 pairs has 6 combinations, so any pair is 13 × 6 = 78 combinations. AK has 4 aces × 4 kings = 16. With 78 combinations against 16, a pocket pair is far more likely."
 concepts = ["combinatorics"]
 +++
 
 ## Combinations and classes {#combos}
 
-::: simple
-A deck has 52 cards, so there are **1,326** different two-card starting hands. Poker players
-group them into **169** types: 13 pairs (like KK), 78 suited hands (like AKs) and 78 offsuit
-hands (like AKo).
-:::
+A deck has 52 cards, so there are **1,326** different two-card starting hands
+(**combinations**, or combos). Poker players group them into **169 hand classes**: 13 pairs
+(like KK), 78 suited hands (like AKs) and 78 offsuit hands (like AKo). There are 78 of each
+non-pair kind because that is the number of ways to pick two different ranks out of 13:
+$13 \times 12 / 2 = 78$.
 
 ::: intermediate
-Each type has a fixed number of **combinations** (combos):
+Each hand class has a fixed number of **combinations** (combos):
 
-| Type | Example | Combos |
+| Class | Example | Combos |
 |---|---|---|
 | Pair | KK | 6 |
 | Suited | AKs | 4 |
@@ -105,7 +105,7 @@ So AK (suited or offsuit) has 16 combos, while any single pair has only 6.
 ::: math
 Choosing 2 cards from 52 gives $\binom{52}{2} = 1326$. A pair uses 2 of the 4 cards of one rank:
 $\binom{4}{2} = 6$. Two different ranks give $4 \times 4 = 16$ combos: 4 suited (same suit) and 12
-offsuit. Summing over all types,
+offsuit. There are $\binom{13}{2} = 78$ pairs of different ranks, so summing over all 169 classes,
 
 $$
 13 \cdot 6 + 78 \cdot 4 + 78 \cdot 12 = 78 + 312 + 936 = 1326 .
@@ -123,15 +123,16 @@ king, there are fewer ways for them to hold a king.
 Count the cards that are left. On K♥ 7♦ 2♣:
 - KK: only 3 kings remain, so $\binom{3}{2} = 3$ combos (instead of 6).
 - AK: 4 aces × 3 kings = 12 combos (instead of 16).
+:::
 
 The same works for your own cards: holding an ace makes every ace-x hand less likely for your
-opponent. These are **blockers**.
-:::
+opponent. Cards that remove combinations from your opponent's range this way are **blockers**.
 
 ::: advanced
 Card removal reshapes ranges, not just single hands. A range's live combo count, weighted by
-how often each hand is played, is what equity calculations and solvers work with. Two ranges
-can look the same as a 13×13 chart and still differ in combos once the board removes cards.
+how often each hand is played, is what equity calculations and solvers work with. Ranges with
+the same number of hand classes can hold very different numbers of live combos once the board
+removes cards: on K♥ 7♦ 2♣, KK keeps only 3 of its 6 combos, while QQ keeps all 6.
 :::
 
 ```riverlab:combos
@@ -140,5 +141,5 @@ can look the same as a 13×13 chart and still differ in combos once the board re
 
 ::: fact
 These counts are exact. RiverLab's range engine counts combinations directly, and the numbers in
-this lesson's questions are checked against it every time the content is published.
+this lesson's questions are checked against it at every content sync.
 :::

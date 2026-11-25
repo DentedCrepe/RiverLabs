@@ -3,7 +3,7 @@ slug = "cfr"
 title = "Counterfactual regret minimisation: CFR, CFR+ and DCFR"
 level = 5
 order = 6
-version = 1
+version = 2
 status = "published"
 summary = "How solvers apply regret matching at every information set, what counterfactual values are, and how CFR+ and Discounted CFR speed it up."
 estimated_minutes = 20
@@ -19,7 +19,7 @@ tags = ["solvers", "cfr"]
 status = "pending"
 reviewer = ""
 reviewed_on = ""
-notes = "Drafted with AI assistance from the cited papers. The variant RiverLab uses is taken from its solver configuration (engine/solver-interface); awaiting review by a person."
+notes = "Drafted with AI assistance from the cited papers. The variant RiverLab uses is taken from its solver configuration (engine/solver-interface); awaiting review by a person. AI review pass (2026-11): checked prose, labels, numbers and questions; fixes applied. Still needs review by a person."
 
 [[tools]]
 href = "/solver"
@@ -80,7 +80,7 @@ type = "multiple_choice"
 prompt = "What makes a counterfactual value 'counterfactual'?"
 options = [
   "It is computed as if the player had played to reach this information set: only the opponent's and chance's probabilities of reaching it are used as weights",
-  "It is the value of an action the player never takes",
+  "It is computed as if the opponent could see the player's cards",
   "It ignores the opponent's strategy",
 ]
 answer = 0
@@ -134,9 +134,11 @@ concepts = ["discounted-cfr"]
 every information set of the game tree at once. Each iteration it:
 1. walks the tree with the current strategies;
 2. computes, at each information set, the counterfactual value of each action;
-3. adds each action's regret (its value minus the value of the current strategy) to a running
-   total;
-4. sets the next strategy at each information set by regret matching on those totals.
+3. adds each action's regret (its counterfactual value minus the counterfactual value of the
+   current strategy) to a running total;
+4. sets the next strategy at each information set by regret matching on those totals;
+5. adds the current strategy at each information set, weighted by the player's own probability of
+   reaching it, to a running average. That **average strategy** is what converges.
 :::
 
 ```riverlab:question
@@ -158,7 +160,9 @@ it. The player's own probability of reaching it is left out.
 ::: intermediate
 Leaving out your own reach probability keeps the update meaningful at information sets your current
 strategy rarely reaches: they are still improved, so if your strategy changes and starts reaching
-them, it plays well there.
+them, it plays well there. The deeper reason is a theorem of Zinkevich et al.: with these
+values, the player's overall regret is at most the sum of the regrets at the separate information
+sets, so keeping each local regret small keeps the whole strategy's regret small.
 :::
 
 ```riverlab:question
@@ -168,9 +172,11 @@ them, it plays well there.
 ## Convergence {#convergence}
 
 ::: fact
-In a two-player zero-sum game, the **average** of CFR's strategies converges to an equilibrium:
-its exploitability is bounded by a term that shrinks like $1/\sqrt{T}$ after $T$ iterations.
-The current strategy carries no such guarantee.
+In a two-player zero-sum game with perfect recall (each player remembers everything they have
+seen and done, as in poker), the **average** of CFR's strategies converges to an equilibrium: its
+exploitability is bounded by a term that shrinks like $1/\sqrt{T}$ after $T$ iterations. The
+current strategy carries no such guarantee, and with three or more players CFR is not
+guaranteed to approach a Nash equilibrium at all.
 :::
 
 ::: solver
@@ -196,9 +202,11 @@ result.
   walking all of it.
 :::
 
-::: intermediate
-Discounting lets the solver forget the poor strategies of its early iterations faster, which is
-why these variants usually reach a given exploitability in far fewer iterations than vanilla CFR.
+::: heuristic
+Discounting lets the solver forget the poor strategies of its early iterations faster. In the
+experiments reported by Tammelin (2014) and Brown and Sandholm (2019), CFR+ and Discounted CFR
+usually reach a given exploitability in far fewer iterations than vanilla CFR; for CFR+ part of
+the gain also comes from flooring regrets and from updating the players in turn.
 :::
 
 ```riverlab:question

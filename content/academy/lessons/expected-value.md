@@ -3,7 +3,7 @@ slug = "expected-value"
 title = "Expected value"
 level = 2
 order = 1
-version = 1
+version = 2
 status = "published"
 summary = "Judging a decision by its average result over all the ways it can turn out, measured from the moment you make it."
 estimated_minutes = 15
@@ -19,7 +19,7 @@ tags = ["math", "expected-value"]
 status = "pending"
 reviewer = ""
 reviewed_on = ""
-notes = "Drafted with AI assistance. Every numeric answer is computed by poker-theory (ev_call) and re-checked when the content is synced; awaiting review by a person."
+notes = "Drafted with AI assistance. Every numeric answer is computed by poker-theory (ev_call) and re-checked when the content is synced; awaiting review by a person. AI review pass (2026-11): checked prose, labels, numbers and questions; fixes applied. Still needs review by a person."
 
 [[tools]]
 href = "/play"
@@ -81,24 +81,24 @@ type = "multiple_choice"
 prompt = "You raised before the flop and have 12bb in the pot. On the river you face a bet. Why is folding worth 0, not −12bb, when you compare your options?"
 options = [
   "Because folding gets your 12bb back",
-  "Because the 12bb is already in the pot whatever you do now; only future gains and losses differ between calling and folding",
+  "Because the 12bb has already left your stack whatever you do now; you compare options by what each one changes from here",
   "Because the blinds are refunded when you fold",
 ]
 answer = 1
-explanation = "Chips in the pot belong to the pot. Every option from here loses those 12bb in the same cases, so they cancel when you compare options. Measuring from the decision point makes folding exactly 0."
+explanation = "The 12bb left your stack before this decision, and no choice you make now changes that. So measure each option from the stack you have now: folding changes nothing (0), and calling is worth what you win from the pot on average minus what the call costs. The 12bb still matters, but only as part of the pot a call can win."
 concepts = ["expected-value"]
 
 [[questions]]
 id = "result-vs-decision"
 type = "decision"
-prompt = "On the river you call a bet getting a price that needs 25% equity, with 40% equity against the betting range. Your opponent shows a better hand and you lose the pot. Was the call a mistake?"
+prompt = "On the river you call a bet getting a price that needs 25% equity, with 40% equity against the betting range. There is no rake. Your opponent shows a better hand and you lose the pot. Was the call a mistake?"
 options = [
   "Yes: you lost, so you should have folded",
-  "No: the call was worth more than folding on average; this result was one of the 60% of outcomes where it loses",
+  "No: the call was worth more than folding on average; with 40% equity, losing is a common outcome",
   "It is impossible to say",
 ]
 answer = 1
-explanation = "Decisions are judged by their expected value with the information you had. A positive-EV call still loses most of the time when your equity is below 50%; over many such spots it gains."
+explanation = "Decisions are judged by their expected value with the information you had. A call with less than 50% equity fails to win the whole pot more often than not, even when it is positive EV; over many such spots it gains."
 concepts = ["expected-value"]
 +++
 
@@ -129,13 +129,13 @@ $$ \mathrm{EV} = \sum_i p_i\, x_i . $$
 
 ::: fact
 Measured from the decision point, folding is worth 0. Calling $C$ into a pot of $P$ (the bet
-included) with equity $e$, and no more betting to come, is worth
-$e\,(P + C) - C$.
+included) with equity $e$, with no more betting to come and no rake, is worth
+$e\,(P + C) - C$. Equity counts a split pot as half a win.
 :::
 
 ::: intermediate
 The call is better than folding exactly when this is positive, which is the pot-odds rule from
-the previous lesson: the equity must exceed $C / (P + C)$.
+the pot-odds lesson: the equity must exceed $C / (P + C)$.
 :::
 
 ```riverlab:question
@@ -149,8 +149,10 @@ the previous lesson: the equity must exceed $C / (P + C)$.
 ## What is not part of EV {#sunk}
 
 ::: fact
-Chips you have already put in the pot are not yours any more. They are lost in the same cases
-whatever you do now, so they cancel out when you compare options.
+Chips you have already put in the pot are not yours any more: they left your stack whatever
+you choose now. So measure every option from your current stack. Folding is worth 0; calling is
+worth what you win from the pot on average minus what you pay now. The chips you put in earlier
+count only as part of the pot you might win.
 :::
 
 ```riverlab:question
@@ -160,8 +162,9 @@ whatever you do now, so they cancel out when you compare options.
 ## Decisions and results {#results}
 
 ::: fact
-A single result says little about a decision. A call with 40% equity at a price needing 25%
-loses 60% of the time and is still the better choice.
+A single result says little about a decision. With no rake, a call with 40% equity at a price
+needing 25% is worth more than folding on average, yet it fails to win the whole pot more often
+than not.
 :::
 
 ::: heuristic

@@ -3,7 +3,7 @@ slug = "positions"
 title = "Positions and the order of action"
 level = 1
 order = 3
-version = 1
+version = 2
 status = "published"
 summary = "The six seats of a six-max table, who acts first before and after the flop, and why acting last is an advantage."
 estimated_minutes = 12
@@ -19,7 +19,7 @@ tags = ["rules", "positions"]
 status = "pending"
 reviewer = ""
 reviewed_on = ""
-notes = "Drafted with AI assistance. The order of action matches RiverLab's betting engine (poker-core positions and its rules tests); awaiting review by a person."
+notes = "Drafted with AI assistance. The order of action matches RiverLab's betting engine (poker-core positions and its rules tests); awaiting review by a person. AI review pass (2026-11): checked prose, labels, numbers and questions; fixes applied. Still needs review by a person."
 
 [[tools]]
 href = "/play"
@@ -51,7 +51,7 @@ actions = { SB = "posts 0.5bb", BB = "posts 1bb" }
 [[questions]]
 id = "first-postflop"
 type = "multiple_choice"
-prompt = "Flop. You raised on the button and the big blind called; everyone else folded. Who acts first on the flop?"
+prompt = "Flop, six players. You raised to 2.5bb on the button and the big blind called; everyone else folded. Who acts first on the flop?"
 options = ["You, on the button", "The big blind", "Whoever raised before the flop"]
 answer = 1
 explanation = "After the flop the first player still in the hand to the dealer button's left acts first: the small blind, then the big blind. With the small blind folded, the big blind acts first and you act last on every street."
@@ -92,7 +92,7 @@ prompt = "What does acting last after the flop give you on every street?"
 options = [
   "Better cards on average",
   "You see what your opponent did before you choose",
-  "The right to see the next card for free",
+  "The right to act first on the next street",
 ]
 answer = 1
 explanation = "Position does not change the cards you are dealt. Acting last means every decision you make is made with one more piece of information: whether your opponent checked or bet, and how much."
@@ -138,10 +138,11 @@ street after the flop.
 :::
 
 ::: heuristic
-That extra information is why late positions (cutoff and button) can profitably play more
-hands than early ones, and why the blinds, who act first after the flop and are forced to put
-money in, usually lose money over time even with good play. Exact amounts depend on the players
-and the game.
+Late positions (cutoff and button) can profitably play more hands than early ones for two
+reasons: they will usually act last after the flop, and fewer players are left to act behind
+them, so a raise more often wins the blinds straight away. The blinds are forced to put money
+in and will usually be out of position after the flop, which is why they tend to lose money over
+time even with good play. Exact amounts depend on the players and the game.
 :::
 
 ::: intermediate
@@ -151,13 +152,13 @@ must commit to an action first, and your opponent gets to respond.
 :::
 
 ::: advanced
-Game-theoretic models describe this as **equity realisation**: in position, a range tends to
-win a larger share of the pot than its raw all-in equity, because it reacts last on every
-street; out of position it tends to win less.
+Players call this **equity realisation**. As a rule of thumb (a heuristic, not an exact law), a
+range in position tends to win a larger share of the pot than its raw all-in equity, because it
+reacts last on every street; out of position it tends to win less.
 :::
 
-::: solver
-In solved spots the same range typically has a higher expected value in position than out of
-position. The size of the difference depends on the ranges, stacks and allowed bet sizes of
-each solve.
+::: heuristic
+The same range is usually worth more in position than out of position. How much more depends
+on the ranges, the stacks and the bet sizes available, so treat this as a tendency, not a fixed
+amount.
 :::

@@ -3,7 +3,7 @@ slug = "blockers"
 title = "Blockers and card removal"
 level = 2
 order = 7
-version = 1
+version = 2
 status = "published"
 summary = "How the cards you hold change which hands your opponent can have, counted exactly."
 estimated_minutes = 15
@@ -19,7 +19,7 @@ tags = ["math", "combinatorics", "blockers"]
 status = "pending"
 reviewer = ""
 reviewed_on = ""
-notes = "Drafted with AI assistance. Every count is produced by RiverLab's range engine and re-checked when the content is synced; awaiting review by a person."
+notes = "Drafted with AI assistance. Every count is produced by RiverLab's range engine and re-checked when the content is synced; awaiting review by a person. AI review pass (2026-11): checked prose, labels, numbers and questions; fixes applied. Still needs review by a person."
 
 [[tools]]
 href = "/preflop"
@@ -101,7 +101,7 @@ options = [
   "It never matters which cards you hold when you bluff",
 ]
 answer = 0
-explanation = "Holding the A♠ removes every ace-high flush from your opponent's range, so they are less likely to hold a hand that will never fold. The 2♠ would give you a flush, which is not a bluff. How much a blocker matters depends on the whole ranges."
+explanation = "Holding the A♠ removes every ace-high flush from your opponent's range: of the 45 two-spade combinations the other ten spades make, the 9 that contain the A♠ are gone, so they are less likely to hold a hand that will never fold. The 2♠ would give you a flush, which is not a bluff. How much a blocker matters depends on the whole ranges."
 concepts = ["blockers"]
 +++
 
@@ -155,13 +155,13 @@ non-pair hand has $4 \times 4 = 16$; with one of its cards seen, $3 \times 4 = 1
 ::: heuristic
 When choosing which hands to bluff with, hands that block your opponent's strongest calls (and
 do not block their folds) are better candidates. When choosing which hands to call with, hands
-that block their value bets are better candidates.
+that block their value bets (and do not block their bluffs) are better candidates.
 :::
 
-::: approximation
-The effect of one card is real but usually modest: it changes a few combinations in ranges of
-hundreds. It decides close choices between similar hands; it does not turn a bad play into a good
-one.
+::: heuristic
+How much one card matters depends on the range it hits. Against a wide range it removes only a
+few combinations; against a narrow, strong range it can remove a large share, as the AA, KK and
+AK example above shows. Blockers mostly decide close choices between otherwise similar hands.
 :::
 
 ```riverlab:question

@@ -2,8 +2,8 @@
 slug = "pot-odds"
 title = "Pot odds and break-even equity"
 level = 1
-order = 5
-version = 2
+order = 6
+version = 3
 status = "published"
 summary = "How much equity a call needs, and why the answer depends only on the price you are offered."
 estimated_minutes = 15
@@ -19,7 +19,7 @@ tags = ["math", "pot-odds", "equity", "calling"]
 status = "pending"
 reviewer = ""
 reviewed_on = ""
-notes = "Drafted with AI assistance. Every number is produced by poker-theory and re-checked when the content is synced; awaiting review by a person."
+notes = "Drafted with AI assistance. Every number is produced by poker-theory and re-checked when the content is synced; awaiting review by a person. AI review pass (2026-11): checked prose, labels, numbers and questions; fixes applied. Still needs review by a person."
 
 [[tools]]
 href = "/postflop"
@@ -29,7 +29,7 @@ why = "Find your equity against a hand or range, then compare it with the price.
 [[tools]]
 href = "/play"
 label = "Play against bots"
-why = "The session report grades your river calls and folds against exactly this break-even figure."
+why = "The session report compares your river and all-in calls and folds with this break-even figure, using your estimated equity against the bots' ranges and allowing a margin."
 
 [[reading]]
 title = "The Mathematics of Poker"
@@ -61,7 +61,7 @@ actions = { BTN = "bets 10bb" }
 [[questions]]
 id = "pot-bet"
 type = "numeric"
-prompt = "River. The pot is 12bb and your opponent bets 12bb, the size of the pot. What equity (in %) does a call need to break even?"
+prompt = "River, heads-up. The pot is 12bb and your opponent bets 12bb, the size of the pot. A call ends the betting. What equity (in %) does a call need to break even?"
 answer = 33.33
 tolerance = 0.5
 unit = "%"
@@ -82,7 +82,7 @@ actions = { BB = "bets 12bb" }
 [[questions]]
 id = "river-decision"
 type = "decision"
-prompt = "River. Your opponent bets half the pot. You estimate that against the hands they would bet this way your equity is 30%. Ignoring rake, should you call or fold?"
+prompt = "River, heads-up. Your opponent bets half the pot, and a call ends the betting. You estimate that against the hands they would bet this way your equity is 30%. Ignoring rake, should you call or fold?"
 options = [
   "Fold, because 30% is less than 50%",
   "Call, because 30% is more than the 25% a half-pot bet requires",
@@ -153,8 +153,8 @@ two-thirds-pot bet about 28.6%, and a pot-sized bet 33.3%.
 
 ::: advanced
 If your share of the final pot is $e$, calling is worth $e(P + 2B) - B$ compared with folding.
-Setting this to zero gives the break-even equity $e^* = B / (P + 2B)$. It depends only on the
-**ratio** $B / P$, so it is the same at any stakes.
+Setting this to zero gives the break-even equity $e^* = B / (P + 2B)$. Without rake, it depends
+only on the **ratio** $B / P$, so it is the same at any stakes.
 :::
 
 ::: math
@@ -174,6 +174,9 @@ For $\beta = \tfrac12$, $e^* = \tfrac{1/2}{2} = 25\%$; for $\beta = 1$, $e^* = \
 $e^* \to \tfrac12$: however large the bet, a call never needs more than 50%.
 :::
 
+To turn odds into a percentage: odds of $X$ to 1 need $1 / (X + 1)$. At 3 to 1 you need
+$1 / (3 + 1) = 25\%$; at 2 to 1, $1 / 3 \approx 33.3\%$.
+
 ```riverlab:pot-odds
 {"pot_bb": "10", "bet_bb": "5"}
 ```
@@ -181,15 +184,17 @@ $e^* \to \tfrac12$: however large the bet, a call never needs more than 50%.
 ## When the figure is exact {#assumptions}
 
 ::: fact
-The break-even equity is exact when **no more money can go in after your call**: on the river,
-or when the call puts you or your opponent all-in.
+The break-even equity is exact when **your call ends the betting**, so no more money can go in,
+and **no rake** is taken. For example: heads-up on the river, or heads-up when the call puts you
+or your opponent all-in. If another player could still raise behind you, the figure is not exact.
+Rake reduces the final pot, which raises the equity you need.
 :::
 
 ::: approximation
 Earlier in the hand it is only a guide. Future bets change what you win and lose
-(**implied odds** and **reverse implied odds**), and you will not always realise your equity:
-you may fold the best hand later, or be outplayed. Rake also reduces the final pot, which raises
-the equity you need.
+(**implied odds** and **reverse implied odds**), and you will not realise exactly your equity:
+you may win less (you fold the best hand later, or are outplayed) or more (your bets make
+better hands fold).
 :::
 
 ::: simple

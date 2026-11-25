@@ -3,7 +3,7 @@ slug = "mdf-and-bluff-ratios"
 title = "Minimum defence frequency and bluff-to-value ratios"
 level = 3
 order = 7
-version = 2
+version = 3
 status = "published"
 summary = "The indifference arithmetic of a single river bet: how often a defender must continue, and how often a polarised bettor should bluff."
 estimated_minutes = 25
@@ -12,24 +12,24 @@ objectives = [
   "Derive the bluff share that makes a bluff-catcher indifferent.",
   "State the model these results come from, and where real poker departs from it.",
 ]
-prerequisites = ["pot-odds", "expected-value", "indifference", "polarised-ranges"]
+prerequisites = ["pot-odds", "expected-value", "indifference"]
 tags = ["gto", "indifference", "mdf", "bluffing", "bet-sizing"]
 
 [review]
 status = "pending"
 reviewer = ""
 reviewed_on = ""
-notes = "Drafted with AI assistance. Formulas are implemented in poker-theory with tests; awaiting review by a person."
+notes = "Drafted with AI assistance. Formulas are implemented in poker-theory with tests; awaiting review by a person. AI review pass (2026-11): checked prose, labels, numbers and questions; fixes applied. Still needs review by a person."
 
 [[tools]]
 href = "/solver"
 label = "Solver"
-why = "Solve a river spot and compare real frequencies with this toy model."
+why = "Solve a river spot and compare the solved frequencies (an approximate equilibrium for the bet sizes you configure) with this model."
 
 [[tools]]
 href = "/play"
 label = "Play against bots"
-why = "The hard bots bet with exactly this bluff ratio and defend by this frequency."
+why = "Postflop and heads-up, the hard bots size their bluffs by this ratio and continue with the minimum-defence share of their range (rules in docs/play.md)."
 
 [[reading]]
 title = "The Mathematics of Poker"
@@ -62,7 +62,7 @@ compute = { kind = "bet_math", params = { pot_mbb = 10000, bet_mbb = 10000 }, fi
 [[questions]]
 id = "bluff-share-pot"
 type = "numeric"
-prompt = "River. A player whose range holds only very strong hands and bluffs bets the size of the pot. What share of their bets (in %) must be bluffs for a bluff-catcher to be indifferent between calling and folding?"
+prompt = "River. A player whose range holds only hands that beat every bluff-catcher, and pure bluffs, bets the size of the pot into an opponent who holds only bluff-catchers (hands that beat every bluff and lose to every value hand). What share of their bets (in %) must be bluffs for a bluff-catcher to be indifferent between calling and folding?"
 answer = 33.33
 tolerance = 0.5
 unit = "%"
@@ -103,7 +103,9 @@ concepts = ["minimum-defence-frequency"]
 Everything in this lesson is exact **for this model**: the river, one bet of size $B$ into a pot
 of $P$, and the defender can only call or fold. The bettor's hands are either the **nuts** or
 **air** (a polarised range), and the defender's hands are **bluff-catchers**: they beat every
-bluff and lose to every value bet.
+bluff and lose to every value bet. There is no rake and there are no ties, and the bettor holds
+enough air to bluff at the ratio derived below (a bettor with too few bluffs simply bets
+everything, and the defender folds).
 :::
 
 ::: simple
@@ -122,8 +124,8 @@ shape which hands arrive.
 
 ::: simple
 A bluff risks the bet to win the pot. A pot-sized bluff wins 1 and loses 1, so it breaks even if
-the opponent folds half the time. If they fold more than that, bluffing with any two cards
-makes money. So the defender must **continue at least half the time** against a pot-sized bet.
+the opponent folds half the time. If they fold more than that, bluffing with any hand that
+always loses when called makes money. So the defender must **continue at least half the time** against a pot-sized bet.
 :::
 
 ::: intermediate
@@ -179,7 +181,7 @@ $$
 $$
 
 So bluffs per value bet are $\frac{s}{1 - s} = \frac{B}{P + B}$. Larger bets allow more bluffs,
-and require the defender to fold more, which is why polarised ranges can use large sizes.
+and the defender needs to continue less often (MDF falls), which is why polarised ranges can use large sizes.
 :::
 
 ## Reading the results {#reading}

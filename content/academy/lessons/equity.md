@@ -2,8 +2,8 @@
 slug = "equity"
 title = "Equity"
 level = 1
-order = 6
-version = 1
+order = 5
+version = 2
 status = "published"
 summary = "Your share of the pot if the hand were played out with no more betting: against one hand, against a range, and how it changes street by street."
 estimated_minutes = 15
@@ -19,7 +19,7 @@ tags = ["math", "equity"]
 status = "pending"
 reviewer = ""
 reviewed_on = ""
-notes = "Drafted with AI assistance. Every equity is an exact enumeration by RiverLab's equity engine, recomputed when the content is synced; awaiting review by a person."
+notes = "Drafted with AI assistance. Every equity is an exact enumeration by RiverLab's equity engine, recomputed when the content is synced; awaiting review by a person. AI review pass (2026-11): checked prose, labels, numbers and questions; fixes applied. Still needs review by a person."
 
 [[tools]]
 href = "/postflop"
@@ -38,7 +38,7 @@ prompt = "Before the flop the money goes all in: you hold A♠ A♥ and your opp
 answer = 82.64
 tolerance = 0.05
 unit = "%"
-explanation = "Enumerating all 1,712,304 possible boards: you win 82.36%, tie 0.54% (counted as half) and lose the rest, for 82.64% equity. Kings win mainly when a king comes and no ace does; with these suits, any flush the kings make the aces make too, higher."
+explanation = "Enumerating all 1,712,304 possible boards: you win 82.36%, tie 0.54% (counted as half) and lose the rest, for 82.64% equity. Kings win mainly when a king comes and no ace does; with these suits, any flush the kings make the aces make too, higher, unless the kings make a straight flush."
 concepts = ["equity"]
 compute = { kind = "equity", params = { ranges = ["AsAh", "KsKh"], board = "" }, field = "equity.0", scale = 100.0 }
 
@@ -70,13 +70,24 @@ actions = { CO = "all-in", BB = "calls all-in" }
 shown = { BB = ["Qs", "Qc"] }
 
 [[questions]]
+id = "ak-22"
+type = "numeric"
+prompt = "Before the flop, all in: you hold A♥ K♥ and your opponent holds 2♠ 2♣. What is your equity (in %)?"
+answer = 50.08
+tolerance = 0.05
+unit = "%"
+explanation = "Over every possible board, suited AK is very slightly ahead of the lowest pair. The deuces are ahead now, but an ace or a king usually beats them, AK's straights and flushes add more, and when the board pairs twice the deuces no longer play while AK keeps its ace kicker. Against a higher pair, such as queens, the same hand does worse: queens are rarely counterfeited and they block some of AK's straights."
+concepts = ["equity"]
+compute = { kind = "equity", params = { ranges = ["AhKh", "2s2c"], board = "" }, field = "equity.0", scale = 100.0 }
+
+[[questions]]
 id = "draw-vs-pair"
 type = "numeric"
 prompt = "Flop K♠ 7♥ 2♥. You hold A♥ T♥ (a flush draw) and your opponent holds K♦ Q♣ (top pair). The money goes all in. What is your equity (in %)?"
 answer = 45.35
 tolerance = 0.05
 unit = "%"
-explanation = "Over the 990 possible turn and river pairs, you win with any heart, and also with some two-card runouts that do not include one, for example an ace and a ten, two tens, or a queen and a jack for a straight."
+explanation = "Count the 990 possible turn and river pairs; there are no ties. Most runouts with a heart win with a flush, but not all: a few also pair the board so that top pair becomes a full house or four kings (for example K♥ with a 7). Without a heart, an ace gives you a pair of aces, which wins unless the other card is a king or a queen (your opponent then has trips or two pair). Without a heart or an ace you win only with two tens (three of a kind, 3 ways) or a queen and a jack (a straight to the ace, 2 × 3 = 6 ways)."
 concepts = ["equity", "outs-and-draws"]
 compute = { kind = "equity", params = { ranges = ["AhTh", "KdQc"], board = "Ks7h2h" }, field = "equity.0", scale = 100.0 }
 
@@ -93,7 +104,7 @@ shown = { BB = ["Kd", "Qc"] }
 [[questions]]
 id = "vs-range"
 type = "numeric"
-prompt = "Flop J♦ 7♣ 2♠. You hold Q♠ Q♥. You believe your opponent holds AK, any of its 16 combinations. What is your equity (in %) against that range if the money goes all in?"
+prompt = "Flop J♦ 7♣ 2♠. You hold Q♠ Q♥ in the big blind against the button. You believe the button holds AK, any of its 16 combinations. What is your equity (in %) against that range if the money goes all in?"
 answer = 74.49
 tolerance = 0.05
 unit = "%"
@@ -152,11 +163,17 @@ flop, $\binom{45}{2} = 990$ turn and river pairs.
 
 ## Hand against hand {#hand-vs-hand}
 
-::: fact
-Before the flop, a pair against a lower pair is about a 4-to-1 favourite, and two overcards
-against a lower pair are close to even with it, slightly behind. The exact figure always
-depends on the suits (which flushes and straights each hand blocks or makes).
+::: approximation
+Before the flop, a pair against a lower pair is a big favourite, roughly 4 to 1 (the A♠ A♥
+against K♠ K♥ question above works one case out exactly). Two higher cards against a lower pair
+are close to even: usually a little behind, and against a very small pair suited high cards can
+even be very slightly ahead. Check particular hands with the calculator; the exact figure always
+depends on the ranks and suits (which straights and flushes each hand can make or blocks).
 :::
+
+```riverlab:equity
+{"hands": ["AhKd", "2s2c"], "board": ""}
+```
 
 ```riverlab:equity
 {"hands": ["AhKh", "QsQc"], "board": ""}
@@ -166,9 +183,17 @@ depends on the suits (which flushes and straights each hand blocks or makes).
 {"id": "ak-qq"}
 ```
 
+```riverlab:question
+{"id": "ak-22"}
+```
+
 ::: intermediate
-After the flop, draws can have a lot of equity even when they are behind. A flush draw with an
-overcard against top pair is close to a coin flip with two cards to come.
+After the flop, draws can have a lot of equity even when they are behind.
+:::
+
+::: heuristic
+A flush draw with an overcard against top pair is close to a coin flip with two cards to come,
+usually a little behind. The question below works out one case exactly.
 :::
 
 ```riverlab:question

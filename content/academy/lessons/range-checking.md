@@ -3,7 +3,7 @@ slug = "range-checking"
 title = "Range checking, and why the tree matters"
 level = 4
 order = 6
-version = 1
+version = 2
 status = "published"
 summary = "When a player should check every hand, shown with river solves, and how the sizes a solve allows can change the answer completely."
 estimated_minutes = 20
@@ -19,7 +19,7 @@ tags = ["strategy", "solver", "ranges"]
 status = "pending"
 reviewer = ""
 reviewed_on = ""
-notes = "Drafted with AI assistance. Every figure comes from small river solves run by RiverLab's solver each time the content is synced (each within 0.05% of the pot of an equilibrium of its tree); awaiting review by a person."
+notes = "Drafted with AI assistance. Every figure comes from small river solves run by RiverLab's solver each time the content is synced (each within 0.05% of the pot of an equilibrium of its tree); awaiting review by a person. AI review pass (2026-11): checked prose, labels, numbers and questions; fixes applied. Still needs review by a person."
 
 [[tools]]
 href = "/solver"
@@ -70,11 +70,11 @@ iterations = 1500
 [[questions]]
 id = "catchers-check"
 type = "numeric"
-prompt = "River K♠ 9♦ 5♣ 3♥ 2♠, pot 10bb, 20bb behind. You act first and hold only top pair (KQ); your opponent holds sets (99, 55) or nothing (76 suited, T8 suited). You may check or bet 33% or 75%, and either player may raise. In the solved strategy, what share (in %) of your range checks?"
+prompt = "River K♠ 9♦ 5♣ 3♥ 2♠, pot 10bb, 20bb behind. You act first and hold only top pair (KQ); your opponent holds sets (99, 55) or nothing (76 suited, T8 suited). You may check or bet 33% or 75% of the pot. If you bet, your opponent may fold, call or raise by 100% of the pot after calling (to 19.9bb over a 3.3bb bet, all-in for 20bb over a 7.5bb bet); if you check, they may check or bet 75%, and you may then raise. One raise at most. In the solved strategy, what share (in %) of your range checks?"
 answer = 100.0
 tolerance = 0.1
 unit = "%"
-explanation = "All of it. Every hand in your range beats exactly the same hands. A bet is called only by sets and folds out everything you beat, so betting can only lose. Checking lets your opponent bluff into you."
+explanation = "All of it. Every hand in your range beats the bluffs and loses to the sets. A bet is called only by sets and folds the bluffs, which you beat anyway, so it wins nothing extra. Its only possible use is as a blocking bet, a small bet that stops your opponent making a bigger one, and here that fails: your opponent can raise, with sets or as a bluff. Checking instead lets their bluffs bet into you. Without raises the answer is different: with no raises allowed, the solve bets 33% with every hand."
 concepts = ["range-checking"]
 compute = { kind = "solve", params = { solve = "catchers", path = [], max_exploitability_pct = 0.05 }, field = "share.check", scale = 100.0 }
 
@@ -88,29 +88,29 @@ stacks_bb = { SB = "20", BB = "20" }
 [[questions]]
 id = "catchers-no-raise"
 type = "numeric"
-prompt = "Same river (K♠ 9♦ 5♣ 3♥ 2♠, pot 10bb, 20bb behind), same ranges: you act first with only KQ, against sets or nothing. This time the solve allows no raises at all. What share (in %) of your range bets the small size, 33% of the pot?"
+prompt = "River K♠ 9♦ 5♣ 3♥ 2♠, pot 10bb, 20bb behind. You act first and hold only top pair (KQ); your opponent holds sets (99, 55) or nothing (76 suited, T8 suited). You may check or bet 33% or 75% of the pot; if you check, your opponent may check or bet 75%. Nobody may raise. In the solved strategy, what share (in %) of your range bets the small size, 33% of the pot?"
 answer = 100.0
 tolerance = 0.1
 unit = "%"
-explanation = "With no raises allowed, a small bet caps the pot: your opponent can only call with sets or fold, and can never make you face a big bet with a bluff. Betting small turns out better than checking and facing the 75% bet. Allow raises and the small bet disappears: the answer depends on the tree."
+explanation = "With no raises allowed, a small bet caps the pot: your opponent can only call with sets or fold, and can never make you face a big bet with a bluff. Betting small turns out better than checking and facing the 75% bet. Allow raises in the same spot and the solve checks every hand instead: the answer depends on the tree."
 concepts = ["range-checking", "bet-sizing-theory"]
 compute = { kind = "solve", params = { solve = "catchers_no_raise", path = [], max_exploitability_pct = 0.05 }, field = "share.a1", scale = 100.0 }
 
 [[questions]]
 id = "polar-first-checks"
 type = "numeric"
-prompt = "River K♠ 9♦ 5♣ 3♥ 2♠, pot 10bb, 20bb behind, raises allowed. Now you act first with sets (99, 55) or nothing (76 suited, T8 suited), and your opponent holds only KQ. What share (in %) of your range checks in the solved strategy?"
+prompt = "River K♠ 9♦ 5♣ 3♥ 2♠, pot 10bb, 20bb behind. You act first with sets (99, 55) or nothing (76 suited, T8 suited), and your opponent holds only KQ. You may check or bet 33% or 75% of the pot; if you check, they may bet 75%; either player may raise by 100% of the pot after calling, once. What share (in %) of your range checks in the solved strategy?"
 answer = 38.79
 tolerance = 0.1
 unit = "%"
-explanation = "Your sets always bet; only some of the bluffs check. With the strong hands on your side, you bet a lot of the time, with enough bluffs that KQ is indifferent to calling."
+explanation = "Your 6 set combinations always bet 75%, with enough bluffs that KQ is indifferent to calling: B / (P + 2B) = 7.5 / 25 = 30% of the bets, so 6 × 0.3 / 0.7 ≈ 2.57 of your 8 bluff combinations bet and about 5.43 check. 5.43 of your 14 combinations is about 38.8%."
 concepts = ["range-checking", "polarised-ranges"]
 compute = { kind = "solve", params = { solve = "polar_first", path = [], max_exploitability_pct = 0.05 }, field = "share.check", scale = 100.0 }
 
 [[questions]]
 id = "polar-first-sets"
 type = "numeric"
-prompt = "Same spot: you act first with sets (99, 55) or nothing (76 suited, T8 suited) against KQ only. What share (in %) of your sets bet 75% of the pot?"
+prompt = "River K♠ 9♦ 5♣ 3♥ 2♠, pot 10bb, 20bb behind. You act first with sets (99, 55) or nothing (76 suited, T8 suited), and your opponent holds only KQ. You may check or bet 33% or 75% of the pot; if you check, they may bet 75%; either player may raise by 100% of the pot after calling, once. In the solved strategy, what share (in %) of your sets bet 75% of the pot?"
 answer = 100.0
 tolerance = 0.1
 unit = "%"
@@ -123,7 +123,7 @@ id = "when-range-check"
 type = "multiple_choice"
 prompt = "In which situation does checking your whole range make the most sense?"
 options = [
-  "Your range is mostly medium hands that worse hands will not call, and your opponent has the strong hands and the bluffs",
+  "Your range is mostly medium hands that worse hands will not call, your opponent has the strong hands and the bluffs, and they can raise",
   "Your range has all the strong hands",
   "You were the preflop raiser",
 ]
@@ -144,9 +144,12 @@ that decision.
 
 ::: solver
 River K♠ 9♦ 5♣ 3♥ 2♠, pot 10bb, 20bb behind, no rake. You act first with KQ only; your
-opponent has sets (99, 55) or nothing (76 suited, T8 suited). Bets of 33% or 75% of the pot,
-raises of 100%. Solved by RiverLab each time this lesson loads, within 0.05% of the pot of an
-equilibrium of this tree.
+opponent has sets (99, 55) or nothing (76 suited, T8 suited). You may bet 33% or 75% of the pot,
+and if you check your opponent may bet 75%. Either player may raise once, by 100% of the pot
+after calling: to 3.3 + (10 + 3.3 + 3.3) = 19.9bb over a 3.3bb bet, and over a 7.5bb bet the
+raise to 7.5 + 25 = 32.5bb is cut to the 20bb stack (all-in). Solved by RiverLab each time the
+content is synced, within 0.05% of the pot of an equilibrium of this tree: an approximate
+equilibrium for these sizes only.
 :::
 
 ```riverlab:question
@@ -154,8 +157,11 @@ equilibrium of this tree.
 ```
 
 ::: intermediate
-Every one of your hands beats the bluffs and loses to the sets. A bet is called only by better
-hands, and anything worse folds. Checking gives up nothing and lets the bluffs bet into you.
+Every one of your hands beats the bluffs and loses to the sets. A bet is called only by the
+sets and folds the bluffs, which you beat anyway, so it wins nothing extra. A small bet could
+still stop your opponent from making a bigger one (a blocking bet), but here they can raise,
+with a set or as a bluff, so it does not work. Checking lets their bluffs bet into you.
+(Without raises, the next section shows a different answer.)
 :::
 
 ## The tree changes the answer {#tree}
@@ -164,10 +170,16 @@ hands, and anything worse folds. Checking gives up nothing and lets the bluffs b
 {"id": "catchers-no-raise"}
 ```
 
-::: approximation
-A solve is an equilibrium **of the game it was given**: these bet and raise sizes and no
-others. Remove raises and a "blocking bet" appears that would be a mistake in a game where your
-opponent can raise. Before trusting a strategy, check which options the tree allowed.
+::: fact
+A solve is an (approximate) equilibrium **of the game it was given**: these bet and raise sizes
+and no others.
+:::
+
+::: solver
+In this spot, removing raises makes a **blocking bet** appear: a small bet made by a hand that
+wants to see a showdown cheaply, so that it does not face a bigger bet. With raises allowed, the
+same spot checks every hand instead. Before trusting a strategy, check which options the tree
+allowed.
 :::
 
 ## The polarised player acts first: bet {#polar}
@@ -181,8 +193,8 @@ opponent can raise. Before trusting a strategy, check which options the tree all
 ```
 
 ::: heuristic
-Range checks are most common for the player whose range is capped: lots of medium hands, few
-of the strongest. The player with the strong hands and the bluffs does most of the betting.
+Range checks are most common for the player whose range is **capped** (it holds few or none of
+the strongest hands): lots of medium hands, few of the strongest. The player with the strong hands and the bluffs does most of the betting.
 :::
 
 ```riverlab:question

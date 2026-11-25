@@ -283,3 +283,19 @@ def test_solve_query_shares_sum_to_one_and_subset_parts_are_fractions() -> None:
     assert abs(sum(r["share"][f"a{i}"] for i in range(n)) - 1.0) < 1e-6  # strategies are f32
     for k, v in r["subset_of_action"].items():
         assert -1e-9 <= v <= 1 + 1e-9, (k, v)
+
+
+def test_prerequisites_come_earlier_and_prompts_stand_alone(tmp_path: Path) -> None:
+    import shutil
+
+    root = tmp_path / "academy"
+    shutil.copytree(CONTENT, root)
+    lesson = root / "lessons" / "equity.md"
+    text = lesson.read_text()
+    # equity (level 1) now requires a later lesson, and one prompt refers to another question.
+    text = text.replace("prerequisites = [", 'prerequisites = ["node-locking", ', 1)
+    text = text.replace('prompt = "', 'prompt = "In the same spot as the previous question, ', 1)
+    lesson.write_text(text)
+    report = read_content(root)
+    assert any("prerequisite 'node-locking'" in e for e in report.errors), report.errors
+    assert any("prompts must stand alone" in e for e in report.errors), report.errors

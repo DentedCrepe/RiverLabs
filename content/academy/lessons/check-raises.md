@@ -3,7 +3,7 @@ slug = "check-raises"
 title = "Check-raises: value, bluffs and blockers"
 level = 4
 order = 8
-version = 1
+version = 2
 status = "published"
 summary = "A river solve where the first player checks, the second bets small, and the first check-raises with its strongest hands and some bluffs, with blockers deciding which bluff-catchers call."
 estimated_minutes = 20
@@ -19,7 +19,7 @@ tags = ["strategy", "solver", "blockers"]
 status = "pending"
 reviewer = ""
 reviewed_on = ""
-notes = "Drafted with AI assistance. Every figure comes from a river solve run by RiverLab's solver each time the content is synced (within 0.05% of the pot of an equilibrium of its tree), or from poker-theory; awaiting review by a person."
+notes = "Drafted with AI assistance. Every figure comes from a river solve run by RiverLab's solver each time the content is synced (within 0.05% of the pot of an equilibrium of its tree), or from poker-theory; awaiting review by a person. AI review pass (2026-11): checked prose, labels, numbers and questions; fixes applied. Still needs review by a person."
 
 [[tools]]
 href = "/solver"
@@ -49,11 +49,11 @@ iterations = 2000
 [[questions]]
 id = "ip-bets"
 type = "numeric"
-prompt = "River K♠ 9♦ 5♣ 3♥ 2♠, pot 10bb, 100bb behind. Your opponent checked to you. You are in position with AA, KQ, KJ, or the busted draws QJ suited and JT suited; they hold 55 (a set), KT, K8 suited, K7 suited, or 76 suited (nothing). You can check or bet 33% of the pot; they can check-raise. In the solved strategy, what share (in %) of your range bets?"
+prompt = "River K♠ 9♦ 5♣ 3♥ 2♠, pot 10bb, 100bb behind. Your opponent checked to you (in this tree they cannot bet). You are in position with AA, KQ, KJ, or the busted draws QJ suited and JT suited; they hold 55 (a set), KT, K8 suited, K7 suited, or 76 suited (nothing). You can check or bet 33% of the pot (3.3bb); after a bet they can fold, call or check-raise to 11.6bb, and you cannot re-raise. In the solved strategy, what share (in %) of your range bets?"
 answer = 94.59
 tolerance = 0.1
 unit = "%"
-explanation = "Almost all of it. Your aces and good kings beat most of their kings, and the small size lets you bet them with some busted draws as bluffs."
+explanation = "Almost all of it. Your aces and kings beat every king your opponent holds (only 55 beats you), so they all bet for value, together with most of your QJ and JT as bluffs. 33% is the only size this tree allows."
 concepts = ["bet-sizing-theory"]
 compute = { kind = "solve", params = { solve = "river", path = [{ type = "action", value = 0 }], max_exploitability_pct = 0.05 }, field = "share.a1", scale = 100.0 }
 
@@ -66,9 +66,31 @@ stacks_bb = { SB = "100", BB = "100" }
 actions = { BB = "checks" }
 
 [[questions]]
+id = "ip-value-bets"
+type = "numeric"
+prompt = "River K♠ 9♦ 5♣ 3♥ 2♠, pot 10bb, 100bb behind. Your opponent checked to you (in this tree they cannot bet). You are in position with AA, KQ, KJ, or the busted draws QJ suited and JT suited; they hold 55 (a set), KT, K8 suited, K7 suited, or 76 suited (nothing). You can check or bet 33% of the pot (3.3bb); after a bet they can fold, call or check-raise to 11.6bb, and you cannot re-raise. In the solved strategy, what share (in %) of your aces and kings (AA, KQ, KJ) bet?"
+answer = 100.0
+tolerance = 0.1
+unit = "%"
+explanation = "All of them. AA, KQ and KJ beat every king your opponent holds and lose only to 55, so they bet for value every time."
+concepts = ["bet-sizing-theory"]
+compute = { kind = "solve", params = { solve = "river", path = [{ type = "action", value = 0 }], subset = ["AA", "KQs", "KQo", "KJs", "KJo"], max_exploitability_pct = 0.05 }, field = "subset_share.bet", scale = 100.0 }
+
+[[questions]]
+id = "ip-bluffs-bet"
+type = "numeric"
+prompt = "River K♠ 9♦ 5♣ 3♥ 2♠, pot 10bb, 100bb behind. Your opponent checked to you (in this tree they cannot bet). You are in position with AA, KQ, KJ, or the busted draws QJ suited and JT suited; they hold 55 (a set), KT, K8 suited, K7 suited, or 76 suited (nothing). You can check or bet 33% of the pot (3.3bb); after a bet they can fold, call or check-raise to 11.6bb, and you cannot re-raise. In the solved strategy, what share (in %) of your busted draws (QJ suited and JT suited) bet as bluffs?"
+answer = 74.31
+tolerance = 0.1
+unit = "%"
+explanation = "About three quarters. The rest check and give up. The checks in your range all come from these bluffs."
+concepts = ["bet-sizing-theory", "bluff-to-value-ratios"]
+compute = { kind = "solve", params = { solve = "river", path = [{ type = "action", value = 0 }], subset = ["QJs", "JTs"], max_exploitability_pct = 0.05 }, field = "subset_share.bet", scale = 100.0 }
+
+[[questions]]
 id = "oop-raises"
 type = "numeric"
-prompt = "River K♠ 9♦ 5♣ 3♥ 2♠, pot 10bb, 100bb behind. You checked with 55 (a set), KT, K8 suited, K7 suited or 76 suited (nothing). Your opponent, who holds AA, KQ, KJ, QJ suited or JT suited, bets 3.3bb. You may fold, call or raise to 11.6bb. In the solved strategy, what share (in %) of your range check-raises?"
+prompt = "River K♠ 9♦ 5♣ 3♥ 2♠, pot 10bb, 100bb behind. You checked (in this tree you cannot bet) with 55 (a set), KT, K8 suited, K7 suited or 76 suited (nothing). Your opponent, who holds AA, KQ, KJ, QJ suited or JT suited, bets 3.3bb (33% of the pot). You may fold, call or raise to 11.6bb, and they cannot re-raise. In the solved strategy, what share (in %) of your range check-raises?"
 answer = 16.0
 tolerance = 0.1
 unit = "%"
@@ -88,11 +110,11 @@ actions = { BB = "checks", SB = "bets 3.3bb" }
 [[questions]]
 id = "raise-bluff-share"
 type = "numeric"
-prompt = "Same spot: you checked, your opponent bet 3.3bb into 10bb, and the solution check-raises to 11.6bb with 55 and some 76s. What share (in %) of those check-raises are bluffs (76s)?"
+prompt = "River K♠ 9♦ 5♣ 3♥ 2♠, pot 10bb, 100bb behind. You checked (in this tree you cannot bet) with 55 (a set), KT, K8 suited, K7 suited or 76 suited (nothing). Your opponent, who holds AA, KQ, KJ, QJ suited or JT suited, bets 3.3bb (33% of the pot). You may fold, call or raise to 11.6bb, and they cannot re-raise. The solved strategy check-raises with 55 and some 76s. What share (in %) of those check-raises are bluffs (76s)?"
 answer = 24.99
 tolerance = 0.1
 unit = "%"
-explanation = "About a quarter: enough bluffs that your opponent's kings are indifferent between calling the raise and folding. Compare it with the formula in the next question."
+explanation = "About a quarter: enough bluffs that your opponent's aces and kings are indifferent between calling the raise and folding. The raise adds 8.3bb to a 16.6bb pot, and the indifference formula gives 8.3 / (16.6 + 16.6) = 25%."
 concepts = ["check-raises", "bluff-to-value-ratios"]
 compute = { kind = "solve", params = { solve = "river", path = [{ type = "action", value = 0 }, { type = "action", value = 1 }], subset = ["76s"], max_exploitability_pct = 0.05 }, field = "subset_of_action.a2", scale = 100.0 }
 
@@ -103,36 +125,36 @@ prompt = "A check-raise to 11.6bb over a 3.3bb bet into 10bb adds 8.3bb to a pot
 answer = 25.0
 tolerance = 0.05
 unit = "%"
-explanation = "8.3 / (16.6 + 16.6) = 25%. The solve's share matches, because the raise works like a new polarised bet of 8.3bb into 16.6bb."
+explanation = "8.3 / (16.6 + 16.6) = 25%. In this lesson's solved river spot (K♠ 9♦ 5♣ 3♥ 2♠, 55, kings and 76s check-raising against AA, KQ, KJ, QJs and JTs), 24.99% of the check-raises are bluffs: the raise works like a new polarised bet of 8.3bb into 16.6bb."
 concepts = ["bluff-to-value-ratios"]
 compute = { kind = "bet_math", params = { pot_mbb = 16600, bet_mbb = 8300 }, field = "bluff_share", scale = 100.0 }
 
 [[questions]]
 id = "kt-folds"
 type = "numeric"
-prompt = "Same spot, facing the 3.3bb bet. How often (in %) does KT offsuit fold in the solved strategy?"
+prompt = "River K♠ 9♦ 5♣ 3♥ 2♠, pot 10bb, 100bb behind. You checked (in this tree you cannot bet) with 55 (a set), KT, K8 suited, K7 suited or 76 suited (nothing). Your opponent, who holds AA, KQ, KJ, QJ suited or JT suited, bets 3.3bb (33% of the pot). You may fold, call or raise to 11.6bb, and they cannot re-raise. How often (in %) does KT offsuit fold in the solved strategy?"
 answer = 60.74
 tolerance = 0.1
 unit = "%"
-explanation = "KT folds much more often than K8 or K7, which never fold. On this board all three kings beat and lose to the same hands. The difference is the ten: holding it removes some of your opponent's JT bluffs, so KT catches fewer bluffs."
+explanation = "KT folds much more often than K8 suited and K7 suited, which in the same solve never fold. On this board all three kings beat and lose to the same hands. The difference is the ten: holding it removes some of your opponent's JT bluffs, so KT catches fewer bluffs."
 concepts = ["blockers", "check-raises"]
 compute = { kind = "solve", params = { solve = "river", path = [{ type = "action", value = 0 }, { type = "action", value = 1 }], subset = ["KTo"], max_exploitability_pct = 0.05 }, field = "subset_share.fold", scale = 100.0 }
 
 [[questions]]
 id = "k7-folds"
 type = "numeric"
-prompt = "Same spot, facing the 3.3bb bet. How often (in %) does K7 suited fold?"
+prompt = "River K♠ 9♦ 5♣ 3♥ 2♠, pot 10bb, 100bb behind. You checked (in this tree you cannot bet) with 55 (a set), KT, K8 suited, K7 suited or 76 suited (nothing). Your opponent, who holds AA, KQ, KJ, QJ suited or JT suited, bets 3.3bb (33% of the pot). You may fold, call or raise to 11.6bb, and they cannot re-raise. How often (in %) do K8 suited and K7 suited fold in the solved strategy?"
 answer = 0.0
 tolerance = 0.1
 unit = "%"
-explanation = "Never. K7 blocks none of your opponent's bluffs (QJ, JT), so it is the best bluff-catcher among your kings even though KT has the better kicker."
+explanation = "Never. K8 and K7 block none of your opponent's bluffs (QJ, JT), so they are the best bluff-catchers among your kings even though KT has the better kicker."
 concepts = ["blockers"]
-compute = { kind = "solve", params = { solve = "river", path = [{ type = "action", value = 0 }, { type = "action", value = 1 }], subset = ["K7s"], max_exploitability_pct = 0.05 }, field = "subset_share.fold", scale = 100.0 }
+compute = { kind = "solve", params = { solve = "river", path = [{ type = "action", value = 0 }, { type = "action", value = 1 }], subset = ["K8s", "K7s"], max_exploitability_pct = 0.05 }, field = "subset_share.fold", scale = 100.0 }
 
 [[questions]]
 id = "why-raise-76"
 type = "multiple_choice"
-prompt = "Why does the solution check-raise 76 suited as a bluff, rather than KT?"
+prompt = "River K♠ 9♦ 5♣ 3♥ 2♠. You checked with 55, KT, K8 suited, K7 suited or 76 suited, and your opponent, holding AA, KQ, KJ, QJ suited or JT suited, bets a third of the pot. Why does the solved strategy check-raise 76 suited as a bluff, rather than KT?"
 options = [
   "76s can never win at showdown, so it gains most from making better hands fold; KT can win by calling",
   "76s is the strongest hand in the range",
@@ -146,9 +168,12 @@ concepts = ["check-raises"]
 ## What a check-raise does {#what}
 
 ::: fact
-A **check-raise** is checking, then raising after your opponent bets. On the river it is
-polarised like any river raise: very strong hands raising for value, and hands that cannot win
-at showdown raising as bluffs.
+A **check-raise** is checking, then raising after your opponent bets.
+:::
+
+::: heuristic
+On the river a check-raise is usually polarised, like most river raises: very strong hands
+raising for value, and hands that cannot win at showdown raising as bluffs.
 :::
 
 ## The spot {#spot}
@@ -156,13 +181,22 @@ at showdown raising as bluffs.
 ::: solver
 River K♠ 9♦ 5♣ 3♥ 2♠, pot 10bb, 100bb behind, no rake. The first player holds 55, KT, K8
 suited, K7 suited or 76 suited, and must check. The second holds AA, KQ, KJ, QJ suited or JT
-suited, and may check or bet 33% of the pot. After a bet, the first player may fold, call or
-raise 50% of the pot. Solved by RiverLab each time this lesson loads, within 0.05% of the pot
-of an equilibrium of this tree.
+suited, and may check or bet 33% of the pot (3.3bb). After a bet, the first player may fold,
+call or raise by 50% of the pot after calling: to 3.3 + 0.5 × (10 + 3.3 + 3.3) = 11.6bb. The
+second player cannot re-raise. Solved by RiverLab each time the content is synced, within 0.05%
+of the pot of an equilibrium of this tree: an approximate equilibrium for these sizes only.
 :::
 
 ```riverlab:question
 {"id": "ip-bets"}
+```
+
+```riverlab:question
+{"id": "ip-value-bets"}
+```
+
+```riverlab:question
+{"id": "ip-bluffs-bet"}
 ```
 
 ## Who check-raises {#who}
@@ -195,8 +229,9 @@ of an equilibrium of this tree.
 
 ::: intermediate
 Facing a bet, the kings are pure bluff-catchers: they beat QJ and JT and lose to AA, KQ and KJ.
-The solution calls just enough of them to stop the bluffs from profiting, and it picks the
-kings that block the fewest bluffs. Holding a ten removes JT combinations from your opponent's
+The solution calls with just enough of them to make the bluffs indifferent between betting and
+checking (QJ and JT beat 76s at showdown, so they are not pure bluffs, and the single-bet MDF
+does not apply exactly), and it picks the kings that block the fewest bluffs. Holding a ten removes JT combinations from your opponent's
 range, so KT is called with less often.
 :::
 

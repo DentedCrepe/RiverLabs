@@ -3,7 +3,7 @@ slug = "implied-odds"
 title = "Implied and reverse implied odds"
 level = 2
 order = 4
-version = 1
+version = 2
 status = "published"
 summary = "When a draw can call without the direct price, because of what it wins later; and when hitting can cost you."
 estimated_minutes = 15
@@ -19,7 +19,7 @@ tags = ["math", "implied-odds", "draws"]
 status = "pending"
 reviewer = ""
 reviewed_on = ""
-notes = "Drafted with AI assistance. Every numeric answer is computed by poker-theory (pot_odds, implied_odds) and re-checked when the content is synced; awaiting review by a person."
+notes = "Drafted with AI assistance. Every numeric answer is computed by poker-theory (pot_odds, implied_odds) and re-checked when the content is synced; awaiting review by a person. AI review pass (2026-11): checked prose, labels, numbers and questions; fixes applied. Still needs review by a person."
 
 [[tools]]
 href = "/postflop"
@@ -34,7 +34,7 @@ year = 2006
 [[questions]]
 id = "direct-price"
 type = "numeric"
-prompt = "Turn. The pot is 10bb and your opponent bets 5bb. You have a flush draw: 9 outs among 46 unseen cards, and you assume you win if and only if the river is a heart. What equity (in %) does a call need on the direct price alone?"
+prompt = "Turn. The pot is 10bb and your opponent bets 5bb. You have a flush draw: 9 outs among 46 unseen cards, and you assume you win if and only if the river is a heart. There is no rake. What equity (in %) does a call need on the direct price alone?"
 answer = 25.0
 tolerance = 0.05
 unit = "%"
@@ -55,7 +55,7 @@ actions = { BB = "bets 5bb" }
 [[questions]]
 id = "needed-later"
 type = "numeric"
-prompt = "Turn. The pot is 10bb and your opponent bets 5bb. Your flush draw hits 9 times in 46, and you assume you win if and only if it hits. If you call and miss, you give up. How much (in bb) must you win on average from later bets when you hit, for the call to break even?"
+prompt = "Turn. The pot is 10bb and your opponent bets 5bb. Your flush draw hits 9 times in 46, and you assume you win if and only if it hits. If you call and miss, you give up. There is no rake. How much (in bb) must you win on average from later bets when you hit, for the call to break even?"
 answer = 5.56
 tolerance = 0.01
 unit = "bb"
@@ -76,7 +76,7 @@ actions = { BB = "bets 5bb" }
 [[questions]]
 id = "short-stack"
 type = "decision"
-prompt = "Turn. The pot is 10bb and your opponent bets 5bb, leaving them only 3bb behind. Your flush draw hits 9 times in 46 and you assume you win if and only if it hits. Ignoring rake, should you call?"
+prompt = "Turn. The pot is 10bb and your opponent bets 5bb, leaving them only 3bb behind. Your flush draw hits 9 times in 46 and you assume you win if and only if it hits. There is no rake. Should you call?"
 options = [
   "Call: implied odds make up the difference",
   "Fold: even winning their last 3bb every time you hit is less than the 5.56bb you would need",
@@ -96,7 +96,7 @@ options = [
   "K♠ K♦: top set",
 ]
 answer = 1
-explanation = "Reverse implied odds are what you lose when you make a hand that is often second best. When the flush comes, 6♥ 5♥ can lose a big pot to any higher heart; the ace-high flush cannot be beaten by another flush, and top set is the best hand now."
+explanation = "Reverse implied odds are what you lose when you make or hold a hand that is often second best. When the flush comes, 6♥ 5♥ can lose a big pot to any higher heart; the ace-high flush cannot be beaten by another flush, and top set is the best hand now."
 concepts = ["implied-odds", "reverse-implied-odds"]
 +++
 
@@ -109,8 +109,8 @@ that loses money on the direct price can still be profitable if hitting wins eno
 
 ::: math
 Call $C$ into a pot $P$ (the bet included) with a draw that hits with probability $e$. If you hit
-you win the pot plus an extra $W$ on later streets; if you miss you give up. The call breaks even
-when
+you win the pot plus an extra $W$ on later streets; if you miss you give up. With no rake, the
+call breaks even when
 
 $$ e\,(P + C + W) = C \quad\Longleftrightarrow\quad W = \frac{(1 - e)\,C}{e} - P . $$
 
@@ -128,7 +128,9 @@ The pot-odds figure is the special case $W = 0$.
 ## When implied odds are small {#limits}
 
 ::: fact
-You can never win more later than your opponent has left in their stack.
+You can never win more on later streets than the effective stack after your call: the smaller
+of what you and your opponent have left. In a multiway pot, the limit is what your opponents have
+left between them, each counted only up to what you have left.
 :::
 
 ::: heuristic
@@ -144,8 +146,8 @@ you make is well hidden and your opponent is likely to have a strong but second-
 ## Reverse implied odds {#reverse}
 
 ::: fact
-**Reverse implied odds** are the money you lose on later streets when you make a hand that is
-still beaten. They reduce what a call is worth.
+**Reverse implied odds** are the money you lose on later streets when you make or hold a hand
+that is still beaten. They reduce what a call is worth.
 :::
 
 ::: intermediate
@@ -156,7 +158,7 @@ you lose.
 
 ::: approximation
 The break-even formula above treats "hit" as "win" and "miss" as "give up". Real hands are messier:
-you sometimes win without hitting, lose after hitting, or face more bets before the river. Use it
+you sometimes win without hitting, lose after hitting, or face more bets before the hand ends. Use it
 as an estimate of the size of the later winnings you need, not an exact rule.
 :::
 

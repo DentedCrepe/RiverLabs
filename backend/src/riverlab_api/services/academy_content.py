@@ -604,4 +604,42 @@ def read_content(root: Path) -> ContentReport:
         report.warnings.append(f"curriculum.toml links to lesson {missing!r}, which is missing or invalid")
     for unlinked in sorted(slugs - linked):
         report.warnings.append(f"lesson {unlinked!r} is not linked from any curriculum topic")
+    check_order_and_wording(report)
     return report
+
+
+# Prompts are asked out of order in revision, so they must not lean on other questions.
+CROSS_REFERENCES = (
+    "same spot",
+    "same river",
+    "same flop",
+    "same turn",
+    "previous question",
+    "next question",
+    "previous lesson",
+    "next lesson",
+    "the question above",
+    "the question below",
+)
+
+
+def check_order_and_wording(report: ContentReport) -> None:
+    """Prerequisites must be taught earlier in the curriculum (no loops), and prompts must stand alone."""
+    by_slug = {lesson.slug: lesson for lesson in report.lessons}
+    topic_lesson = {t["slug"]: t.get("lesson") for lv in report.curriculum for t in lv.get("topics", [])}
+    for lesson in report.lessons:
+        for p in lesson.meta.get("prerequisites", []):
+            dep = by_slug.get(topic_lesson.get(p) or "")
+            if dep is not None and (dep.level, dep.position) >= (lesson.level, lesson.position):
+                report.errors.append(
+                    f"{lesson.source_path}: prerequisite {p!r} is taught in {dep.slug!r}, "
+                    "which does not come before this lesson (level, order)"
+                )
+        for q in lesson.questions:
+            prompt = str(q.get("prompt", "")).lower()
+            for phrase in CROSS_REFERENCES:
+                if phrase in prompt:
+                    report.errors.append(
+                        f"{lesson.source_path}: question {q.get('id')!r} says {phrase!r}; "
+                        "prompts must stand alone"
+                    )

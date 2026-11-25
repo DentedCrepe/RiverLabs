@@ -3,7 +3,7 @@ slug = "equilibrium"
 title = "Zero-sum games, equilibrium and mixed strategies"
 level = 3
 order = 1
-version = 1
+version = 2
 status = "published"
 summary = "What a Nash equilibrium is, why a two-player zero-sum game has a value, and why good strategies mix by making the opponent indifferent."
 estimated_minutes = 20
@@ -19,7 +19,7 @@ tags = ["game-theory", "equilibrium", "mixed-strategies"]
 status = "pending"
 reviewer = ""
 reviewed_on = ""
-notes = "Drafted with AI assistance. Every numeric answer is computed by poker-theory (zero_sum_2x2) and re-checked when the content is synced; awaiting review by a person."
+notes = "Drafted with AI assistance. Every numeric answer is computed by poker-theory (zero_sum_2x2) and re-checked when the content is synced; awaiting review by a person. AI review pass (2026-11): checked prose, labels, numbers and questions; fixes applied. Still needs review by a person."
 
 [[tools]]
 href = "/solver"
@@ -120,12 +120,16 @@ concepts = ["indifference"]
 
 ::: fact
 A game is **zero-sum** when whatever one player wins the others lose. Heads-up poker without rake
-is a two-player zero-sum game: the chips just move between the players.
+is a two-player zero-sum game: the chips just move between the players. With three or more
+players, equilibria still exist (Nash's theorem, below), but none of the two-player guarantees in
+this lesson, such as the game's value, apply.
 :::
 
 ::: approximation
-Rake takes chips out of the pot, so a raked game is not exactly zero-sum. Solvers that model rake
-handle that by subtracting it from the pot.
+Rake takes chips out of the pot, so a raked game is not zero-sum, and strictly there is then no
+game value and an equilibrium strategy no longer guarantees a minimum result. Solvers that model
+rake still compute approximate equilibria of the raked game, but the zero-sum guarantees in this
+lesson do not strictly hold for it.
 :::
 
 ## Best responses and equilibrium {#equilibrium}
@@ -184,12 +188,13 @@ equilibrium is pure.
 ::: fact
 At a mixed equilibrium, every action a player uses with positive probability has the same expected
 value against the opponent's strategy. Each player mixes in exactly the proportions that make the
-**other** player indifferent between their choices.
+**other** player indifferent between the choices that player mixes between (any choice they never
+use is worth no more).
 :::
 
 ::: math
 For a 2×2 game with payoffs $a, b$ (Top against Left, Right) and $c, d$ (Bottom against Left,
-Right) and no dominant row or column, the row player plays Top with probability
+Right) and no saddle point (no pure equilibrium), the row player plays Top with probability
 
 $$ p = \frac{d - c}{a - b - c + d}, \qquad v = \frac{ad - bc}{a - b - c + d}. $$
 :::
@@ -203,9 +208,11 @@ $$ p = \frac{d - c}{a - b - c + d}, \qquad v = \frac{ad - bc}{a - b - c + d}. $$
 ```
 
 ::: intermediate
-The minimum defence frequency and bluff ratios from the earlier lesson are this principle in a
-poker setting: the bettor bluffs just often enough to make a bluff-catcher indifferent, and the
-caller defends just often enough to make a bluff indifferent.
+The minimum defence frequency and bluff ratios, in the lesson on them later in this level, are
+this principle in a simple river model (a polarised bettor whose bluffs never win at showdown,
+against a caller holding only bluff-catchers, one bet and no raises): the bettor bluffs just often
+enough to make a bluff-catcher indifferent, and the caller defends just often enough to make a
+bluff indifferent.
 :::
 
 ```riverlab:question
