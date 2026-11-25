@@ -113,7 +113,11 @@ function Setup({ onCreated }: { onCreated: (s: PlayState) => void }) {
             </Select>
           )}
         </Field>
-        <Field label="River leak (every bot)" hint="Practise exploiting one documented leak; graded in the report.">
+        <Field
+          label="River leak (every bot)"
+          hint="Practise exploiting one documented leak, graded in the report. Hidden: each bot gets a random leak (or none) and you guess them at the end."
+          error={errors.leak}
+        >
           {(id) => (
             <Select id={id} value={form.leak} onChange={(e) => set({ leak: e.target.value as PlayForm["leak"] })}>
               {LEAKS.map((l) => (
@@ -121,6 +125,7 @@ function Setup({ onCreated }: { onCreated: (s: PlayState) => void }) {
                   {l.label}
                 </option>
               ))}
+              <option value="hidden">Hidden: spot the leak</option>
             </Select>
           )}
         </Field>

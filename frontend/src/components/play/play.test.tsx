@@ -54,6 +54,40 @@ describe("session report", () => {
     expect(screen.getByText("No hands yet")).toBeInTheDocument();
   });
 
+  it("asks you to spot hidden leaks before revealing them", async () => {
+    // Shape-only fixture: not engine output.
+    const leak = {
+      leak: "never_bluffs_river" as const,
+      label: "never bluffs the river",
+      best_response: "Fold bluff-catchers.",
+      decisions: 4,
+      matched: 3,
+      examples: [],
+      timeline: [
+        [3, false],
+        [5, false],
+        [8, true],
+        [9, true],
+      ] as [number, boolean][],
+      bets: 0,
+      mean_fold_share: null,
+      mean_break_even: null,
+      bets_profitable_as_bluffs: 0,
+    };
+    const hidden = [
+      { name: "Bot 1 (hard)", leak: "never_bluffs_river" as const },
+      { name: "Bot 2 (hard)", leak: "none" as const },
+    ];
+    render(<ReportView report={{ ...REPORT, leak_practice: [leak], hidden_leaks: hidden }} />);
+    expect(screen.queryByLabelText("Against: never bluffs the river")).toBeNull();
+    await userEvent.selectOptions(screen.getByLabelText("Leak of Bot 1 (hard)"), "never_bluffs_river");
+    await userEvent.selectOptions(screen.getByLabelText("Leak of Bot 2 (hard)"), "overfolds_river");
+    await userEvent.click(screen.getByRole("button", { name: "Reveal the leaks" }));
+    expect(screen.getByLabelText("Spot the leak")).toHaveTextContent("1 of 2 right");
+    const s = screen.getByLabelText("Against: never bluffs the river");
+    expect(s).toHaveTextContent("first half of those decisions 0 of 2 matched, second half 2 of 2");
+  });
+
   it("shows river play against a practice leak", () => {
     // Shape-only fixture: not engine output.
     const leak = {

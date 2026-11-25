@@ -109,7 +109,16 @@ pub struct Report {
     pub findings: Vec<Finding>,
     /// Your river play against bots given a leak (docs/play.md, "Practice leaks").
     pub leak_practice: Vec<LeakPractice>,
+    /// Spot-the-leak practice: every bot and the leak it really had (the interface asks for
+    /// your guess before showing these and `leak_practice`).
+    pub hidden_leaks: Vec<HiddenLeak>,
     pub caveats: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HiddenLeak {
+    pub name: String,
+    pub leak: crate::config::Leak,
 }
 
 /// How you played the river against bots with one documented leak.
@@ -125,6 +134,9 @@ pub struct LeakPractice {
     /// equity against the bot's actual range is at least the price.
     pub matched: u32,
     pub examples: Vec<Example>,
+    /// Each graded decision in order: (hand number, matched the best response), to see
+    /// whether you adjusted as the session went on.
+    pub timeline: Vec<(u64, bool)>,
     /// Your river bets and raises this bot faced, and how often its range (as you could see it)
     /// would have folded on average, against what a pure bluff of each bet needed.
     pub bets: u32,
@@ -156,6 +168,18 @@ fn best_response(leak: crate::config::Leak) -> &'static str {
     }
 }
 
+/// Spot-the-leak sessions: each bot's name and real leak, by name.
+fn hidden_leaks(records: &[HandRecord]) -> Vec<HiddenLeak> {
+    let mut out: Vec<HiddenLeak> = vec![];
+    for seat in records.iter().flat_map(|r| &r.seats).filter(|s| s.leak_hidden) {
+        if !out.iter().any(|h| h.name == seat.name) {
+            out.push(HiddenLeak { name: seat.name.clone(), leak: seat.leak });
+        }
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
 /// River play against leaky bots: graded calls and folds, and the fold shares your bets met.
 fn leak_practice(records: &[HandRecord]) -> Vec<LeakPractice> {
     use crate::config::Leak;
@@ -172,6 +196,7 @@ fn leak_practice(records: &[HandRecord]) -> Vec<LeakPractice> {
                         decisions: 0,
                         matched: 0,
                         examples: vec![],
+                        timeline: vec![],
                         bets: 0,
                         mean_fold_share: None,
                         mean_break_even: None,
@@ -210,6 +235,7 @@ fn leak_practice(records: &[HandRecord]) -> Vec<LeakPractice> {
                         let good = (a.action == Action::Call) == (eq >= req);
                         e.1.decisions += 1;
                         e.1.matched += u32::from(good);
+                        e.1.timeline.push((r.hand_no, good));
                         if !good && e.1.examples.len() < MAX_EXAMPLES {
                             e.1.examples.push(Example {
                                 record: ri,
@@ -439,6 +465,7 @@ pub fn build(records: &[HandRecord], tournament: bool) -> Report {
         all_in: (luck.hands > 0).then_some(luck),
         findings,
         leak_practice: leak_practice(records),
+        hidden_leaks: hidden_leaks(records),
         caveats,
     }
 }

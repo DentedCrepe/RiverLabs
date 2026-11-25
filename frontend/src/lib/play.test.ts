@@ -38,6 +38,13 @@ describe("play table config", () => {
     const leaky = buildTableConfig({ ...DEFAULT_PLAY_FORM, seats: "3", leak: "overfolds_river" }, GAME, 1);
     expect(leaky.ok && leaky.config.leaks).toEqual(["overfolds_river", "overfolds_river"]);
     expect(r.ok && r.config.leaks).toEqual([]);
+    const hide = buildTableConfig({ ...DEFAULT_PLAY_FORM, seats: "4", leak: "hidden" }, GAME, 5);
+    expect(hide.ok && hide.config.hide_leaks).toBe(true);
+    expect(hide.ok && (hide.config.leaks as string[]).length).toBe(3);
+    const again = buildTableConfig({ ...DEFAULT_PLAY_FORM, seats: "4", leak: "hidden" }, GAME, 5);
+    expect(again.ok && again.config.leaks).toEqual(hide.ok && hide.config.leaks); // same seed, same leaks
+    const ff = buildTableConfig({ ...DEFAULT_PLAY_FORM, format: "fast_fold", leak: "hidden" }, GAME, 5);
+    expect(!ff.ok && ff.errors.leak).toBeTruthy();
     const inexact = buildTableConfig({ ...DEFAULT_PLAY_FORM, format: "sit_and_go", payouts: "65.5/34.5" }, GAME, 1);
     expect(!inexact.ok && inexact.errors.payouts).toBeTruthy();
   });

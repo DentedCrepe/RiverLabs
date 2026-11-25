@@ -2,7 +2,7 @@
 
 import { CircleAlert } from "lucide-react";
 import { useState } from "react";
-import { type PlayReport as Report, type Ratio, pct } from "@/lib/play";
+import { LEAKS, type Leak, type LeakPractice, type PlayReport as Report, type Ratio, pct } from "@/lib/play";
 import { GLOSSARY } from "@/lib/glossary";
 import { useApi } from "@/lib/useApi";
 import { InfoTip } from "@/components/ui/InfoTip";
@@ -25,8 +25,109 @@ const STATS: [keyof Report["stats"], string, string][] = [
 
 const signed = (x: number, d = 1) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toFixed(d)}`;
 
+const LEAK_LABEL = Object.fromEntries(LEAKS.map((l) => [l.value, l.label])) as Record<Leak, string>;
+
+/** Early against late: did matching the best response improve as the session went on? */
+function Adjustment({ timeline }: { timeline: [number, boolean][] }) {
+  if (timeline.length < 4) return null;
+  const half = Math.floor(timeline.length / 2);
+  const rate = (xs: [number, boolean][]) => `${xs.filter(([, ok]) => ok).length} of ${xs.length}`;
+  return (
+    <p className="text-xs text-muted">
+      Adjusting: first half of those decisions {rate(timeline.slice(0, half))} matched, second half{" "}
+      {rate(timeline.slice(half))}.
+    </p>
+  );
+}
+
+/** Spot the leak: guess each bot's leak before the answers (and the leak sections) appear. */
+function SpotTheLeak({
+  bots,
+  revealed,
+  onReveal,
+}: {
+  bots: { name: string; leak: Leak }[];
+  revealed: Record<string, Leak> | null;
+  onReveal: (guesses: Record<string, Leak>) => void;
+}) {
+  const [guess, setGuess] = useState<Record<string, Leak>>(() =>
+    Object.fromEntries(bots.map((b) => [b.name, "none" as Leak])),
+  );
+  const right = revealed ? bots.filter((b) => revealed[b.name] === b.leak).length : 0;
+  return (
+    <section className="flex flex-col gap-2 rounded-md border border-line px-3 py-2" aria-label="Spot the leak">
+      <h3 className="text-sm font-semibold text-fg">Spot the leak</h3>
+      <p className="text-xs text-muted">
+        Each bot had one river leak, or none. Guess them, then reveal the answers and how your river play against each
+        one compared with the best response.
+      </p>
+      <ul className="flex flex-col gap-1.5">
+        {bots.map((b) => (
+          <li key={b.name} className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="min-w-28 text-fg">{b.name}</span>
+            {revealed ? (
+              <span className={cn(revealed[b.name] === b.leak ? "text-accent-strong" : "text-danger")}>
+                {revealed[b.name] === b.leak ? "Right" : "Not quite"}: {LEAK_LABEL[b.leak]}
+                {revealed[b.name] !== b.leak && ` (you said ${LEAK_LABEL[revealed[b.name]].toLowerCase()})`}
+              </span>
+            ) : (
+              <select
+                aria-label={`Leak of ${b.name}`}
+                value={guess[b.name]}
+                onChange={(e) => setGuess({ ...guess, [b.name]: e.target.value as Leak })}
+                className="h-8 rounded-md border border-line bg-canvas px-2 text-sm text-fg"
+              >
+                {LEAKS.map((l) => (
+                  <option key={l.value} value={l.value}>
+                    {l.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </li>
+        ))}
+      </ul>
+      {revealed ? (
+        <p className="font-mono text-sm text-fg tabular">
+          {right} of {bots.length} right
+        </p>
+      ) : (
+        <div>
+          <Button size="sm" onClick={() => onReveal(guess)}>
+            Reveal the leaks
+          </Button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function leakKey(sessionId?: string) {
+  return sessionId ? `riverlab.leakGuess.${sessionId}` : null;
+}
+
 export function ReportView({ report: r, sessionId }: { report: Report; sessionId?: string }) {
   const [browsing, setBrowsing] = useState<string | null>(null);
+  const hidden = r.hidden_leaks ?? [];
+  const [revealed, setRevealed] = useState<Record<string, Leak> | null>(() => {
+    const key = leakKey(sessionId);
+    try {
+      const saved = key ? window.localStorage.getItem(key) : null;
+      return saved ? (JSON.parse(saved) as Record<string, Leak>) : null;
+    } catch {
+      return null;
+    }
+  });
+  const reveal = (g: Record<string, Leak>) => {
+    setRevealed(g);
+    const key = leakKey(sessionId);
+    try {
+      if (key) window.localStorage.setItem(key, JSON.stringify(g));
+    } catch {
+      // not remembered: the answers stay shown until the page reloads
+    }
+  };
+  const leakSections: LeakPractice[] = hidden.length > 0 && !revealed ? [] : (r.leak_practice ?? []);
   if (r.hands === 0) return <EmptyState title="No hands yet" description="Play at least one hand to get a report." />;
   return (
     <div className="flex flex-col gap-5">
@@ -144,7 +245,8 @@ export function ReportView({ report: r, sessionId }: { report: Report; sessionId
         )}
       </section>
 
-      {(r.leak_practice ?? []).map((l) => (
+      {hidden.length > 0 && <SpotTheLeak bots={hidden} revealed={revealed} onReveal={reveal} />}
+      {leakSections.map((l) => (
         <section
           key={l.leak}
           className="flex flex-col gap-1 rounded-md border border-line px-3 py-2"
@@ -162,6 +264,7 @@ export function ReportView({ report: r, sessionId }: { report: Report; sessionId
             Best response for that decision: call exactly when your equity against the bot&apos;s actual range (Monte
             Carlo estimate) is at least the price; your call ends the betting.
           </p>
+          <Adjustment timeline={l.timeline ?? []} />
           {l.examples.slice(0, 3).map((e, i) => (
             <p key={i} className="font-mono text-[11px] text-muted">
               Hand {e.hand_no}: {e.text}

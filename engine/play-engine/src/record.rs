@@ -20,6 +20,9 @@ pub struct RecordSeat {
     /// A river leak this bot was given (docs/play.md).
     #[serde(default)]
     pub leak: crate::config::Leak,
+    /// Spot-the-leak practice: the leak was not shown at the table.
+    #[serde(default)]
+    pub leak_hidden: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

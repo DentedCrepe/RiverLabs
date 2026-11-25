@@ -107,6 +107,10 @@ pub struct TableConfig {
     /// Optional river leak per opponent (empty: none; otherwise one per opponent).
     #[serde(default)]
     pub leaks: Vec<Leak>,
+    /// Spot-the-leak practice: bot names do not say which leak they have (cash and sit & go
+    /// only; fast fold reshuffles the bots every hand).
+    #[serde(default)]
+    pub hide_leaks: bool,
 }
 
 /// Prize-pool percentages used when a sit & go gives none: winner takes all with up to three
@@ -141,6 +145,9 @@ impl TableConfig {
         }
         if !self.leaks.is_empty() && self.leaks.len() != self.opponents.len() {
             return bad(format!("give one leak per opponent ({}), or none", self.opponents.len()));
+        }
+        if self.hide_leaks && matches!(self.format, Format::FastFold { .. }) {
+            return bad("hidden leaks need the same bots every hand: use a cash table or a sit & go".into());
         }
         match &self.format {
             Format::Cash { game, .. } | Format::FastFold { game } => {
@@ -208,6 +215,7 @@ mod tests {
             opponents: vec![Difficulty::Hard; opponents],
             seed: 1,
             leaks: vec![],
+            hide_leaks: false,
         };
         cash(6, 5).validate().unwrap();
         cash(2, 1).validate().unwrap();
@@ -218,6 +226,7 @@ mod tests {
             opponents: vec![Difficulty::Easy; 2],
             seed: 1,
             leaks: vec![],
+            hide_leaks: false,
         };
         let l = |s, b| Level { small_blind: s, big_blind: b, ante: 0 };
         sng(vec![l(10, 20), l(15, 30)], 1500).validate().unwrap();
@@ -229,6 +238,7 @@ mod tests {
             opponents: vec![Difficulty::Easy; 3],
             seed: 1,
             leaks: vec![],
+            hide_leaks: false,
         };
         paid(vec![65, 35]).validate().unwrap();
         paid(vec![50, 30, 20]).validate().unwrap();

@@ -201,10 +201,20 @@ export type PlayReport = {
   findings: Finding[];
   /** River play against bots given a practice leak (engine report::LeakPractice). */
   leak_practice?: LeakPractice[];
+  /** Spot-the-leak sessions: every bot's real leak (shown after you guess). */
+  hidden_leaks?: { name: string; leak: Leak }[];
   caveats: string[];
 };
 
 export type Leak = "none" | "overbluffs_river" | "never_bluffs_river" | "overfolds_river" | "calls_too_much_river";
+
+/** A deterministic number in [0, 1) from an integer (for drawing hidden leaks from the seed). */
+function mix(n: number): number {
+  let x = (n ^ 0x9e3779b9) >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x85ebca6b) >>> 0;
+  x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35) >>> 0;
+  return ((x ^ (x >>> 16)) >>> 0) / 2 ** 32;
+}
 
 export const LEAKS: { value: Leak; label: string }[] = [
   { value: "none", label: "None" },
@@ -221,6 +231,7 @@ export type LeakPractice = {
   decisions: number;
   matched: number;
   examples: Finding["examples"];
+  timeline?: [number, boolean][];
   bets: number;
   mean_fold_share: number | null;
   mean_break_even: number | null;
@@ -238,8 +249,8 @@ export interface PlayForm {
   /** "10/20, 15/30, 25/50/5": small/big[/ante] per level. */
   levels: string;
   handsPerLevel: string;
-  /** A river leak given to every bot, to practise exploiting it. */
-  leak: Leak;
+  /** A river leak given to every bot, or "hidden": a random leak (or none) per bot, not shown. */
+  leak: Leak | "hidden";
   /** "65/35": percent of the prize pool per place; empty for the default for the table size. */
   payouts: string;
 }
@@ -301,9 +312,13 @@ export function buildTableConfig(form: PlayForm, game: GameConfig, seed: number)
     format =
       form.format === "cash" ? { type: "cash", game: g, auto_rebuy: form.autoRebuy } : { type: "fast_fold", game: g };
   }
+  const hidden = form.leak === "hidden";
+  if (hidden && form.format === "fast_fold") errors.leak = "Fast fold reshuffles the bots: use cash or a sit & go";
   if (Object.keys(errors).length) return { ok: false, errors };
-  const leaks = form.leak === "none" ? [] : opponents.map(() => form.leak);
-  return { ok: true, config: { format, opponents, seed, leaks } };
+  // Hidden: each bot draws one of the five (no leak included), from the session seed.
+  const pick = (i: number) => LEAKS[Math.floor(mix(seed + i * 7919) * LEAKS.length)].value;
+  const leaks = form.leak === "none" ? [] : opponents.map((_, i) => (hidden ? pick(i) : form.leak));
+  return { ok: true, config: { format, opponents, seed, leaks, hide_leaks: hidden } };
 }
 
 /** Formats an amount in the table's units. */

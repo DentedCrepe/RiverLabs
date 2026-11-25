@@ -122,7 +122,7 @@ impl Session {
         }];
         for (i, d) in cfg.opponents.iter().enumerate() {
             players.push(Player {
-                name: bot_name(&format!("Bot {}", i + 1), *d, cfg.leak(i)),
+                name: bot_name(&format!("Bot {}", i + 1), *d, if cfg.hide_leaks { Leak::None } else { cfg.leak(i) }),
                 difficulty: Some(*d),
                 leak: cfg.leak(i),
                 chips,
@@ -307,6 +307,7 @@ impl Session {
                     name: self.players[p].name.clone(),
                     difficulty: self.players[p].difficulty,
                     leak: self.players[p].leak,
+                    leak_hidden: self.cfg.hide_leaks && p != 0,
                     position: state.players()[k].position.short_name().into(),
                     starting_stack: stacks[k].mbb(),
                     hole_cards: hole[k].cards().iter().map(|c| c.to_string()).collect(),

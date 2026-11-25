@@ -83,6 +83,13 @@ node lock does in the Solver.
 the leak exactly, because it uses the bot's own policy, so your equity against its range, and
 every pot-odds check, measures you against the leaky range as it really is.
 
+**Spot the leak** (`hide_leaks`, cash or sit & go: fast fold reshuffles the bots every hand):
+each bot draws one of the four leaks or none, from the session seed, and its name does not say
+which. At the end the report asks you to guess each bot's leak, then reveals the answers and the
+sections below, including whether your river decisions matched the best response more often in
+the second half of the graded decisions than in the first. The leak is hidden in the interface
+only: it is in the session's records, so this is practice, not a test.
+
 The report adds a section per leak:
 - **River calls and folds** facing that bot's bet heads-up: how many matched the best response
   for the decision. Your call ends the betting, so calling is better than folding exactly when

@@ -57,6 +57,7 @@ fn cash_heads_up_and_six_max_play_and_report() {
             opponents,
             seed: 42,
             leaks: vec![],
+            hide_leaks: false,
         };
         let s = play(cfg, 30);
         assert_eq!(s.hands_played(), 30);
@@ -76,6 +77,7 @@ fn fast_fold_gives_new_opponents_each_hand() {
         opponents: vec![Difficulty::Easy, Difficulty::Medium, Difficulty::Hard],
         seed: 5,
         leaks: vec![],
+        hide_leaks: false,
     };
     let s = play(cfg, 15);
     assert_eq!(s.hands_played(), 15);
@@ -97,6 +99,7 @@ fn sit_and_go_ends_with_places() {
         opponents: vec![Difficulty::Hard, Difficulty::Easy],
         seed: 3,
         leaks: vec![],
+        hide_leaks: false,
     };
     let s = play(cfg, 400);
     assert_eq!(s.status(), SessionStatus::SessionOver, "the tournament finishes");
@@ -124,6 +127,7 @@ fn sit_and_go_all_ins_are_valued_with_icm() {
             opponents: vec![Difficulty::Easy, Difficulty::Hard, Difficulty::Easy],
             seed,
             leaks: vec![],
+            hide_leaks: false,
         };
         let s = play(cfg, 200);
         let shares: f64 = s.view().seats.iter().map(|seat| seat.icm_share.expect("sit & go seats have ICM")).sum();
@@ -162,6 +166,7 @@ fn every_decision_gets_feedback_and_reveal_is_flagged() {
         opponents: vec![Difficulty::Hard, Difficulty::Easy],
         seed: 21,
         leaks: vec![],
+        hide_leaks: false,
     };
     let mut s = Session::new(cfg).unwrap();
     let mut rng = ChaCha8Rng::seed_from_u64(4);
@@ -227,6 +232,7 @@ fn heads_up_river_spot_exports_a_solvable_tree_containing_the_line() {
         opponents: vec![Difficulty::Medium],
         seed: 11,
         leaks: vec![],
+        hide_leaks: false,
     };
     let models = cache();
     let mut s = Session::new(cfg.clone()).unwrap();
@@ -282,6 +288,7 @@ fn whole_hand_review_chains_street_solves() {
         opponents: vec![Difficulty::Medium],
         seed: 23,
         leaks: vec![],
+        hide_leaks: false,
     };
     let models = cache();
     let mut s = Session::new(cfg.clone()).unwrap();
@@ -397,6 +404,7 @@ fn equity_breakdown_explains_each_tracked_range() {
         opponents: vec![Difficulty::Hard, Difficulty::Medium],
         seed: 5,
         leaks: vec![],
+        hide_leaks: false,
     };
     let models = cache();
     let mut s = Session::new(cfg).unwrap();
@@ -477,6 +485,7 @@ fn practice_leaks_are_recorded_and_graded() {
             opponents: vec![Difficulty::Hard],
             seed: 8,
             leaks: vec![leak],
+            hide_leaks: false,
         };
         let s = play(cfg, 150);
         assert!(s.players[1].name.contains(leak.label()), "{}", s.players[1].name);
@@ -499,6 +508,29 @@ fn practice_leaks_are_recorded_and_graded() {
         opponents: vec![Difficulty::Hard, Difficulty::Easy],
         seed: 1,
         leaks: vec![Leak::OverfoldsRiver],
+        hide_leaks: false,
     };
     assert!(bad.validate().is_err(), "one leak per opponent");
+
+    // Spot the leak: names stay plain, the report lists every bot's real leak.
+    let hidden = TableConfig {
+        format: Format::Cash { game: GameConfig { players: 3, ..GameConfig::default() }, auto_rebuy: true },
+        opponents: vec![Difficulty::Hard, Difficulty::Hard],
+        seed: 4,
+        leaks: vec![Leak::NeverBluffsRiver, Leak::None],
+        hide_leaks: true,
+    };
+    let s = play(hidden, 40);
+    assert!(s.players.iter().all(|p| !p.name.contains("river")), "names give nothing away");
+    let report = play_engine::report::build(s.records(), false);
+    let leaks: Vec<Leak> = report.hidden_leaks.iter().map(|h| h.leak).collect();
+    assert_eq!(leaks, vec![Leak::NeverBluffsRiver, Leak::None]);
+    let ff = TableConfig {
+        format: Format::FastFold { game: GameConfig { players: 3, ..GameConfig::default() } },
+        opponents: vec![Difficulty::Hard, Difficulty::Hard],
+        seed: 4,
+        leaks: vec![Leak::NeverBluffsRiver, Leak::None],
+        hide_leaks: true,
+    };
+    assert!(ff.validate().is_err(), "fast fold reshuffles the bots");
 }
