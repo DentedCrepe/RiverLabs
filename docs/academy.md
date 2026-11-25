@@ -2,7 +2,7 @@
 
 An integrated course in no-limit hold'em and game theory, from the rules to solver theory.
 This page covers the architecture, the content format, and how lessons are written, checked,
-reviewed and published. The future AI tutor is designed in
+reviewed and published. The AI tutor (optional; it needs an Anthropic API key) is described in
 [`academy-ai-tutor.md`](academy-ai-tutor.md).
 
 ## Principles

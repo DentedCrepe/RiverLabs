@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, model_validator
+from pydantic import Field, PostgresDsn, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PLACEHOLDER_PASSWORD = "change-me-local-only"  # noqa: S105 - the value we refuse
@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     wake_unlock_command: str = ""
     # Academy lesson files (see docs/academy.md); synced into the database at startup.
     academy_content_dir: str = "../content/academy"
+    # Academy AI tutor (docs/academy-ai-tutor.md): Claude, through the Anthropic API. It needs an
+    # API key (ANTHROPIC_API_KEY, read without the RIVERLAB_ prefix) and the learner's consent.
+    tutor_enabled: bool = True
+    anthropic_api_key: SecretStr | None = Field(default=None, validation_alias="ANTHROPIC_API_KEY")
+    tutor_model: str = "claude-opus-5-5"
+    tutor_effort: Literal["low", "medium", "high"] = "medium"
     academy_sync_on_startup: bool = True
 
     @model_validator(mode="after")

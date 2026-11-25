@@ -45,3 +45,18 @@ class ReviewIn(StrictModel):
         if self.verdict == "changes_requested" and not self.notes.strip():
             raise ValueError("say what should change in notes")
         return self
+
+
+class TutorTurn(StrictModel):
+    role: Literal["learner", "tutor"]
+    text: str = Field(max_length=20_000)
+
+
+class TutorIn(StrictModel):
+    """One question to the AI tutor about a lesson. `consent`: the learner agreed to send the
+    lesson, their Academy progress and the conversation to Anthropic."""
+
+    level: Literal["simple", "intermediate", "advanced", "math"]
+    question: str = Field(min_length=1, max_length=4_000)
+    history: list[TutorTurn] = Field(default_factory=list, max_length=40)
+    consent: bool

@@ -108,6 +108,12 @@ on the same branch. `setup.sh` downloads it once, if it is not already in
 (`docs/trainer.md`). If the download fails, setup carries on and the Trainer page offers to
 build the table on the phone instead.
 
+## The AI tutor (optional)
+The Academy's AI tutor uses Anthropic's API, which needs your own API key. To turn it on, add a
+line `ANTHROPIC_API_KEY=...` to `~/riverlab-data/riverlab.env` (for example with
+`nano ~/riverlab-data/riverlab.env`), then run `riverlab restart`. Keep that file private: the
+key is billed to you. See docs/academy-ai-tutor.md.
+
 ## Where things live on the phone
 | What | Where |
 |---|---|

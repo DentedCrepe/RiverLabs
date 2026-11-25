@@ -11,8 +11,8 @@ from riverlab_api.api.guest import Guest, GuestForbiddenError
 from riverlab_api.config import get_settings
 from riverlab_api.db.models import AcademyLesson, AcademyProgress
 from riverlab_api.db.session import get_db
-from riverlab_api.schemas.academy import AttemptIn, BookmarkIn, ProgressUpdate, ReviewIn
-from riverlab_api.services import academy, academy_review
+from riverlab_api.schemas.academy import AttemptIn, BookmarkIn, ProgressUpdate, ReviewIn, TutorIn
+from riverlab_api.services import academy, academy_review, tutor
 
 router = APIRouter(prefix="/academy", tags=["academy"])
 DbSession = Annotated[Session, Depends(get_db)]
@@ -142,3 +142,18 @@ def add_review(slug: str, body: ReviewIn, db: DbSession, guest: Guest) -> dict[s
     if guest:
         raise GuestForbiddenError("Guests cannot review the owner's lessons")
     return academy_review.add(db, slug, body.verdict, body.reviewer, body.notes)
+
+
+@router.get("/tutor")
+def tutor_status() -> dict[str, Any]:
+    """Whether the AI tutor can answer (an Anthropic API key is set and it is turned on)."""
+    return tutor.status()
+
+
+@router.post("/lessons/{slug}/tutor")
+def ask_tutor(slug: str, body: TutorIn, db: DbSession) -> dict[str, Any]:
+    """An AI tutor answer about a lesson (docs/academy-ai-tutor.md): numbers come only from
+    RiverLab's engine, the lesson or the conversation, and untraced ones are flagged."""
+    return tutor.ask(
+        db, slug, body.level, body.question, [t.model_dump() for t in body.history], body.consent
+    )

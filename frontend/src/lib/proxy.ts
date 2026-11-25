@@ -3,6 +3,14 @@ const ALLOWED_PREFIXES = [["health"], ["api", "v1"]];
 const SEGMENT = /^[A-Za-z0-9._:-]+$/;
 const MAX_BODY_BYTES = 256 * 1024;
 const TIMEOUT_MS = 60_000;
+/** An AI tutor answer may take several tool rounds with Claude (docs/academy-ai-tutor.md). */
+const TUTOR_TIMEOUT_MS = 300_000;
+
+/** How long to wait for the API on this path. */
+export function timeoutFor(path: string[]): number {
+  const tutor = path.length === 6 && path[2] === "academy" && path[3] === "lessons" && path[5] === "tutor";
+  return tutor ? TUTOR_TIMEOUT_MS : TIMEOUT_MS;
+}
 
 function errorResponse(status: number, code: string, message: string): Response {
   return Response.json({ error: { code, message } }, { status });
@@ -78,7 +86,7 @@ export async function forwardToBackend(
       headers,
       body,
       cache: "no-store",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutFor(path)),
     });
     return new Response(res.body, {
       status: res.status,

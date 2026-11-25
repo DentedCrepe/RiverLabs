@@ -20,6 +20,7 @@ import { ErrorState, LoadingState } from "@/components/ui/States";
 import { cn } from "@/components/ui/cn";
 import { Markdown } from "./Markdown";
 import { QuestionCard } from "./QuestionCard";
+import { TutorPanel } from "./TutorPanel";
 import { LessonComponent, LessonQuestions } from "./registry";
 
 const CALLOUT: Record<string, { label: string; className: string }> = {
@@ -274,6 +275,8 @@ export function LessonView({ slug }: { slug: string }) {
             <OtherLevels groups={otherLevels(s, lvl)} />
           </section>
         ))}
+
+        <TutorPanel slug={lesson.slug} level={lvl} />
 
         {lesson.questions.length > 0 && (
           <section aria-label="Knowledge check" className="flex flex-col gap-3">
