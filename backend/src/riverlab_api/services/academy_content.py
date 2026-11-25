@@ -182,7 +182,9 @@ def solve_query(params: dict[str, Any]) -> dict[str, Any]:
 
     `params`: `spec` (a SolveSpec), `path` (steps from the root, default the root),
     `max_exploitability_pct` (default 0.5: the solve must be at least this close to equilibrium,
-    so a lesson can state the bound), `subset` (optional hand-class labels, e.g. the bluffs).
+    so a lesson can state the bound), `subset` (optional hand-class labels, e.g. the bluffs),
+    `realisation` (also return each range's exact `equity`, its average `pot_share` and
+    `realisation` = pot_share / equity).
     Returns `exploitability_pct_pot`, `values_bb` and, at a decision node, `share`: for each
     action kind ("check", "bet"), label ("bet 15bb") and index ("a3"), the share of the acting
     player's range (by combination weight) that takes it. With a subset: `subset_share` (the
@@ -236,6 +238,17 @@ def solve_query(params: dict[str, Any]) -> dict[str, Any]:
         "share": everyone,
         "actions": node["actions"],
     }
+    if params.get("realisation"):
+        # Exact equity of the two starting ranges on this board, and the share of the starting
+        # pot each player wins on average in the solve (values are net of each player's half
+        # of the pot), divided by that equity. No rake, so the shares add up to 1.
+        board = "".join(spec["board"])
+        eq = engine.equity(list(spec["ranges"]), board, "", "exact", 0, 0, 10**10)["equity"]
+        pot_bb = spec["starting_pot_mbb"] / 1000.0
+        share = [(v + pot_bb / 2) / pot_bb for v in result["values_bb"]]
+        result["equity"] = eq
+        result["pot_share"] = share
+        result["realisation"] = [s / e if e > 0 else 0.0 for s, e in zip(share, eq, strict=True)]
     if subset:
         part = [c for c in node["by_class"] if c["label"] in subset]
         within = shares(part)

@@ -285,6 +285,16 @@ def test_solve_query_shares_sum_to_one_and_subset_parts_are_fractions() -> None:
         assert -1e-9 <= v <= 1 + 1e-9, (k, v)
 
 
+def test_solve_query_realisation_is_pot_share_over_equity() -> None:
+    solves = lesson_solves("l", _SOLVE_TABLE, [])
+    r = solve_query({"spec": solves["toy"], "realisation": True})
+    assert abs(sum(r["pot_share"]) - 1.0) < 1e-6, "no rake: the two shares make the whole pot"
+    assert abs(sum(r["equity"]) - 1.0) < 1e-9
+    for p in range(2):
+        assert abs(r["realisation"][p] * r["equity"][p] - r["pot_share"][p]) < 1e-9
+    assert "realisation" not in solve_query({"spec": solves["toy"]})
+
+
 def test_prerequisites_come_earlier_and_prompts_stand_alone(tmp_path: Path) -> None:
     import shutil
 

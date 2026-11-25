@@ -164,6 +164,9 @@ is a list of steps from the root, as in the solver API. The result has:
 - with `subset` (hand-class labels, e.g. `["76s", "T8s"]`): `subset_share` (the same, within the
   subset) and `subset_of_action` (the part of each action that comes from the subset, e.g. the
   bluff share of a bet);
+- with `realisation = true`: `equity` (each starting range's exact equity on the board),
+  `pot_share` (each player's average share of the starting pot in the solve) and
+  `realisation` (pot_share ÷ equity), for equity realisation;
 - `exploitability_pct_pot`, `values_bb` and `actions`; for a locked solve also
   `unlocked_values_bb` (the unlocked solve's values). A locked solve's exploitability bound is
   checked with the locked decisions held fixed (`docs/solver-validation.md`, "Node locking").

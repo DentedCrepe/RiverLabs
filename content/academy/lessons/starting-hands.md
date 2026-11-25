@@ -3,7 +3,7 @@ slug = "starting-hands"
 title = "Starting hands: classes, combinations and matchups"
 level = 1
 order = 8
-version = 2
+version = 3
 status = "published"
 summary = "How the 1,326 two-card hands group into 169 classes, how often each kind is dealt, and what the classic preflop matchups are worth."
 estimated_minutes = 15
@@ -187,7 +187,7 @@ connected overcards:
 ::: approximation
 All-in equity is what a hand wins with no more betting. When there is betting after the flop,
 hands that make strong pairs or draws (suited and connected cards, pairs that can make sets)
-can win more or less than their raw equity (equity realisation, a planned lesson).
+can win more or less than their raw equity (equity realisation, a later lesson).
 :::
 
 ## Which hands to play {#selection}

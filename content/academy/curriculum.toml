@@ -23,7 +23,7 @@ title = "Mathematical Foundations"
 summary = "Expected value and the counting that turns hands into ranges."
 topics = [
   { slug = "expected-value", title = "Expected value", lesson = "expected-value" },
-  { slug = "equity-realisation", title = "Equity realisation" },
+  { slug = "equity-realisation", title = "Equity realisation", lesson = "equity-realisation" },
   { slug = "fold-equity", title = "Fold equity", lesson = "fold-equity" },
   { slug = "implied-odds", title = "Implied odds", lesson = "implied-odds" },
   { slug = "reverse-implied-odds", title = "Reverse implied odds", lesson = "implied-odds" },

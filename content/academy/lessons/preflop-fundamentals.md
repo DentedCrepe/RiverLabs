@@ -3,7 +3,7 @@ slug = "preflop-fundamentals"
 title = "Preflop fundamentals"
 level = 1
 order = 4
-version = 2
+version = 3
 status = "published"
 summary = "How a preflop hand unfolds: forced blinds, opens, 3-bets, and the price the big blind gets when defending."
 estimated_minutes = 15
@@ -142,7 +142,7 @@ $$ e\,(P + C) - C \ge 0 \quad\Longleftrightarrow\quad e \ge \frac{C}{P + C}. $$
 
 ::: approximation
 With betting still to come, a hand does not simply win its preflop equity. Position, the rest of the betting and how well a hand
-plays after the flop all change it (equity realisation, a planned lesson). The price tells you how much
+plays after the flop all change it (equity realisation, a later lesson). The price tells you how much
 equity a call needs before those effects.
 :::
 
