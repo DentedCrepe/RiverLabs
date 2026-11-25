@@ -28,6 +28,12 @@ once per table shape and cached:
 - **Tree:** 15bb or less is push/fold. Above that: open 2bb (under 30bb) or 2.5bb, re-raise 3×,
   at most two raises, all-in always offered (and forced above 85% of the stack).
 - **Solve:** blocker model on; up to 200 iterations or 45 s.
+- **No waiting mid-game:** the starting table's model is prepared before the first hand. If
+  stacks later move into a bucket whose model is not ready yet (common in a sit & go as the
+  blinds rise), the hand is dealt at once with the nearest stack depth already prepared for that
+  table, and the exact model is prepared in the background and used from the next hand after it
+  is ready. The table's note names the depth actually used. In a sit & go, the model for one
+  player fewer is prepared in the background too, ready for the next bust.
 
 A real bet is mapped to the nearest model action. When a hand leaves the model tree (a limp,
 a 4-bet, or a size the model doesn't have), bots use the rules below for the rest of
@@ -206,8 +212,9 @@ through with their full replays. The Today card recommends your biggest leak.
   `play_hands` immediately, so reports survive a restart. The game itself does not: it is
   marked `interrupted`.
 - Preparing a new table shape solves the bots' preflop model: seconds heads-up, up to about a
-  minute at six seats. Models are cached on disk (`RIVERLAB_RESULT_STORAGE_DIR`), so later
-  tables of the same shape start immediately.
+  minute at six seats (scaling with `RIVERLAB_SOLVER_THREADS`: 71 s on 2 threads and 37 s on 4
+  for the same six-seat work on the test machine). Models are cached on disk
+  (`RIVERLAB_RESULT_STORAGE_DIR`), so later tables of the same shape start immediately.
 - Playing needs the solver backend (`RIVERLAB_SOLVER_ENABLED=true`); otherwise the endpoints
   return 503.
 

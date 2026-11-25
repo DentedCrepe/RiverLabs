@@ -238,12 +238,26 @@ impl Session {
         sorted.sort_unstable_by(|a, b| b.cmp(a));
         let effective_bb = sorted[1].min(sorted[0]) as f64 / bb.mbb() as f64;
         let shape = self.model_shape(n, effective_bb);
-        let (model, model_note) = match models.get(&shape) {
-            Ok(m) => (Some(m), None),
-            Err(e) => (None, Some(format!("The preflop model was unavailable ({e}); bots used the fallback rules."))),
+        let (model, model_note, used_bb) = match models.get_or_nearest(&shape) {
+            Ok((m, used)) => (Some(m), None, used),
+            Err(e) => (
+                None,
+                Some(format!("The preflop model was unavailable ({e}); bots used the fallback rules.")),
+                shape.stack_bb,
+            ),
         };
+        // In a tournament the next bust needs a model for one player fewer: prepare it now.
+        if level.is_some() && n > 2 {
+            models.prepare_in_background(&self.model_shape(n - 1, effective_bb));
+        }
         self.notes = vec![match &model_note {
             Some(n) => n.clone(),
+            None if used_bb != shape.stack_bb => format!(
+                "Bots' preflop: GTOpen's preflop model for {n} players at {used_bb}bb, the nearest stack depth \
+                 prepared so far (approximate model). The {}bb model is being prepared and is used once it is \
+                 ready. Postflop: rule-based bots, not a solver.",
+                shape.stack_bb
+            ),
             None => format!(
                 "Bots' preflop: GTOpen's preflop model for {n} players at {}bb (approximate model; your stack and bet \
                  sizes are mapped to the nearest model spot). Postflop: rule-based bots, not a solver.",

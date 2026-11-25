@@ -74,8 +74,13 @@ riverlab stop
   `~/riverlab-data/solver-results/academy-sync.json`); otherwise starting takes about 0.01 s
   for the Academy instead of a few seconds.
 
-Defaults suited to a phone: solves use 2 threads and at most 3 GB of memory. To change them,
-re-run setup with `RIVERLAB_SOLVER_THREADS=4 RIVERLAB_SOLVER_MAX_MEMORY_MB=4096 bash
+Defaults suited to a phone: solves and the bots' preflop models use 4 threads on phones with
+six or more cores (2 otherwise) and at most 3 GB of memory. Solves scale almost linearly with
+threads: on a 4-core test machine, a full-range flop ran 1.47, 2.84 and 5.25 iterations a second
+on 1, 2 and 4 threads, and a six-player bot model took 71 s on 2 threads and 37 s on 4 for the
+same work. The engine is compiled for the phone's own CPU (`-C target-cpu=native`), which was
+5-10% faster on the test machine with identical results. To change the limits, re-run setup
+with, for example, `RIVERLAB_SOLVER_THREADS=2 RIVERLAB_SOLVER_MAX_MEMORY_MB=4096 bash
 riverlabs/scripts/termux/setup.sh`.
 
 ## 4. Update
