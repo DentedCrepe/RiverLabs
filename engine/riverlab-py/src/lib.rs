@@ -582,6 +582,11 @@ impl PlaySession {
         py.detach(|| self.lock().prepare(&self.models)).map_err(play_err)
     }
 
+    /// While you are to act: your equity and what it is made of (JSON `EquityBreakdown`).
+    fn equity_breakdown(&self, py: Python<'_>) -> PyResult<String> {
+        py.detach(|| self.lock().equity_breakdown()).map_err(play_err).and_then(|b| to_json(&b))
+    }
+
     /// Deals the next hand; returns the table view (JSON).
     fn next_hand(&self, py: Python<'_>) -> PyResult<String> {
         py.detach(|| {

@@ -121,6 +121,14 @@ class PlayManager:
             self._sync(db, row, game, view)
         return view
 
+    def equity(self, db: Session, session_id: uuid.UUID) -> dict[str, Any]:
+        """Your equity at this decision and why: each live bot's tracked range (exact for the
+        bots' own strategies), how their actions narrowed it, and how you do against each part."""
+        _, game, lock = self._game(db, session_id)
+        with lock:
+            result: dict[str, Any] = engine.play_call(game.equity_breakdown)
+        return result
+
     def set_reveal(self, db: Session, session_id: uuid.UUID, on: bool) -> dict[str, Any]:
         _, game, lock = self._game(db, session_id)
         with lock:

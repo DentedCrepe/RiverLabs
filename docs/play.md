@@ -107,9 +107,26 @@ sit & go decisions beyond chip equity (no ICM yet).
     off the model tree.
 
   Preflop feedback lists the model's whole mix for your hand class in that spot.
-- **Your odds on your turn.** The action bar shows your equity against the live bots' tracked
-  ranges (Monte Carlo) and, when you face a bet, the equity the price needs. The same equity is
-  stored with the decision, so the review shows what you saw.
+- **Your odds on your turn.** Your equity against the live bots' tracked ranges and, when you
+  face a bet, the equity the price needs. The table's **Equity** setting (kept per device)
+  chooses how it appears: **On request** (the default: a "Show my equity" button for the current
+  decision), **Always** (the stored Monte Carlo figure, shown at every decision) or **Off**. The
+  equity is stored with every decision either way, so the review and the report work the same.
+- **Why this number?** On your turn, `GET /api/v1/play/sessions/{id}/equity` returns the engine's
+  breakdown (`Session::equity_breakdown`, `engine/play-engine/src/session.rs`):
+  - your cards, the board and your made hand;
+  - for each bot still in the hand: its tracked range (combinations, share of all hands, a
+    13×13 grid of how much of each class remains); every action it took this hand, with the
+    share of the range that would have taken it (the bot's own policy probability, so exact for
+    its rules and model, not a guess); and, from the flop on, what its range makes on the board
+    with your equity against each part;
+  - your equity against all of them together: exact enumeration against one bot from the flop
+    on, otherwise seeded Monte Carlo with 20,000 samples (the method is shown). It can differ
+    from the stored figure by Monte Carlo noise;
+  - the range the bots perceive for you, when the bot model tracks one.
+
+  Combinations that share a card with yours or the board are excluded. Outside your turn the
+  endpoint returns 422.
 - **Hand history and review.** Every hand of the session is listed with your cards, the board,
   your result and how many decisions were flagged or unusual. Tap one to replay it street by
   street, with everyone's cards. Each of your decisions shows:

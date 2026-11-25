@@ -208,3 +208,28 @@ def test_invalid_tables_and_interrupted_games(live: tuple[TestClient, sessionmak
     conflict = client.post(f"/api/v1/play/sessions/{listed[0]['id']}/next")
     assert conflict.status_code == 409
     assert "report is still available" in conflict.json()["error"]["message"]
+
+
+def test_equity_breakdown_on_request(live: tuple[TestClient, sessionmaker[Session]]) -> None:
+    client, _ = live
+    sid = client.post("/api/v1/play/sessions", json={"config": cash_config(3)}).json()["session"]["id"]
+    wait_active(client, sid)
+    seen = 0
+    for _ in range(10):
+        state = client.post(f"/api/v1/play/sessions/{sid}/next").json()
+        while state["table"]["status"] == "awaiting_hero":
+            r = client.get(f"/api/v1/play/sessions/{sid}/equity")
+            assert r.status_code == 200, r.json()
+            b = r.json()
+            assert 0 <= b["equity"] <= 1
+            assert b["method"] in ("exact", "monte_carlo")
+            assert {o["position"] for o in b["opponents"]}, "every live opponent's range is shown"
+            for o in b["opponents"]:
+                assert abs(sum(c["weight"] for c in o["classes"]) - o["combos"]) < 1e-6
+            seen += 1
+            legal = state["table"]["legal"]
+            action = {"type": "check"} if legal["check"] else {"type": "call"}
+            state = client.post(f"/api/v1/play/sessions/{sid}/act", json={"action": action}).json()
+        r = client.get(f"/api/v1/play/sessions/{sid}/equity")
+        assert r.status_code == 422, "only while it is your turn"
+    assert seen > 0

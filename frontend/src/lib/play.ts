@@ -3,7 +3,7 @@
  * conversion only; the engine validates every rule (seats, blinds, stacks).
  */
 import type { LineStep, SolveSpecIn } from "./solve";
-import type { GameConfig } from "./types";
+import type { ClassStrategy, GameConfig } from "./types";
 import { bbToMbb, formatBb, parseScaled } from "./units";
 
 export type Difficulty = "easy" | "medium" | "hard";
@@ -327,3 +327,51 @@ export function withRecordDefaults(h: HandRecord): HandRecord {
     hero_decisions: (h.hero_decisions ?? []).map((d) => ({ ...d, feedback: d.feedback ?? null, spot: d.spot ?? null })),
   };
 }
+
+/** One bot action and what it did to that bot's tracked range (engine `RangeStep`). */
+export type RangeStep = {
+  street: string;
+  action: string;
+  source: "preflop_model" | "preflop_rules" | "postflop_rules";
+  kept: number;
+  combos_after: number;
+};
+
+export type OpponentRange = {
+  player: number;
+  name: string;
+  position: string;
+  combos: number;
+  share_of_all: number;
+  classes: ClassStrategy[];
+  steps: RangeStep[];
+  categories: { category: string; share: number; hero_equity: number }[];
+  hero_equity: number | null;
+};
+
+/** Your equity at a decision, and what it is made of (engine `EquityBreakdown`). */
+export type EquityBreakdown = {
+  street: string;
+  hero_cards: string[];
+  board: string[];
+  hero_hand: string | null;
+  equity: number | null;
+  method: "exact" | "monte_carlo";
+  samples: number | null;
+  required: number | null;
+  opponents: OpponentRange[];
+  hero_range: string | null;
+};
+
+export const HAND_CATEGORY: Record<string, string> = {
+  high_card: "No pair",
+  one_pair: "One pair",
+  two_pair: "Two pair",
+  three_of_a_kind: "Three of a kind",
+  straight: "Straight",
+  flush: "Flush",
+  full_house: "Full house",
+  four_of_a_kind: "Four of a kind",
+  straight_flush: "Straight flush",
+  royal_flush: "Royal flush",
+};

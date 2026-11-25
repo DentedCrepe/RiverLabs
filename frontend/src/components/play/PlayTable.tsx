@@ -3,6 +3,7 @@
 import { ChevronDown, DoorOpen, Eye, EyeOff, Play } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api";
+import { type EquityMode, setEquityMode, useEquityMode } from "@/lib/equityMode";
 import { GLOSSARY } from "@/lib/glossary";
 import { type Feedback, type PlayState, type TableView, amount, parseAmount } from "@/lib/play";
 import { Button } from "@/components/ui/Button";
@@ -10,35 +11,10 @@ import { TextInput } from "@/components/ui/Field";
 import { InfoTip } from "@/components/ui/InfoTip";
 import { ErrorState } from "@/components/ui/States";
 import { cn } from "@/components/ui/cn";
+import { EquityPanel } from "./EquityPanel";
 import { TableFelt } from "./TableFelt";
 
 /** Your live equity against the bots' ranges, and the price when facing a bet. */
-function OddsStrip({ equity, required }: { equity: number; required: number | null }) {
-  const enough = required === null || equity >= required;
-  return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm" aria-label="Your odds">
-      <span className="flex items-center gap-1 text-muted">
-        Your equity vs their ranges
-        <InfoTip label="your equity">{GLOSSARY.heroEquity}</InfoTip>
-      </span>
-      <span className={cn("font-mono font-semibold tabular", enough ? "text-accent-strong" : "text-danger")}>
-        {(equity * 100).toFixed(0)}%
-      </span>
-      {required !== null && (
-        <span className="text-muted">
-          Price needs <span className="font-mono text-fg tabular">{(required * 100).toFixed(0)}%</span>
-        </span>
-      )}
-      <span className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3" aria-hidden>
-        <span
-          className={cn("block h-full", enough ? "bg-accent" : "bg-danger")}
-          style={{ width: `${equity * 100}%` }}
-        />
-      </span>
-    </div>
-  );
-}
-
 const VERDICT: Record<Feedback["verdict"], { label: string; className: string }> = {
   mistake: { label: "Flagged", className: "border-danger/50 bg-danger-dim/40" },
   rare: { label: "Unusual", className: "border-warn/50 bg-warn-dim/40" },
@@ -64,7 +40,17 @@ function FeedbackCard({ item, compact }: { item: TableView["feedback"][number]; 
   );
 }
 
-function Controls({ t, onAct, busy }: { t: TableView; onAct: (a: Record<string, unknown>) => void; busy: boolean }) {
+function Controls({
+  t,
+  sessionId,
+  onAct,
+  busy,
+}: {
+  t: TableView;
+  sessionId: string;
+  onAct: (a: Record<string, unknown>) => void;
+  busy: boolean;
+}) {
   const l = t.legal!;
   const range = l.bet ?? l.raise;
   const kind = l.bet ? "bet" : "raise";
@@ -104,7 +90,7 @@ function Controls({ t, onAct, busy }: { t: TableView; onAct: (a: Record<string, 
       className="sticky bottom-0 z-20 -mx-4 flex flex-col gap-2 border-t border-line bg-canvas/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-md sm:border"
       aria-label="Your action"
     >
-      {t.hero_equity !== null && <OddsStrip equity={t.hero_equity} required={t.required_equity} />}
+      <EquityPanel key={`${t.hand_no}-${t.log.length}`} sessionId={sessionId} t={t} />
       <div className="grid grid-cols-3 gap-2">
         {l.fold ? (
           <Button disabled={busy} onClick={() => onAct({ type: "fold" })} className="h-11 justify-center">
@@ -204,6 +190,7 @@ export function PlayTable({ state, onChange }: { state: PlayState; onChange: (s:
   const [error, setError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [autoDeal, setAutoDeal] = useState(false);
+  const equityMode = useEquityMode();
   const t = state.table;
   const id = state.session.id;
 
@@ -261,6 +248,19 @@ export function PlayTable({ state, onChange }: { state: PlayState; onChange: (s:
             {t.reveal ? "Hide bots' cards" : "Reveal bots' cards"}
           </Button>
           <InfoTip label="revealing cards">{GLOSSARY.reveal}</InfoTip>
+          <label className="flex items-center gap-1 text-xs text-muted">
+            Equity
+            <select
+              aria-label="Show your equity"
+              value={equityMode}
+              onChange={(e) => setEquityMode(e.target.value as EquityMode)}
+              className="h-7 rounded-md border border-line bg-canvas px-1.5 text-xs text-fg"
+            >
+              <option value="request">On request</option>
+              <option value="always">Always</option>
+              <option value="off">Off</option>
+            </select>
+          </label>
           <Button
             size="sm"
             variant="ghost"
@@ -356,7 +356,7 @@ export function PlayTable({ state, onChange }: { state: PlayState; onChange: (s:
       ))}
 
       {t.status === "awaiting_hero" && t.legal && (
-        <Controls key={t.log.length} t={t} onAct={(a) => call("act", { action: a })} busy={busy} />
+        <Controls key={t.log.length} t={t} sessionId={id} onAct={(a) => call("act", { action: a })} busy={busy} />
       )}
     </div>
   );

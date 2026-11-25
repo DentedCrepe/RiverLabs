@@ -337,3 +337,55 @@ fn postflop_drills_are_dealt_from_a_solve_and_graded_by_ev() {
     assert_eq!(seen_players.len(), 2, "both positions are drilled");
     assert!(drill::deal(&solved, &spec, 3, Some(1)).unwrap().hero_player == 1);
 }
+
+#[test]
+fn equity_breakdown_explains_each_tracked_range() {
+    let cfg = TableConfig {
+        format: Format::Cash { game: GameConfig { players: 3, ..GameConfig::default() }, auto_rebuy: true },
+        opponents: vec![Difficulty::Hard, Difficulty::Medium],
+        seed: 5,
+    };
+    let models = cache();
+    let mut s = Session::new(cfg).unwrap();
+    let mut rng = ChaCha8Rng::seed_from_u64(3);
+    let (mut checked, mut postflop, mut with_steps) = (0, 0, 0);
+    while s.hands_played() < 25 {
+        s.start_hand(&models).unwrap();
+        while s.status() == SessionStatus::AwaitingHero {
+            let b = s.equity_breakdown().unwrap();
+            checked += 1;
+            let eq = b.equity.expect("equity against the live ranges");
+            assert!((0.0..=1.0).contains(&eq));
+            assert_eq!(b.hero_cards.len(), 2);
+            assert!(!b.opponents.is_empty());
+            for o in &b.opponents {
+                let grid: f64 = o.classes.iter().map(|c| c.weight).sum();
+                assert!((grid - o.combos).abs() < 1e-6, "the grid adds up to the range");
+                assert!(o.classes.iter().all(|c| (0.0..=1.0 + 1e-9).contains(&c.frequencies[0])));
+                assert!((0.0..=1.0 + 1e-9).contains(&o.share_of_all));
+                for st in &o.steps {
+                    assert!((0.0..=1.0 + 1e-9).contains(&st.kept), "{st:?}");
+                }
+                with_steps += usize::from(!o.steps.is_empty());
+                if b.board.len() >= 3 && o.combos > 0.0 {
+                    let total: f64 = o.categories.iter().map(|c| c.share).sum();
+                    assert!((total - 1.0).abs() < 1e-6, "categories cover the range: {total}");
+                    assert!(o.categories.iter().all(|c| (0.0..=1.0).contains(&c.hero_equity)));
+                }
+            }
+            if b.board.len() >= 3 {
+                postflop += 1;
+                assert!(b.hero_hand.is_some());
+                if b.opponents.len() == 1 {
+                    assert_eq!(b.method, "exact");
+                    let alone = b.opponents[0].hero_equity.unwrap();
+                    assert!((alone - eq).abs() < 1e-9, "heads-up, the total is the equity against that range");
+                }
+            }
+            let a = hero_action(&s, &mut rng);
+            s.act(a).unwrap();
+        }
+        assert!(s.equity_breakdown().is_err(), "only while you are to act");
+    }
+    assert!(checked > 10 && postflop > 0 && with_steps > 0, "{checked} {postflop} {with_steps}");
+}

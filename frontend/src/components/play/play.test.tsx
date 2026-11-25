@@ -175,10 +175,57 @@ import { HandReview } from "./HandHistory";
 import type { HandRecord } from "@/lib/play";
 
 describe("hand review", () => {
-  it("shows your live equity against the price", () => {
+  it("hides your equity until you ask, then explains it", async () => {
+    window.localStorage.removeItem("riverlab.equityMode");
+    // Shape-only fixture for rendering: not engine output.
+    const breakdown = {
+      street: "flop",
+      hero_cards: ["As", "Kd"],
+      board: ["Ks", "7d", "2c"],
+      hero_hand: "one_pair",
+      equity: 0.31,
+      method: "exact",
+      samples: null,
+      required: 0.25,
+      opponents: [
+        {
+          player: 0,
+          name: "Bot 1 (hard)",
+          position: "SB",
+          combos: 120,
+          share_of_all: 0.09,
+          classes: [],
+          steps: [
+            { street: "preflop", action: "raises to 2.5bb", source: "preflop_model", kept: 0.2, combos_after: 265 },
+          ],
+          categories: [{ category: "two_pair", share: 1, hero_equity: 0.31 }],
+          hero_equity: 0.31,
+        },
+      ],
+      hero_range: null,
+    };
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json(breakdown));
     render(<PlayTable state={table({})} onChange={() => undefined} />);
-    expect(screen.getByLabelText("Your odds")).toHaveTextContent("31%");
+    expect(screen.queryByLabelText("Your odds")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Show my equity" }));
+    expect(await screen.findByLabelText("Your odds")).toHaveTextContent("31%");
     expect(screen.getByLabelText("Your odds")).toHaveTextContent("Price needs 25%");
+    expect(fetchSpy).toHaveBeenLastCalledWith(expect.stringContaining("/equity"), expect.anything());
+    await userEvent.click(screen.getByRole("button", { name: "Why this number?" }));
+    const range = screen.getByLabelText("Bot 1 (hard)'s range");
+    expect(range).toHaveTextContent("raises to 2.5bb");
+    expect(range).toHaveTextContent("Two pair");
+    fetchSpy.mockRestore();
+  });
+
+  it("shows your equity at once when set to always, and nothing when off", async () => {
+    render(<PlayTable state={table({})} onChange={() => undefined} />);
+    await userEvent.selectOptions(screen.getByLabelText("Show your equity"), "always");
+    expect(screen.getByLabelText("Your odds")).toHaveTextContent("31%");
+    await userEvent.selectOptions(screen.getByLabelText("Show your equity"), "off");
+    expect(screen.queryByLabelText("Your odds")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show my equity" })).toBeNull();
+    window.localStorage.removeItem("riverlab.equityMode");
   });
 
   it("replays a hand street by street with the model's mix for your decisions", () => {

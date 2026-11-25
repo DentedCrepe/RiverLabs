@@ -72,6 +72,13 @@ def act(session_id: uuid.UUID, body: PlayAction, db: DbSession) -> PlayState:
     return _state(db, session_id, play.require().act(db, session_id, body.action))
 
 
+@router.get("/sessions/{session_id}/equity")
+def equity(session_id: uuid.UUID, db: DbSession) -> dict[str, Any]:
+    """While it is your turn: your equity against the bots' tracked ranges, each range, how the
+    bots' actions narrowed it, and (from the flop) how you do against each kind of hand in it."""
+    return play.require().equity(db, session_id)
+
+
 @router.post("/sessions/{session_id}/reveal", response_model=PlayState)
 def reveal(session_id: uuid.UUID, body: RevealIn, db: DbSession) -> PlayState:
     """Practice mode: show the bots' cards during hands. Hands played with it on are flagged."""

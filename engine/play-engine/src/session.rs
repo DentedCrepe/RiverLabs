@@ -59,6 +59,21 @@ struct Hand {
     /// The tracked ranges when the current street was dealt: a solve of a street starts there,
     /// before the bot's own actions on that street narrow its range.
     street_ranges: Vec<Vec<f64>>,
+    /// How each bot action narrowed that bot's tracked range, in order (game seat, step).
+    range_log: Vec<(usize, RangeStep)>,
+}
+
+/// One bot action and what it did to that bot's tracked range.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RangeStep {
+    pub street: String,
+    pub action: String,
+    /// Whether the bot followed the preflop model or the documented rules.
+    pub source: DecisionSource,
+    /// Share of the range (by combo weight) still in it after this action.
+    pub kept: f64,
+    /// Weighted combos in the range after the action (all 1,326 combos at the start).
+    pub combos_after: f64,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -311,6 +326,7 @@ impl Session {
             hero_odds: None,
             hero_range: None,
             street_ranges: vec![],
+            range_log: vec![],
         });
         self.hand_no += 1;
         self.run()
@@ -367,9 +383,22 @@ impl Session {
                     if let Err(e) = hand.state.apply(d.action) {
                         return Err(PlayError::Engine(format!("bot chose an illegal action {:?}: {e}", d.action)));
                     }
+                    let before_weight: f64 = hand.ranges[to_act].iter().sum();
                     for (w, p) in hand.ranges[to_act].iter_mut().zip(&d.combo_probability) {
                         *w *= p;
                     }
+                    let after_weight: f64 = hand.ranges[to_act].iter().sum();
+                    let chips = matches!(self.cfg.format, Format::SitAndGo { .. });
+                    hand.range_log.push((
+                        to_act,
+                        RangeStep {
+                            street: street_name(before.street()).into(),
+                            action: crate::view::describe(&d.action, chips, hand.state.players()[to_act].all_in),
+                            source: d.source,
+                            kept: if before_weight > 0.0 { after_weight / before_weight } else { 0.0 },
+                            combos_after: after_weight,
+                        },
+                    ));
                     let model_action = if d.source == DecisionSource::PreflopModel { d.model_action } else { None };
                     after_action(hand, &before, to_act, d.action, model_action);
                 }
@@ -756,4 +785,178 @@ fn equity_vs_ranges(hand: &Hand, seat: usize, opponents: &[usize], board: &[Card
     let b = poker_core::Board::new(board.to_vec()).ok()?;
     let seed = hand.record.hand_no.wrapping_mul(31) ^ hand.state.history().len() as u64;
     equity_engine::monte_carlo(&ranges, &b, card_set(&[]), 6_000, seed).ok().map(|r| r.equity[0])
+}
+
+/// Hands in a range on the current board, grouped by what they make there.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CategoryShare {
+    /// `hand_evaluator::HandCategory` in snake case ("one_pair", "flush", ...).
+    pub category: String,
+    /// Share of the range (by combo weight).
+    pub share: f64,
+    /// Your all-in equity against just these hands.
+    pub hero_equity: f64,
+}
+
+/// One opponent's tracked range, and why it looks the way it does.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct OpponentRange {
+    pub player: usize,
+    pub name: String,
+    pub position: String,
+    /// Weighted combos still possible given what you can see (your cards and the board).
+    pub combos: f64,
+    /// Those combos as a share of every hand they could have been dealt.
+    pub share_of_all: f64,
+    /// Per hand class: `weight` = weighted combos, `frequencies[0]` = share of the class's
+    /// possible combos still in the range.
+    pub classes: Vec<solver_gtopen::ClassStrategy>,
+    /// Each of this bot's actions this hand, and what it did to the range.
+    pub steps: Vec<RangeStep>,
+    /// From the flop on: the range grouped by made hand, with your equity against each group.
+    pub categories: Vec<CategoryShare>,
+    /// Your equity against this range alone (heads-up).
+    pub hero_equity: Option<f64>,
+}
+
+/// Your equity when you are to act, and what it is made of.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct EquityBreakdown {
+    pub street: String,
+    pub hero_cards: Vec<String>,
+    pub board: Vec<String>,
+    /// What your hand makes on the board (from the flop on), snake case.
+    pub hero_hand: Option<String>,
+    /// Your equity against every live opponent at once.
+    pub equity: Option<f64>,
+    /// `exact` (enumeration) or `monte_carlo` (seeded sampling) for `equity`.
+    pub method: String,
+    /// Monte Carlo samples behind `equity`, if sampled.
+    pub samples: Option<u64>,
+    /// The equity the price needs, if facing a bet.
+    pub required: Option<f64>,
+    pub opponents: Vec<OpponentRange>,
+    /// Your range at the flop in the bots' preflop model, when tracked (range notation).
+    pub hero_range: Option<String>,
+}
+
+/// Samples for the multiway equity and for preflop heads-up equities.
+const BREAKDOWN_SAMPLES: u64 = 20_000;
+
+fn category_name(c: hand_evaluator::HandCategory) -> String {
+    serde_json::to_value(c).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default()
+}
+
+/// Your equity against `ranges` (yours first): exact from the flop on with one opponent,
+/// otherwise seeded Monte Carlo.
+fn breakdown_equity(ranges: &[Range], board: &poker_core::Board, seed: u64) -> Option<(f64, String, Option<u64>)> {
+    if ranges.len() == 2 && board.cards().len() >= 3 {
+        if let Ok(r) = equity_engine::exact(ranges, board, card_set(&[]), equity_engine::DEFAULT_EXACT_BUDGET) {
+            return Some((r.equity[0], "exact".into(), None));
+        }
+    }
+    let r = equity_engine::monte_carlo(ranges, board, card_set(&[]), BREAKDOWN_SAMPLES, seed).ok()?;
+    Some((r.equity[0], "monte_carlo".into(), Some(r.samples)))
+}
+
+impl Session {
+    /// While you are to act: your equity against the live bots' tracked ranges, each range, and
+    /// how the bots' actions shaped it. The bots' ranges are exact: after each bot action, every
+    /// hand is weighted by how often that bot's own strategy takes that action with it.
+    pub fn equity_breakdown(&self) -> Result<EquityBreakdown> {
+        let hand = self.hand.as_ref().filter(|_| self.status == SessionStatus::AwaitingHero);
+        let hand = hand.ok_or_else(|| PlayError::State("equity is shown when it is your turn to act".into()))?;
+        let state = &hand.state;
+        let hero = hand.seat_player.iter().position(|&p| p == 0).expect("you have a seat");
+        let [a, b] = hand.hole[hero].cards();
+        let mine = Combo::new(a, b).ok_or_else(|| PlayError::Engine("invalid hole cards".into()))?;
+        let board_cards = state.board().cards().to_vec();
+        let board = poker_core::Board::new(board_cards.clone()).map_err(|e| PlayError::Engine(e.to_string()))?;
+        let seen = card_set(&board_cards).bits() | mine.card_set().bits();
+        let seed = hand.record.hand_no.wrapping_mul(0x9E37_79B9) ^ state.history().len() as u64;
+        let hero_range = equity_engine::single_combo_range(mine);
+        let hero_hand = (board_cards.len() >= 3).then(|| {
+            category_name(
+                hand_evaluator::evaluate_mask(card_set(&board_cards).bits() | mine.card_set().bits()).category(),
+            )
+        });
+
+        let mut opponents = Vec::new();
+        let mut ranges = vec![hero_range.clone()];
+        for k in (0..state.players().len()).filter(|&k| k != hero && !state.players()[k].folded) {
+            let weights: Vec<f64> = (0..COMBO_COUNT)
+                .map(|i| {
+                    let c = Combo::from_index(i).expect("combo index");
+                    if c.card_set().bits() & seen != 0 { 0.0 } else { hand.ranges[k][i].clamp(0.0, 1.0) }
+                })
+                .collect();
+            let range = Range::from_weights(weights.clone()).map_err(|e| PlayError::Engine(e.to_string()))?;
+            ranges.push(range.clone());
+            let live = (0..COMBO_COUNT).filter(|&i| Combo::from_index(i).expect("combo").card_set().bits() & seen == 0);
+            let live_count = live.clone().count() as f64;
+            let combos: f64 = weights.iter().sum();
+            // Hand classes: weighted combos and the share of the class still in the range.
+            let mut classes: std::collections::BTreeMap<(usize, usize), (String, f64, f64)> = Default::default();
+            for i in live {
+                let class = range_engine::HandClass::of(Combo::from_index(i).expect("combo"));
+                let e = classes.entry(class.grid_position()).or_insert_with(|| (class.to_string(), 0.0, 0.0));
+                e.1 += weights[i];
+                e.2 += 1.0;
+            }
+            let classes = classes
+                .into_iter()
+                .filter(|(_, (_, w, _))| *w > 0.0)
+                .map(|((row, col), (label, w, n))| solver_gtopen::ClassStrategy {
+                    label,
+                    row,
+                    col,
+                    weight: w,
+                    frequencies: vec![w / n],
+                })
+                .collect();
+            // From the flop on: what the range makes on this board, and how you do against each part.
+            let mut categories = Vec::new();
+            if board_cards.len() >= 3 && combos > 0.0 {
+                let mut by_cat: std::collections::BTreeMap<hand_evaluator::HandCategory, Vec<f64>> = Default::default();
+                for (i, &w) in weights.iter().enumerate().filter(|(_, w)| **w > 0.0) {
+                    let c = Combo::from_index(i).expect("combo");
+                    let cat =
+                        hand_evaluator::evaluate_mask(card_set(&board_cards).bits() | c.card_set().bits()).category();
+                    by_cat.entry(cat).or_insert_with(|| vec![0.0; COMBO_COUNT])[i] = w;
+                }
+                for (cat, part) in by_cat.into_iter().rev() {
+                    let share = part.iter().sum::<f64>() / combos;
+                    let part = Range::from_weights(part).map_err(|e| PlayError::Engine(e.to_string()))?;
+                    if let Some((eq, _, _)) = breakdown_equity(&[hero_range.clone(), part], &board, seed) {
+                        categories.push(CategoryShare { category: category_name(cat), share, hero_equity: eq });
+                    }
+                }
+            }
+            let player = hand.seat_player[k];
+            opponents.push(OpponentRange {
+                player,
+                name: self.players[player].name.clone(),
+                position: state.players()[k].position.short_name().into(),
+                combos,
+                share_of_all: if live_count > 0.0 { combos / live_count } else { 0.0 },
+                classes,
+                steps: hand.range_log.iter().filter(|(s, _)| *s == k).map(|(_, step)| step.clone()).collect(),
+                categories,
+                hero_equity: breakdown_equity(&[hero_range.clone(), range], &board, seed).map(|e| e.0),
+            });
+        }
+        let total = breakdown_equity(&ranges, &board, seed);
+        Ok(EquityBreakdown {
+            street: street_name(state.street()).into(),
+            hero_cards: vec![a.to_string(), b.to_string()],
+            board: board_cards.iter().map(|c| c.to_string()).collect(),
+            hero_hand,
+            equity: total.as_ref().map(|t| t.0),
+            method: total.as_ref().map_or_else(|| "monte_carlo".into(), |t| t.1.clone()),
+            samples: total.and_then(|t| t.2),
+            required: hand.hero_odds.and_then(|o| o.required),
+            opponents,
+            hero_range: hand.hero_range.clone(),
+        })
+    }
 }
