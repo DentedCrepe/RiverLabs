@@ -8,6 +8,7 @@ be built here, which takes tens of minutes. Nothing is loaded until the trainer 
 
 import json
 import logging
+import secrets
 import threading
 import uuid
 from pathlib import Path
@@ -165,12 +166,37 @@ def _solve(db: Session, job_id: uuid.UUID) -> tuple[Any, dict[str, Any], SolverR
     return trees.game(result), result.assumptions["spec"], result
 
 
+# "Any saved solve": the solve the next drill will use, chosen at random when a drill is dealt
+# and loaded in the background while the player answers. Loading a flop tree reads hundreds of MB
+# from storage, so this keeps dealing fast without making the choice any less random.
+_next_any: uuid.UUID | None = None
+_next_any_lock = threading.Lock()
+
+
+def _preload(job_id: uuid.UUID) -> None:
+    from riverlab_api.db.session import get_sessionmaker
+
+    try:
+        with get_sessionmaker()() as db:
+            _, result, _ = compute.JobService(db).result(job_id)
+            trees.game(result)
+    except Exception:  # only a warm-up: a failure here is reported when the drill is dealt
+        logger.debug("could not preload postflop solve %s", job_id, exc_info=True)
+
+
 def postflop_drill(db: Session, job_id: uuid.UUID | None, seed: int, hero: int | None) -> dict[str, Any]:
+    global _next_any
     if job_id is None:
         sources = postflop_sources(db)
         if not sources:
             raise ConflictError("No saved postflop solves yet: solve a spot first (Solver, or a hand review)")
-        job_id = sources[seed % len(sources)]["job_id"]
+        ids = [s["job_id"] for s in sources]
+        with _next_any_lock:
+            job_id = _next_any if _next_any is not None and _next_any in ids else ids[seed % len(ids)]
+            _next_any = ids[secrets.randbelow(len(ids))]
+            upcoming = _next_any
+        if upcoming != job_id:
+            threading.Thread(target=_preload, args=(upcoming,), daemon=True).start()
     game, spec, result = _solve(db, job_id)
     drill: dict[str, Any] = engine.play_call(game.drill, json.dumps(spec), seed, hero)
     # A solve from a hand you played: send that hand, so the drill can show what came before.
