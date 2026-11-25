@@ -86,11 +86,11 @@ number = 6
 title = "Advanced Theoretical Applications"
 summary = "Beyond two-player equilibria: multiway games, subgames, locking and exploitation."
 topics = [
-  { slug = "multiway-game-theory", title = "Multiway game theory" },
+  { slug = "multiway-game-theory", title = "Multiway game theory", lesson = "multiway" },
   { slug = "subgame-solving", title = "Subgame solving" },
   { slug = "node-locking", title = "Node locking", lesson = "node-locking" },
   { slug = "exploitative-adjustments", title = "Exploitative adjustments", lesson = "node-locking" },
-  { slug = "population-tendencies", title = "Population tendencies" },
+  { slug = "population-tendencies", title = "Population tendencies", lesson = "population-tendencies" },
   { slug = "equilibrium-refinements", title = "Equilibrium refinements" },
   { slug = "advanced-range-construction", title = "Advanced range construction" },
   { slug = "tournament-theory-icm", title = "Tournaments and ICM", lesson = "icm" },
