@@ -834,6 +834,7 @@ fn theory(kind: &str, params_json: &str) -> PyResult<String> {
             let plus = p.get("plus").and_then(serde_json::Value::as_bool).unwrap_or(false);
             serde_json::to_value(t::regret_matching_rps(small("iterations")?, start, plus).map_err(err)?)
         }
+        "sample_frequency" => serde_json::to_value(t::sample_frequency(u("successes")?, u("trials")?).map_err(err)?),
         "icm" | "icm_call" => {
             let list = |k: &str| p.get(k).and_then(|v| v.as_array()).ok_or_else(|| err(format!("missing list '{k}'")));
             let stacks: Vec<u64> = list("stacks")?

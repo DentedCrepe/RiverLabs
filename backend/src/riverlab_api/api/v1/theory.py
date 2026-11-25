@@ -21,6 +21,7 @@ Kind = Literal[
     "zero_sum_2x2",
     "icm",
     "icm_call",
+    "sample_frequency",
 ]
 
 

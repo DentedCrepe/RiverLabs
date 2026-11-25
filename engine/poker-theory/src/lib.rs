@@ -275,8 +275,55 @@ pub fn regret_matching_rps(iterations: u32, start_regrets: [f64; 3], plus: bool)
     Ok(out)
 }
 
+/// A frequency measured from a sample: `successes` of `trials` (e.g. hands where a player put
+/// money in voluntarily). Model: independent trials with one fixed underlying frequency.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SampleFrequency {
+    pub estimate: f64,
+    /// sqrt(p(1 − p) / n): the typical size of the estimate's sampling error.
+    pub standard_error: f64,
+    /// The 95% Wilson score interval (z = 1.959964), which stays inside [0, 1].
+    pub low_95: f64,
+    pub high_95: f64,
+}
+
+pub fn sample_frequency(successes: u64, trials: u64) -> Result<SampleFrequency> {
+    if trials == 0 || successes > trials {
+        return invalid("need at least one trial and no more successes than trials");
+    }
+    let n = trials as f64;
+    let p = successes as f64 / n;
+    let z = 1.959_964_f64;
+    let denom = 1.0 + z * z / n;
+    let centre = (p + z * z / (2.0 * n)) / denom;
+    let half = z * (p * (1.0 - p) / n + z * z / (4.0 * n * n)).sqrt() / denom;
+    Ok(SampleFrequency {
+        estimate: p,
+        standard_error: (p * (1.0 - p) / n).sqrt(),
+        low_95: (centre - half).max(0.0),
+        high_95: (centre + half).min(1.0),
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sample_frequencies_and_their_intervals() {
+        let f = super::sample_frequency(25, 100).unwrap();
+        assert!((f.estimate - 0.25).abs() < 1e-12);
+        assert!((f.standard_error - (0.25f64 * 0.75 / 100.0).sqrt()).abs() < 1e-12);
+        // Wilson 95% for 25/100 by hand: z² = 3.8415, denominator 1.038415, centre
+        // (0.25 + 0.019207) / 1.038415 = 0.25925, half-width 1.96 × sqrt(0.001875 + 0.000096) /
+        // 1.038415 = 0.08380, so (0.17545, 0.34305).
+        assert!((f.low_95 - 0.17545).abs() < 1e-4 && (f.high_95 - 0.34305).abs() < 1e-4, "{f:?}");
+        // Four times the sample halves the standard error.
+        let g = super::sample_frequency(100, 400).unwrap();
+        assert!((g.standard_error * 2.0 - f.standard_error).abs() < 1e-12);
+        let z = super::sample_frequency(0, 10).unwrap();
+        assert!(z.low_95 == 0.0 && z.high_95 > 0.0);
+        assert!(super::sample_frequency(1, 0).is_err() && super::sample_frequency(5, 4).is_err());
+    }
+
     use super::*;
 
     fn close(a: f64, b: f64) -> bool {
