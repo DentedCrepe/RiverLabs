@@ -53,3 +53,30 @@ export function signedBb(x: number, digits = 3): string {
   const v = Number(Math.abs(x).toFixed(digits));
   return `${x < 0 && v !== 0 ? "−" : "+"}${v}bb`;
 }
+
+/** An ICM push/fold spot (engine icm_push_fold::IcmSpot): stacks in action order, in chips. */
+export type IcmSpot = { stacks: number[]; small_blind: number; big_blind: number; ante: number; payouts: number[] };
+
+export type IcmDrill = {
+  spot: IcmSpot;
+  positions: string[];
+  hero: number;
+  /** null: first in (jam or fold); otherwise the index of the player who moved all-in. */
+  facing: number | null;
+  cards: string[];
+  class: string;
+};
+
+export type IcmGrade = {
+  drill: IcmDrill;
+  choice: "fold" | "play";
+  actions: string[];
+  frequencies: [number, number];
+  /** Your share of the prize pool (%) after each action, given the decision is reached. */
+  values_pct: [number, number];
+  loss_pct: number;
+  verdict: "correct" | "close" | "mistake";
+  epsilon_pct: number;
+  iterations: number;
+  approximations: string[];
+};

@@ -84,3 +84,29 @@ class PreflopAnswer(UUIDPk, CreatedAt, Base):
         CheckConstraint("verdict IN ('matches', 'mixed', 'differs')", name="verdict_kind"),
         CheckConstraint("model_frequency BETWEEN 0 AND 1", name="frequency_range"),
     )
+
+
+class IcmPushFoldAnswer(UUIDPk, CreatedAt, Base):
+    """ICM push/fold drill answers (3 to 6 players), graded by the share of the prize pool the
+    choice costs in the solved model (a modelled approximation; docs/trainer.md)."""
+
+    __tablename__ = "icm_push_fold_answers"
+
+    players: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    position: Mapped[str] = mapped_column(String(8), nullable=False)
+    # The position of the player whose all-in you faced; null when you were first in.
+    facing: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    cards: Mapped[str] = mapped_column(String(4), nullable=False)
+    hand_class: Mapped[str] = mapped_column(String(3), nullable=False, index=True)
+    choice: Mapped[str] = mapped_column(String(4), nullable=False)
+    verdict: Mapped[str] = mapped_column(String(8), nullable=False)
+    # Percent of the prize pool the choice cost against the best action (a model value, not chips).
+    loss_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    grade: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("players BETWEEN 2 AND 6", name="players_range"),
+        CheckConstraint("choice IN ('fold', 'play')", name="choice_kind"),
+        CheckConstraint("verdict IN ('correct', 'close', 'mistake')", name="verdict_kind"),
+        CheckConstraint("loss_pct >= 0", name="loss_non_negative"),
+    )

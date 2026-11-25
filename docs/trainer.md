@@ -41,6 +41,29 @@ another action can be better; that is exploitation, which these drills do not gr
 linear in chips (your value is the 2nd prize plus your chip share of the difference), so the
 chip-EV equilibrium is also the ICM one. The drill does not model three or more players left.
 
+## ICM push/fold drills (3 to 6 players)
+
+The "ICM push/fold" tab deals tournament spots: 3 to 6 players with random stacks in your range
+(2–30bb, steps of 0.5bb), your payouts (empty: winner takes all with three players, 65/35 with
+four to six), blinds 0.5/1bb and an optional ante. You are either first in (jam or fold) or face
+one player's all-in with everyone in between folded (call or fold). Each spot is solved with
+`play_engine::icm_push_fold` (docs/solver-validation.md): a **modelled approximation** in which
+the first player in moves all-in or folds, the first call ends the betting (no overcalls), the
+folded players' cards are ignored, and every outcome is valued with ICM. The grade shows your
+share of the prize pool after each action (given the decision is reached), the solution's
+frequencies, and the solve's epsilon.
+
+- **Correct:** your choice is within 0.005% of the prize pool of the better one.
+- **Close:** it costs at most 0.25% of the prize pool.
+- **Mistake:** it costs more.
+
+Solving takes 1–5 seconds; the next spot of the same kind is solved in the background while you
+answer. Answers are stored for Analytics (`icm_push_fold_answers`), except in guest mode.
+
+**In sit & go reviews**, a preflop decision that fits the model (your first action: all-in or
+fold with everyone before you folded, or call or fold facing one all-in) has a "Check with ICM
+push/fold" button that solves the real spot: the table's stacks, blinds, ante and payouts.
+
 ## The equity table
 Grading needs a 7 MB table of every hand-against-hand all-in equity. It is stored as
 `<RIVERLAB_RESULT_STORAGE_DIR>/hu_combo_equity.bin` and loaded the first time the Trainer page is

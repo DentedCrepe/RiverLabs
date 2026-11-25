@@ -54,3 +54,51 @@ describe("push/fold trainer", () => {
     expect(t).toEqual({ hands: 2, correct: 1, close: 0, mistakes: 1, evLost: 0.912 });
   });
 });
+
+describe("ICM push/fold trainer", () => {
+  it("deals a spot, grades it in prize-pool share and labels the model", async () => {
+    const { IcmTrainer } = await import("./IcmTrainer");
+    // Shape-only fixture: not engine output.
+    const icmDrill = {
+      spot: { stacks: [8000, 12000, 5000, 9000], small_blind: 500, big_blind: 1000, ante: 0, payouts: [50, 30, 20] },
+      positions: ["CO", "BTN", "SB", "BB"],
+      hero: 3,
+      facing: 1,
+      cards: ["Ah", "Td"],
+      class: "ATo",
+    };
+    const icmGrade = {
+      drill: icmDrill,
+      choice: "play",
+      actions: ["fold", "call"],
+      frequencies: [0.2, 0.8],
+      values_pct: [24.1, 25.3],
+      loss_pct: 0,
+      verdict: "correct",
+      epsilon_pct: 0.0002,
+      iterations: 150,
+      approximations: ["ICM (Malmuth–Harville) values each outcome."],
+    };
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/icm/drill")) return Response.json(icmDrill);
+      if (url.endsWith("/icm/answer")) return Response.json(icmGrade);
+      return Response.json({ state: "ready", progress: null, message: null, table_present: true });
+    });
+    render(<IcmTrainer />);
+    await userEvent.click(await screen.findByRole("button", { name: "Deal" }));
+    const stacks = await screen.findByLabelText("Stacks in order of action");
+    expect(stacks).toHaveTextContent("BTN 12bb · all-in");
+    expect(stacks).toHaveTextContent("SB 5bb · folded");
+    expect(stacks).toHaveTextContent("BB 9bb (you)");
+    const body = JSON.parse(
+      String((fetchSpy.mock.calls.find((c) => String(c[0]).endsWith("/icm/drill"))![1] as RequestInit).body),
+    );
+    expect(body.payouts).toEqual([50, 30, 20]);
+    await userEvent.click(screen.getByRole("button", { name: "Call" }));
+    const g = await screen.findByLabelText("ICM grade");
+    expect(g).toHaveTextContent("Correct");
+    expect(g).toHaveTextContent("25.30%");
+    expect(g).toHaveTextContent("modelled approximation");
+  });
+});

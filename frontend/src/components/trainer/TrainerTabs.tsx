@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { cn } from "@/components/ui/cn";
+import { IcmTrainer } from "./IcmTrainer";
 import { PostflopTrainer } from "./PostflopTrainer";
 import { PreflopTrainer } from "./PreflopTrainer";
 import { PushFoldTrainer } from "./PushFoldTrainer";
 
 const TABS = [
   ["push-fold", "Push/fold"],
+  ["icm", "ICM push/fold"],
   ["preflop", "Preflop"],
   ["postflop", "Postflop"],
 ] as const;
@@ -33,7 +35,15 @@ export function TrainerTabs() {
           </button>
         ))}
       </div>
-      {tab === "push-fold" ? <PushFoldTrainer /> : tab === "preflop" ? <PreflopTrainer /> : <PostflopTrainer />}
+      {tab === "push-fold" ? (
+        <PushFoldTrainer />
+      ) : tab === "icm" ? (
+        <IcmTrainer />
+      ) : tab === "preflop" ? (
+        <PreflopTrainer />
+      ) : (
+        <PostflopTrainer />
+      )}
     </div>
   );
 }

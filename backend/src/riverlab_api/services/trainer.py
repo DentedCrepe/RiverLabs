@@ -113,6 +113,20 @@ class PushFoldService:
         result: dict[str, Any] = engine.play_call(self._ready().chart, stack_mbb)
         return result
 
+    def icm_drill(self, spec: dict[str, Any], seed: int) -> dict[str, Any]:
+        result: dict[str, Any] = engine.play_call(self._ready().icm_drill, json.dumps(spec), seed)
+        return result
+
+    def icm_grade(self, drill: dict[str, Any], choice: str) -> dict[str, Any]:
+        result: dict[str, Any] = engine.play_call(self._ready().icm_grade, json.dumps(drill), choice)
+        return result
+
+    def icm_check(self, record: dict[str, Any], decision: int, config: dict[str, Any]) -> dict[str, Any]:
+        result: dict[str, Any] = engine.play_call(
+            self._ready().icm_check, json.dumps(record), decision, json.dumps(config)
+        )
+        return result
+
 
 _service: PushFoldService | None = None
 _service_lock = threading.Lock()

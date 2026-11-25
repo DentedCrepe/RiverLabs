@@ -16,6 +16,7 @@ solver-interface.workspace = true
 solver-gtopen = { path = "../solver-gtopen" }
 solver-validation.workspace = true
 poker-theory = { path = "../poker-theory" }
+rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

@@ -304,6 +304,7 @@ dependencies = [
  "rand",
  "rand_chacha",
  "range-engine",
+ "rayon",
  "serde",
  "serde_json",
  "solver-gtopen",

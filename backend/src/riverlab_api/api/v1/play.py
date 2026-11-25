@@ -128,6 +128,15 @@ def spot(
     return play.require().spot(db, session_id, hand_no, decision)
 
 
+@router.get("/sessions/{session_id}/hands/{hand_no}/icm")
+def icm_check(
+    session_id: uuid.UUID, hand_no: int, db: DbSession, decision: Annotated[int, Query(ge=0, le=100)]
+) -> dict[str, Any]:
+    """A sit & go decision graded with ICM push/fold (a modelled approximation), when it fits the
+    model: your first preflop action, all-in or fold first in, or call or fold facing one all-in."""
+    return play.require().icm_check(db, session_id, hand_no, decision)
+
+
 @router.post("/sessions/{session_id}/hands/{hand_no}/review", status_code=202)
 def start_review(session_id: uuid.UUID, hand_no: int, db: DbSession) -> dict[str, Any]:
     """Solver review of the whole hand: one chained postflop solve per street, in the background."""

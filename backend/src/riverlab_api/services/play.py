@@ -206,6 +206,18 @@ class PlayManager:
             raise NotFoundError(f"Hand {hand_no} not found in this game")
         return engine.play_spot(hand.record, decision, row.config, self._max_bytes)
 
+    def icm_check(self, db: Session, session_id: uuid.UUID, hand_no: int, decision: int) -> dict[str, Any]:
+        """One of your sit & go decisions graded with ICM push/fold, when it fits the model."""
+        from riverlab_api.services import trainer
+
+        row = self.get(db, session_id)
+        hand = db.scalar(
+            select(PlayHand).where(PlayHand.session_id == session_id, PlayHand.hand_no == hand_no)
+        )
+        if hand is None:
+            raise NotFoundError(f"Hand {hand_no} not found in this game")
+        return trainer.service().icm_check(hand.record, decision, row.config)
+
     def all_hands(
         self, db: Session, verdict: str | None, limit: int, offset: int, only_untracked: bool = False
     ) -> dict[str, Any]:

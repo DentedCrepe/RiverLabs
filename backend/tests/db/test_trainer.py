@@ -141,3 +141,32 @@ def test_trainer_analytics_aggregate_stored_answers(db_client: TestClient, db: S
     }
     assert len(s["costliest"]) == 2  # QQ lost nothing
     assert len(s["recent"]) == 4
+
+
+@pytest.mark.skipif(
+    not REAL_TABLE.exists(), reason="exact equity table not built (scripts/build-push-fold-table.sh)"
+)
+def test_icm_drill_answer_is_graded_and_stored(db_client: TestClient, use_table: Any, db: Session) -> None:
+    from riverlab_api.db.models import IcmPushFoldAnswer
+
+    client = db_client
+    use_table(REAL_TABLE)
+    assert wait_state(client, {"ready", "error"})["state"] == "ready"
+    spec = {"players": 3, "min_stack_mbb": 6_000, "max_stack_mbb": 10_000, "payouts": [65, 35], "seed": 3}
+    r = client.post("/api/v1/trainer/push-fold/icm/drill", json=spec)
+    assert r.status_code == 200, r.json()
+    drill = r.json()
+    assert drill["spot"]["payouts"] == [65, 35]
+    assert len(drill["positions"]) == 3
+    graded = client.post(
+        "/api/v1/trainer/push-fold/icm/answer", json={"drill": drill, "choice": "fold"}
+    ).json()
+    assert graded["verdict"] in ("correct", "close", "mistake")
+    assert graded["epsilon_pct"] < 0.05
+    assert any("ICM" in a for a in graded["approximations"])
+    row = db.query(IcmPushFoldAnswer).one()
+    assert row.players == 3
+    assert row.choice == "fold"
+    assert row.loss_pct == graded["loss_pct"]
+    bad = client.post("/api/v1/trainer/push-fold/icm/drill", json={**spec, "payouts": [60, 30]})
+    assert bad.status_code == 422, "payouts must add up to 100"

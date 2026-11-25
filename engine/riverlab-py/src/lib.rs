@@ -725,6 +725,32 @@ impl PushFoldTrainer {
     fn chart(&self, py: Python<'_>, stack_mbb: u64) -> PyResult<String> {
         to_json(&py.detach(|| self.inner.chart(stack_mbb)).map_err(play_err)?)
     }
+
+    /// ICM push/fold (3 to 6 players): a drill for `spec_json` (an `IcmDrillSpec`).
+    fn icm_drill(&self, py: Python<'_>, spec_json: &str, seed: u64) -> PyResult<String> {
+        let spec: play_engine::icm_push_fold::IcmDrillSpec = serde_json::from_str(spec_json).map_err(err)?;
+        to_json(&py.detach(|| self.inner.icm().drill(&spec, seed)).map_err(play_err)?)
+    }
+
+    /// Grades an ICM drill; `choice`: "fold" or "play" (jam or call).
+    fn icm_grade(&self, py: Python<'_>, drill_json: &str, choice: &str) -> PyResult<String> {
+        let drill: play_engine::icm_push_fold::IcmDrill = serde_json::from_str(drill_json).map_err(err)?;
+        let choice = serde_json::from_value(serde_json::Value::String(choice.into())).map_err(err)?;
+        to_json(&py.detach(|| self.inner.icm().grade(&drill, choice)).map_err(play_err)?)
+    }
+
+    /// One of your sit & go decisions graded with ICM push/fold, when it fits the model
+    /// (payouts from the session's `config_json`).
+    fn icm_check(&self, py: Python<'_>, record_json: &str, decision: usize, config_json: &str) -> PyResult<String> {
+        let record: play_engine::HandRecord = serde_json::from_str(record_json).map_err(err)?;
+        let config: play_engine::TableConfig = serde_json::from_str(config_json).map_err(err)?;
+        let payouts = config.payouts().ok_or_else(|| err("only sit & go hands are valued with ICM"))?;
+        let graded = py.detach(|| {
+            let (drill, choice) = play_engine::icm_push_fold::drill_from_record(&record, decision, &payouts)?;
+            self.inner.icm().grade(&drill, choice)
+        });
+        to_json(&graded.map_err(play_err)?)
+    }
 }
 
 /// Solver review of a whole hand: the streets you made decisions on, and which can be solved.

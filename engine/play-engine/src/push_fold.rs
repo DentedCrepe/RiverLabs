@@ -100,6 +100,8 @@ struct Solved {
 /// by the time the answer is graded.
 pub struct PushFoldTrainer {
     inner: Arc<Inner>,
+    /// ICM push/fold for 3 to 6 players, on the same equity table.
+    icm: Arc<crate::icm_push_fold::IcmTrainer>,
 }
 
 struct Inner {
@@ -150,7 +152,7 @@ pub fn check_stack(stack_mbb: u64) -> Result<()> {
     Ok(())
 }
 
-fn parse_combo(cards: &[String]) -> Result<Combo> {
+pub(crate) fn parse_combo(cards: &[String]) -> Result<Combo> {
     let bad = || PlayError::InvalidConfig(format!("invalid hand {cards:?}"));
     if cards.len() != 2 {
         return Err(bad());
@@ -183,8 +185,13 @@ fn by_class(freq: &[f64]) -> (Vec<ClassStrategy>, f64) {
 impl PushFoldTrainer {
     pub fn new(eq: Arc<ComboEquities>) -> PushFoldTrainer {
         PushFoldTrainer {
+            icm: Arc::new(crate::icm_push_fold::IcmTrainer::new(eq.clone())),
             inner: Arc::new(Inner { eq, solved: Mutex::new(HashMap::new()), solving: Mutex::new(HashMap::new()) }),
         }
+    }
+
+    pub fn icm(&self) -> &Arc<crate::icm_push_fold::IcmTrainer> {
+        &self.icm
     }
 
     fn solution(&self, stack_mbb: u64) -> Result<Arc<Solved>> {

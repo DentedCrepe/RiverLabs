@@ -87,6 +87,11 @@ impl ComboEquities {
         self.eq[i * COMBO_COUNT + j]
     }
 
+    /// Combo `i`'s equity against every combo (`NaN` where they share a card).
+    pub fn row(&self, i: usize) -> &[f32] {
+        &self.eq[i * COMBO_COUNT..(i + 1) * COMBO_COUNT]
+    }
+
     /// A synthetic table (for tests): `f(i, j)` for compatible combos, `NaN` otherwise.
     pub fn from_fn(f: impl Fn(Combo, Combo) -> f32) -> ComboEquities {
         let mut eq = vec![f32::NAN; COMBO_COUNT * COMBO_COUNT];

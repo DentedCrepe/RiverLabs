@@ -161,6 +161,31 @@ One of GTOpen's storage unit tests (`i16_roundtrip_accuracy`) also fails under M
 deliberately perturbs the results of functions such as `sin`, and the test's tolerance is
 tighter than one float step. That is a test tolerance issue, not a memory-safety one.
 
+## ICM push/fold for 3 to 6 players (`play_engine::icm_push_fold`)
+
+RiverLab's own solver for tournament push/fold, used by the ICM drills and the sit & go hand
+review. It is a **modelled approximation** (all-in or fold first in, call or fold facing an
+all-in, the first call ends the betting, folded players' cards ignored, ICM payoffs), and it is
+labelled that way wherever it is shown. What is checked (`engine/play-engine/tests/icm_push_fold.rs`,
+with the exact equity table):
+- **Two players** (winner takes all, so ICM is linear in chips): the model is heads-up push/fold
+  and matches the exact solver above: the small blind's value agrees within 2e-5 of the chips in
+  play, and the overall jam and call shares within 0.3 points (single hands near indifference
+  can differ, as any two near-equilibria can).
+- **Simulation:** for 3- and 4-player spots the solved profile is played out with real cards
+  (every hand dealt, actions sampled from the profile, a board dealt, the showdown evaluated,
+  the stacks valued with ICM). The model's value for every player agrees within 0.002 of the
+  prize pool (measured gaps 0.0003 or less with 60,000 deals), which also bounds the effect of
+  ignoring the folded players' cards.
+- **Epsilon:** with three or more players CFR+ has no convergence guarantee, so every solve
+  measures each player's best-response gain and reports the largest (in % of the prize pool).
+  Drill spots use 150 iterations; measured values are under 0.001% for 3- to 6-player spots.
+- **Conservation and ICM:** values add up to the prizes in play; ICM itself is checked against
+  every finishing order (`poker_theory::icm`).
+
+Not covered: overcalls and re-shoves, limps, and any non-all-in preflop play. The model is not
+an equilibrium of real tournament poker.
+
 ## What is not validated yet
 - GTOpen's preflop leaves that continue postflop (modelled values; see `solver-comparison.md`).
   Push/fold (all-in) is validated above.

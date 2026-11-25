@@ -13,6 +13,10 @@ import {
   withRecordDefaults,
 } from "@/lib/play";
 import { Why } from "./EquityPanel";
+import { IcmResult, IcmSpotView } from "@/components/trainer/IcmTrainer";
+import { ApiError, api } from "@/lib/api";
+import type { IcmGrade } from "@/lib/trainer";
+import { Button } from "@/components/ui/Button";
 import { SolverDecision, SolverReviewPanel, useSolverReview } from "./SolverReview";
 import { useApi } from "@/lib/useApi";
 import { CardRow } from "@/components/poker/CardText";
@@ -72,11 +76,13 @@ function DecisionView({
   h,
   solveHref,
   solver,
+  icmUrl,
 }: {
   d: HeroDecision;
   h: HandRecord;
   solveHref?: string;
   solver?: DecisionReview;
+  icmUrl?: string;
 }) {
   const f = d.feedback;
   return (
@@ -113,6 +119,7 @@ function DecisionView({
         </details>
       )}
       {solver && <SolverDecision r={solver} />}
+      {icmUrl && <IcmCheck url={icmUrl} />}
       {solveHref && d.spot && (
         <Link
           href={solveHref}
@@ -122,6 +129,39 @@ function DecisionView({
           Solve this spot
         </Link>
       )}
+    </div>
+  );
+}
+
+/** A sit & go decision checked with ICM push/fold (on request: it solves the spot). */
+function IcmCheck({ url }: { url: string }) {
+  const [g, setG] = useState<IcmGrade | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function check() {
+    setBusy(true);
+    setError(null);
+    try {
+      setG(await api.get<IcmGrade>(url));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (g)
+    return (
+      <div className="flex flex-col gap-2">
+        <IcmSpotView d={g.drill} />
+        <IcmResult g={g} />
+      </div>
+    );
+  return (
+    <div className="flex flex-col gap-1">
+      <Button size="sm" variant="ghost" loading={busy} onClick={check} className="w-fit">
+        Check with ICM push/fold
+      </Button>
+      {error && <p className="text-xs text-muted">{error}</p>}
     </div>
   );
 }
@@ -199,6 +239,11 @@ export function HandReview({ hand, sessionId }: { hand: HandRecord; sessionId?: 
                       h={h}
                       solveHref={solveHref}
                       solver={di === undefined ? undefined : solverFor.get(di)}
+                      icmUrl={
+                        sessionId && h.tournament && d.street === "preflop" && di !== undefined
+                          ? `/api/v1/play/sessions/${sessionId}/hands/${h.hand_no}/icm?decision=${di}`
+                          : undefined
+                      }
                     />
                   )}
                 </div>

@@ -5,10 +5,11 @@ import uuid
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import Field
 from sqlalchemy.orm import Session
 
 from riverlab_api.api.guest import Guest
-from riverlab_api.db.models import PushFoldAnswer
+from riverlab_api.db.models import IcmPushFoldAnswer, PushFoldAnswer
 from riverlab_api.db.session import get_db
 from riverlab_api.schemas.common import StrictModel
 from riverlab_api.services import trainer
@@ -64,6 +65,54 @@ def answer(body: AnswerIn, db: DbSession, guest: Guest) -> dict[str, Any]:
             choice=g["choice"],
             verdict=g["verdict"],
             ev_loss_bb=g["ev_loss_bb"],
+            grade=g,
+        )
+    )
+    db.commit()
+    return g
+
+
+class IcmDrillIn(StrictModel):
+    players: int = Field(ge=3, le=6)
+    min_stack_mbb: int
+    max_stack_mbb: int
+    payouts: list[int] = Field(default_factory=list)
+    ante_mbb: int = 0
+    seed: int | None = None
+
+
+class IcmAnswerIn(StrictModel):
+    drill: dict[str, Any]
+    choice: Literal["fold", "play"]
+
+
+@router.post("/icm/drill")
+def icm_drill(body: IcmDrillIn) -> dict[str, Any]:
+    """An ICM push/fold decision (3 to 6 players), from a spot solved for your payouts."""
+    seed = body.seed if body.seed is not None else secrets.randbits(63)
+    spec = body.model_dump(exclude={"seed"})
+    return trainer.service().icm_drill(spec, seed)
+
+
+@router.post("/icm/answer")
+def icm_answer(body: IcmAnswerIn, db: DbSession, guest: Guest) -> dict[str, Any]:
+    """Grades an ICM push/fold choice by the share of the prize pool it costs in the model.
+    Stored for Analytics, except in guest mode."""
+    g = trainer.service().icm_grade(body.drill, body.choice)
+    if guest:
+        return g
+    d = g["drill"]
+    positions: list[str] = d["positions"]
+    db.add(
+        IcmPushFoldAnswer(
+            players=len(positions),
+            position=positions[d["hero"]],
+            facing=positions[d["facing"]] if d["facing"] is not None else None,
+            cards="".join(d["cards"]),
+            hand_class=d["class"],
+            choice=g["choice"],
+            verdict=g["verdict"],
+            loss_pct=g["loss_pct"],
             grade=g,
         )
     )

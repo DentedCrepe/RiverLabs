@@ -25,7 +25,7 @@ import { InfoTip } from "@/components/ui/InfoTip";
 import { ErrorState, LoadingState } from "@/components/ui/States";
 import { cn } from "@/components/ui/cn";
 
-const VERDICT: Record<Grade["verdict"], { label: string; style: string }> = {
+export const VERDICT: Record<Grade["verdict"], { label: string; style: string }> = {
   correct: { label: "Correct", style: "bg-accent-dim text-accent-strong" },
   close: { label: "Close", style: "bg-warn-dim text-warn" },
   mistake: { label: "Mistake", style: "bg-danger-dim text-danger" },
@@ -36,7 +36,7 @@ function seatText(seat: Seat): string {
 }
 
 /** The exact equity table: missing (build it), building (progress), loading, or failed. */
-function TableSetup({ status, onChanged }: { status: TrainerStatus; onChanged: () => void }) {
+export function TableSetup({ status, onChanged }: { status: TrainerStatus; onChanged: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   async function build() {
