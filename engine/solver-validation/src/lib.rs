@@ -305,12 +305,16 @@ pub fn evaluate(game: &PostflopGame) -> Result<Evaluation, ValidationError> {
     if z <= 0.0 {
         return invalid("no compatible pair of hands".into());
     }
-    let value = |p: usize, best: bool| -> f64 {
-        let cfv = fast.cfv(0, p, &weights[1 - p], board, best);
-        weights[p].iter().zip(&cfv).map(|(w, v)| w * v).sum::<f64>() / z
+    // Each player's profile value and best-response value come from one traversal; the two
+    // players are traversed in parallel.
+    let values = |p: usize| -> (f64, f64) {
+        let (ev, br) = fast.cfv_both(0, p, &weights[1 - p], board);
+        let sum = |v: &[f64]| weights[p].iter().zip(v).map(|(w, x)| w * x).sum::<f64>() / z;
+        (sum(&ev), sum(&br))
     };
-    let ev = [value(0, false), value(1, false)];
-    let br = [value(0, true), value(1, true)];
+    let ((ev0, br0), (ev1, br1)) = rayon::join(|| values(0), || values(1));
+    let ev = [ev0, ev1];
+    let br = [br0, br1];
     let nash_conv = (br[0] - ev[0]) + (br[1] - ev[1]);
     Ok(Evaluation { ev, br, nash_conv, exploitability: nash_conv / 2.0 })
 }
