@@ -5,7 +5,7 @@ import { useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import { useEquityMode } from "@/lib/equityMode";
 import { GLOSSARY } from "@/lib/glossary";
-import { type EquityBreakdown, HAND_CATEGORY, type OpponentRange, type TableView } from "@/lib/play";
+import { type EquityBreakdown, HAND_CATEGORY, type OpponentRange, type TableView, rangeClasses } from "@/lib/play";
 import { CardRow } from "@/components/poker/CardText";
 import { StrategyMatrix } from "@/components/solver/StrategyMatrix";
 import { Button } from "@/components/ui/Button";
@@ -48,6 +48,7 @@ export function OddsStrip({ equity, required }: { equity: number; required: numb
 }
 
 function OpponentCard({ o, board }: { o: OpponentRange; board: string[] }) {
+  const classes = rangeClasses(o);
   return (
     <section
       className="flex flex-col gap-2 rounded-md border border-line bg-surface-2/40 p-3"
@@ -110,17 +111,29 @@ function OpponentCard({ o, board }: { o: OpponentRange; board: string[] }) {
           </tbody>
         </table>
       )}
-      <details>
-        <summary className="cursor-pointer text-xs text-accent">Their range, hand by hand</summary>
-        <div className="mt-2">
-          <StrategyMatrix actions={["still in range"]} byClass={o.classes} />
-        </div>
-      </details>
+      {o.held && (
+        <p className="flex flex-wrap items-center gap-1.5 text-xs text-fg" aria-label={`What ${o.name} held`}>
+          They actually held <CardRow cards={o.held.cards} size="sm" />
+          <span className="text-muted">
+            — their range kept <span className="font-mono text-fg tabular">{pct(o.held.weight)}</span> of that exact
+            hand (the share of the time it would have played this way)
+          </span>
+        </p>
+      )}
+      {classes.length > 0 && (
+        <details>
+          <summary className="cursor-pointer text-xs text-accent">Their range, hand by hand</summary>
+          <div className="mt-2">
+            <StrategyMatrix actions={["still in range"]} byClass={classes} />
+          </div>
+        </details>
+      )}
     </section>
   );
 }
 
-function Why({ b }: { b: EquityBreakdown }) {
+/** What an equity figure was made of: your hand, then each opponent's tracked range. */
+export function Why({ b }: { b: EquityBreakdown }) {
   return (
     <div className="flex flex-col gap-3" aria-label="Why this equity">
       <p className="flex flex-wrap items-center gap-2 text-sm text-fg">

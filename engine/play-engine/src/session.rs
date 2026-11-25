@@ -11,7 +11,7 @@ use rand::seq::SliceRandom;
 use rand::{RngExt, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use range_engine::{COMBO_COUNT, Combo, Range};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize)]
@@ -64,7 +64,7 @@ struct Hand {
 }
 
 /// One bot action and what it did to that bot's tracked range.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RangeStep {
     pub street: String,
     pub action: String,
@@ -337,6 +337,9 @@ impl Session {
         if self.status != SessionStatus::AwaitingHero {
             return Err(PlayError::State("it is not your turn".into()));
         }
+        // What your equity was made of, saved for the hand review (the same seeded figures the
+        // table shows on request).
+        let breakdown = self.breakdown(true).ok().map(compact);
         let hand = self.hand.as_mut().expect("a hand is in progress");
         let Phase::Betting { to_act } = hand.state.phase() else {
             return Err(PlayError::State("no betting in progress".into()));
@@ -347,6 +350,7 @@ impl Session {
             p.iter().take(left).map(|&x| f64::from(x)).collect()
         });
         let mut decision = hero_decision(hand, to_act, action, prizes.as_deref());
+        decision.breakdown = breakdown;
         let before = hand.state.clone();
         hand.state.apply(action).map_err(|e| PlayError::IllegalAction(e.to_string()))?;
         let tournament = hand.record.tournament;
@@ -762,6 +766,7 @@ fn hero_decision(hand: &mut Hand, seat: usize, action: Action, prizes: Option<&[
         model: model_check,
         all_in_call: legal.and_then(|l| l.call).is_some_and(|c| c == state.players()[seat].stack),
         icm: prizes.and_then(|p| icm_check(state, seat, &opponents, p)),
+        breakdown: None,
         feedback: None,
         spot: crate::spot::capture(state, seat, action, |k| hand.street_ranges[k].clone(), hand.hero_range.clone()),
     }
@@ -815,7 +820,7 @@ fn equity_vs_ranges(hand: &Hand, seat: usize, opponents: &[usize], board: &[Card
 }
 
 /// Hands in a range on the current board, grouped by what they make there.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CategoryShare {
     /// `hand_evaluator::HandCategory` in snake case ("one_pair", "flush", ...).
     pub category: String,
@@ -825,8 +830,15 @@ pub struct CategoryShare {
     pub hero_equity: f64,
 }
 
+/// A bot's real cards, saved with your decision for the hand review.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HeldHand {
+    pub cards: Vec<String>,
+    pub weight: f64,
+}
+
 /// One opponent's tracked range, and why it looks the way it does.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OpponentRange {
     pub player: usize,
     pub name: String,
@@ -844,10 +856,19 @@ pub struct OpponentRange {
     pub categories: Vec<CategoryShare>,
     /// Your equity against this range alone (heads-up).
     pub hero_equity: Option<f64>,
+    /// Saved with your decision for the hand review only (never shown live): the cards this bot
+    /// really held, and how much of that exact hand the tracked range kept (1 = it would always
+    /// have played this way).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub held: Option<HeldHand>,
+    /// The saved copy's grid, compactly: (row × 13 + col, weighted combos, share of the class),
+    /// rounded to 0.001, in place of `classes` (which the saved copy leaves empty).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub grid: Vec<(u8, f64, f64)>,
 }
 
 /// Your equity when you are to act, and what it is made of.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EquityBreakdown {
     pub street: String,
     pub hero_cards: Vec<String>,
@@ -891,6 +912,11 @@ impl Session {
     /// how the bots' actions shaped it. The bots' ranges are exact: after each bot action, every
     /// hand is weighted by how often that bot's own strategy takes that action with it.
     pub fn equity_breakdown(&self) -> Result<EquityBreakdown> {
+        self.breakdown(false)
+    }
+
+    /// `reveal`: also record the cards each bot really held (for the saved hand record).
+    fn breakdown(&self, reveal: bool) -> Result<EquityBreakdown> {
         let hand = self.hand.as_ref().filter(|_| self.status == SessionStatus::AwaitingHero);
         let hand = hand.ok_or_else(|| PlayError::State("equity is shown when it is your turn to act".into()))?;
         let state = &hand.state;
@@ -970,6 +996,12 @@ impl Session {
                 steps: hand.range_log.iter().filter(|(s, _)| *s == k).map(|(_, step)| step.clone()).collect(),
                 categories,
                 hero_equity: breakdown_equity(&[hero_range.clone(), range], &board, seed).map(|e| e.0),
+                grid: vec![],
+                held: reveal.then(|| {
+                    let [x, y] = hand.hole[k].cards();
+                    let index = Combo::new(x, y).expect("hole cards").index();
+                    HeldHand { cards: vec![x.to_string(), y.to_string()], weight: weights[index] }
+                }),
             });
         }
         let total = breakdown_equity(&ranges, &board, seed);
@@ -986,4 +1018,32 @@ impl Session {
             hero_range: hand.hero_range.clone(),
         })
     }
+}
+
+/// The breakdown as saved in the hand record: the class grid packed into `grid`, figures rounded
+/// to 0.001 (a 6-max hand stays a few kilobytes instead of a few hundred).
+fn compact(mut b: EquityBreakdown) -> EquityBreakdown {
+    let r = |x: f64| (x * 1000.0).round() / 1000.0;
+    for o in &mut b.opponents {
+        // A bot that has not acted yet still holds any hand: nothing to draw.
+        let classes = std::mem::take(&mut o.classes);
+        if !o.steps.is_empty() {
+            o.grid =
+                classes.into_iter().map(|c| ((c.row * 13 + c.col) as u8, r(c.weight), r(c.frequencies[0]))).collect();
+        }
+        o.combos = r(o.combos);
+        o.share_of_all = r(o.share_of_all);
+        for c in &mut o.categories {
+            c.share = r(c.share);
+            c.hero_equity = r(c.hero_equity);
+        }
+        for st in &mut o.steps {
+            st.kept = r(st.kept);
+            st.combos_after = r(st.combos_after);
+        }
+        if let Some(h) = &mut o.held {
+            h.weight = r(h.weight);
+        }
+    }
+    b
 }

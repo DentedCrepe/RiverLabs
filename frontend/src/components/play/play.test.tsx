@@ -240,7 +240,7 @@ describe("hand review", () => {
     window.localStorage.removeItem("riverlab.equityMode");
   });
 
-  it("replays a hand street by street with the model's mix for your decisions", () => {
+  it("replays a hand street by street with the model's mix for your decisions", async () => {
     const hand: HandRecord = {
       hand_no: 7,
       level: null,
@@ -293,6 +293,44 @@ describe("hand review", () => {
           },
           all_in_call: false,
           feedback: { verdict: "ok", headline: "A choice the model also makes (35%)", detail: "…", reference: null },
+          // Shape-only fixture: not engine output.
+          breakdown: {
+            street: "preflop",
+            hero_cards: ["As", "Kd"],
+            board: [],
+            hero_hand: null,
+            equity: 0.55,
+            method: "monte_carlo",
+            samples: 20000,
+            required: 0.3,
+            hero_range: null,
+            opponents: [
+              {
+                player: 1,
+                name: "Bot 1 (hard)",
+                position: "SB",
+                combos: 10,
+                share_of_all: 0.01,
+                classes: [],
+                grid: [
+                  [0, 6, 1],
+                  [14, 4, 1],
+                ],
+                steps: [
+                  {
+                    street: "preflop",
+                    action: "raises to 2.5bb",
+                    source: "preflop_model",
+                    kept: 0.1,
+                    combos_after: 10,
+                  },
+                ],
+                categories: [],
+                hero_equity: 0.55,
+                held: { cards: ["Qh", "Qc"], weight: 0.8 },
+              },
+            ],
+          },
         },
         {
           street: "flop",
@@ -328,6 +366,12 @@ describe("hand review", () => {
     expect(screen.getByText("You call")).toBeInTheDocument();
     expect(screen.getByText(/your equity 55% · price needs 30%/)).toBeInTheDocument();
     expect(screen.getByText("You win 5bb (everyone else folded)")).toBeInTheDocument();
+    await userEvent.click(screen.getByText(/Why this equity — and what they really held/));
+    expect(screen.getByLabelText("What Bot 1 (hard) held")).toHaveTextContent("80%");
+    await userEvent.click(screen.getByText("Their range, hand by hand"));
+    // The packed grid unpacks to AA (cell 0) and KK (cell 14).
+    expect(screen.getByLabelText(/^AA: still in range 100%/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^KK: still in range 100%/)).toBeInTheDocument();
   });
 });
 

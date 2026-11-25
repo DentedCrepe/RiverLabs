@@ -295,6 +295,7 @@ mod tests {
             feedback: None,
             spot: None,
             icm: None,
+            breakdown: None,
         }
     }
 

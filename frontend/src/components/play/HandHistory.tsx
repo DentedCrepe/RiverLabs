@@ -12,6 +12,7 @@ import {
   describeAction,
   withRecordDefaults,
 } from "@/lib/play";
+import { Why } from "./EquityPanel";
 import { SolverDecision, SolverReviewPanel, useSolverReview } from "./SolverReview";
 import { useApi } from "@/lib/useApi";
 import { CardRow } from "@/components/poker/CardText";
@@ -96,6 +97,21 @@ function DecisionView({
       </p>
       {d.model && <ModelBars model={d.model} />}
       {f && <p className="text-xs text-muted">{f.detail}</p>}
+      {d.icm && (
+        <p className="font-mono text-[11px] text-muted tabular" aria-label="ICM">
+          ICM (pays {d.icm.payouts.join("/")}%): fold {(d.icm.fold * 100).toFixed(1)}% · call and win{" "}
+          {(d.icm.win * 100).toFixed(1)}% · call and lose {(d.icm.lose * 100).toFixed(1)}% of the prizes left · needs{" "}
+          {(d.icm.required_equity * 100).toFixed(0)}% equity
+        </p>
+      )}
+      {d.breakdown && (
+        <details className="text-xs">
+          <summary className="cursor-pointer text-accent">Why this equity — and what they really held</summary>
+          <div className="mt-2 rounded-md border border-line bg-canvas p-3">
+            <Why b={d.breakdown} />
+          </div>
+        </details>
+      )}
       {solver && <SolverDecision r={solver} />}
       {solveHref && d.spot && (
         <Link

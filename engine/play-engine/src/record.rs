@@ -68,6 +68,10 @@ pub struct HeroDecision {
     /// with ICM for the tournament's payouts (see docs/play.md).
     #[serde(default)]
     pub icm: Option<IcmCheck>,
+    /// Your equity at this decision and what it was made of, with each bot's real cards
+    /// (`Session::equity_breakdown`, saved for the hand review).
+    #[serde(default)]
+    pub breakdown: Option<crate::session::EquityBreakdown>,
 }
 
 /// An all-in call in a sit & go valued with ICM (Malmuth–Harville): your share of the

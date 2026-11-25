@@ -89,6 +89,10 @@ export type HeroDecision = {
   feedback: Feedback | null;
   /** Heads-up after the flop: the decision can be solved (engine play_engine::spot::SpotInfo). */
   spot?: { street: string; board: string[] } | null;
+  /** Sit & go all-in, heads-up: the call valued with ICM (shares of the remaining prize pool). */
+  icm?: { payouts: number[]; fold: number; win: number; lose: number; required_equity: number } | null;
+  /** Your equity at this decision and what it was made of, with each bot's real cards. */
+  breakdown?: EquityBreakdown | null;
 };
 /** A solve built from one of your decisions (engine play_engine::spot::SpotExport). */
 export type SpotExport = {
@@ -356,7 +360,29 @@ export type OpponentRange = {
   steps: RangeStep[];
   categories: { category: string; share: number; hero_equity: number }[];
   hero_equity: number | null;
+  /** Saved copies only (hand review): the cards this bot really held, and how much of that exact hand its range kept. */
+  held?: { cards: string[]; weight: number } | null;
+  /** Saved copies only: the class grid packed as [row × 13 + col, weighted combos, share of the class]. */
+  grid?: [number, number, number][];
 };
+
+const RANKS = "AKQJT98765432";
+
+/** A 13×13 cell's hand class label: pairs on the diagonal, suited above, offsuit below. */
+export function classLabel(row: number, col: number): string {
+  if (row === col) return RANKS[row] + RANKS[row];
+  return row < col ? `${RANKS[row]}${RANKS[col]}s` : `${RANKS[col]}${RANKS[row]}o`;
+}
+
+/** An opponent's range by class: as sent live, or unpacked from a saved copy's grid. */
+export function rangeClasses(o: OpponentRange): ClassStrategy[] {
+  if (o.classes.length > 0 || !o.grid) return o.classes;
+  return o.grid.map(([cell, weight, share]) => {
+    const row = Math.floor(cell / 13);
+    const col = cell % 13;
+    return { label: classLabel(row, col), row, col, weight, frequencies: [share] };
+  });
+}
 
 /** Your equity at a decision, and what it is made of (engine `EquityBreakdown`). */
 export type EquityBreakdown = {

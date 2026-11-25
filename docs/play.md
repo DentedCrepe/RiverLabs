@@ -151,6 +151,15 @@ your own all-in shoves in a sit & go (they need an ICM model of the callers' ran
 
   Combinations that share a card with yours or the board are excluded. Outside your turn the
   endpoint returns 422.
+- **Saved for the hand review.** The same breakdown (same seeds, so the same figures) is saved
+  with every decision you make, and the review shows it under "Why this equity — and what they
+  really held", adding each bot's real cards and how much of that exact hand its range kept
+  (the probability the bot would have played it this way). The real hand always has a weight
+  above 0, which the engine's tests check: the range tracking can never rule out the cards the
+  bot really held. It is never sent while the hand is live. To keep records small the saved
+  grid is packed and rounded to 0.001, and bots that have not acted yet (any hand still
+  possible) get no grid: about 20 KB per six-player hand, a few KB heads-up. Computing it adds
+  about 30 ms to a typical action (under 0.4 s at worst, six-handed preflop).
 - **Hand history and review.** Every hand of the session is listed with your cards, the board,
   your result and how many decisions were flagged or unusual. Tap one to replay it street by
   street, with everyone's cards. Each of your decisions shows:

@@ -393,7 +393,7 @@ fn equity_breakdown_explains_each_tracked_range() {
     let models = cache();
     let mut s = Session::new(cfg).unwrap();
     let mut rng = ChaCha8Rng::seed_from_u64(3);
-    let (mut checked, mut postflop, mut with_steps) = (0, 0, 0);
+    let (mut checked, mut postflop, mut with_steps, mut saved) = (0, 0, 0, 0);
     while s.hands_played() < 25 {
         s.start_hand(&models).unwrap();
         while s.status() == SessionStatus::AwaitingHero {
@@ -427,10 +427,36 @@ fn equity_breakdown_explains_each_tracked_range() {
                     assert!((alone - eq).abs() < 1e-9, "heads-up, the total is the equity against that range");
                 }
             }
+            assert!(b.opponents.iter().all(|o| o.held.is_none()), "live, the bots' cards stay hidden");
             let a = hero_action(&s, &mut rng);
             s.act(a).unwrap();
         }
         assert!(s.equity_breakdown().is_err(), "only while you are to act");
+        // The saved copy adds each bot's real cards, which the tracked range must contain:
+        // the bot chose every action with those cards, so their weight is never 0.
+        let r = s.records().last().unwrap();
+        for d in &r.hero_decisions {
+            let b = d.breakdown.as_ref().expect("saved with every decision");
+            for o in &b.opponents {
+                let held = o.held.as_ref().expect("the review shows what they held");
+                let seat = r.seats.iter().find(|seat| seat.name == o.name).expect("seat");
+                assert_eq!(held.cards, seat.hole_cards, "the cards they were dealt");
+                let grid: f64 = o.grid.iter().map(|g| g.1).sum();
+                assert!(o.classes.is_empty());
+                if !o.steps.is_empty() {
+                    assert!((grid - o.combos).abs() < 0.2, "packed grid {grid} vs {}", o.combos);
+                }
+                assert!(
+                    held.weight > 0.0 && held.weight <= 1.0,
+                    "{} held {:?} at weight {}",
+                    o.name,
+                    held.cards,
+                    held.weight
+                );
+                saved += 1;
+            }
+        }
     }
     assert!(checked > 10 && postflop > 0 && with_steps > 0, "{checked} {postflop} {with_steps}");
+    assert!(saved > 10);
 }
