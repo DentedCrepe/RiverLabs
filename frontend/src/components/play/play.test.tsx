@@ -53,6 +53,27 @@ describe("session report", () => {
     render(<ReportView report={{ ...REPORT, hands: 0 }} />);
     expect(screen.getByText("No hands yet")).toBeInTheDocument();
   });
+
+  it("shows river play against a practice leak", () => {
+    // Shape-only fixture: not engine output.
+    const leak = {
+      leak: "overbluffs_river" as const,
+      label: "over-bluffs the river",
+      best_response: "Call more.",
+      decisions: 4,
+      matched: 3,
+      examples: [{ record: 0, hand_no: 9, street: "river", text: "folded facing 5bb" }],
+      bets: 2,
+      mean_fold_share: 0.4,
+      mean_break_even: 0.33,
+      bets_profitable_as_bluffs: 1,
+    };
+    render(<ReportView report={{ ...REPORT, leak_practice: [leak] }} />);
+    const s = screen.getByLabelText("Against: over-bluffs the river");
+    expect(s).toHaveTextContent("3 of 4 matched the best response");
+    expect(s).toHaveTextContent("folded 40% on average, a pure bluff needed 33%");
+    expect(s).toHaveTextContent("Hand 9: folded facing 5bb");
+  });
 });
 
 import { InfoTip } from "@/components/ui/InfoTip";

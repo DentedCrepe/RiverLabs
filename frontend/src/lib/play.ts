@@ -199,7 +199,32 @@ export type PlayReport = {
   } | null;
   all_in: { hands: number; actual_bb: number; expected_bb: number } | null;
   findings: Finding[];
+  /** River play against bots given a practice leak (engine report::LeakPractice). */
+  leak_practice?: LeakPractice[];
   caveats: string[];
+};
+
+export type Leak = "none" | "overbluffs_river" | "never_bluffs_river" | "overfolds_river" | "calls_too_much_river";
+
+export const LEAKS: { value: Leak; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "overbluffs_river", label: "Over-bluffs the river" },
+  { value: "never_bluffs_river", label: "Never bluffs the river" },
+  { value: "overfolds_river", label: "Folds too much to river bets" },
+  { value: "calls_too_much_river", label: "Calls too much on the river" },
+];
+
+export type LeakPractice = {
+  leak: Leak;
+  label: string;
+  best_response: string;
+  decisions: number;
+  matched: number;
+  examples: Finding["examples"];
+  bets: number;
+  mean_fold_share: number | null;
+  mean_break_even: number | null;
+  bets_profitable_as_bluffs: number;
 };
 
 export interface PlayForm {
@@ -213,6 +238,8 @@ export interface PlayForm {
   /** "10/20, 15/30, 25/50/5": small/big[/ante] per level. */
   levels: string;
   handsPerLevel: string;
+  /** A river leak given to every bot, to practise exploiting it. */
+  leak: Leak;
   /** "65/35": percent of the prize pool per place; empty for the default for the table size. */
   payouts: string;
 }
@@ -226,6 +253,7 @@ export const DEFAULT_PLAY_FORM: PlayForm = {
   startingChips: "1500",
   levels: "10/20, 15/30, 25/50, 50/100, 75/150, 100/200, 150/300, 200/400, 300/600, 400/800",
   handsPerLevel: "10",
+  leak: "none",
   payouts: "",
 };
 
@@ -274,7 +302,8 @@ export function buildTableConfig(form: PlayForm, game: GameConfig, seed: number)
       form.format === "cash" ? { type: "cash", game: g, auto_rebuy: form.autoRebuy } : { type: "fast_fold", game: g };
   }
   if (Object.keys(errors).length) return { ok: false, errors };
-  return { ok: true, config: { format, opponents, seed } };
+  const leaks = form.leak === "none" ? [] : opponents.map(() => form.leak);
+  return { ok: true, config: { format, opponents, seed, leaks } };
 }
 
 /** Formats an amount in the table's units. */

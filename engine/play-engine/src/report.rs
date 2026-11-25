@@ -107,7 +107,152 @@ pub struct Report {
     pub model_comparison: Option<ModelComparison>,
     pub all_in: Option<AllInLuck>,
     pub findings: Vec<Finding>,
+    /// Your river play against bots given a leak (docs/play.md, "Practice leaks").
+    pub leak_practice: Vec<LeakPractice>,
     pub caveats: Vec<String>,
+}
+
+/// How you played the river against bots with one documented leak.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LeakPractice {
+    pub leak: crate::config::Leak,
+    pub label: String,
+    /// What the best response to this leak does, in words.
+    pub best_response: String,
+    /// River calls and folds facing this bot's bet heads-up (raises left out)…
+    pub decisions: u32,
+    /// …and how many matched the best response for that decision: call exactly when your
+    /// equity against the bot's actual range is at least the price.
+    pub matched: u32,
+    pub examples: Vec<Example>,
+    /// Your river bets and raises this bot faced, and how often its range (as you could see it)
+    /// would have folded on average, against what a pure bluff of each bet needed.
+    pub bets: u32,
+    pub mean_fold_share: Option<f64>,
+    pub mean_break_even: Option<f64>,
+    /// Bets where the bot's range folded at least as often as a pure bluff needed.
+    pub bets_profitable_as_bluffs: u32,
+}
+
+fn best_response(leak: crate::config::Leak) -> &'static str {
+    use crate::config::Leak;
+    match leak {
+        Leak::None => "",
+        Leak::OverbluffsRiver => {
+            "It bluffs more than the price allows, so calling with any hand that beats its bluffs gains: \
+             the best response calls far more than the minimum defence frequency."
+        }
+        Leak::NeverBluffsRiver => {
+            "Its river bets are all value, so the best response folds every hand that only beats bluffs."
+        }
+        Leak::OverfoldsRiver => {
+            "It folds more than a bet's break-even share, so the best response bets the river with \
+             more hands, bluffs included."
+        }
+        Leak::CallsTooMuchRiver => {
+            "It calls more than the minimum defence frequency, so the best response bets thinner for \
+             value and stops bluffing."
+        }
+    }
+}
+
+/// River play against leaky bots: graded calls and folds, and the fold shares your bets met.
+fn leak_practice(records: &[HandRecord]) -> Vec<LeakPractice> {
+    use crate::config::Leak;
+    let mut out: BTreeMap<String, (Leak, LeakPractice, f64, f64)> = BTreeMap::new();
+    let entry = |out: &mut BTreeMap<String, (Leak, LeakPractice, f64, f64)>, leak: Leak| {
+        out.entry(leak.label().to_string())
+            .or_insert_with(|| {
+                (
+                    leak,
+                    LeakPractice {
+                        leak,
+                        label: leak.label().into(),
+                        best_response: best_response(leak).into(),
+                        decisions: 0,
+                        matched: 0,
+                        examples: vec![],
+                        bets: 0,
+                        mean_fold_share: None,
+                        mean_break_even: None,
+                        bets_profitable_as_bluffs: 0,
+                    },
+                    0.0,
+                    0.0,
+                )
+            })
+            .clone()
+    };
+    for (ri, r) in records.iter().enumerate() {
+        let hero = r.hero_seat();
+        let mut next = 0usize;
+        for (ai, a) in r.actions.iter().enumerate() {
+            if a.seat != hero {
+                continue;
+            }
+            let d = r.hero_decisions.get(next);
+            next += 1;
+            if a.street != "river" {
+                continue;
+            }
+            // Facing a bet: who made it?
+            if let Some(d) = d.filter(|d| d.to_call > 0 && d.opponents == 1) {
+                let bettor = r.actions[..ai]
+                    .iter()
+                    .rev()
+                    .take_while(|b| b.street == "river")
+                    .find(|b| b.seat != hero && is_aggressive(&b.action))
+                    .map(|b| b.seat);
+                let leak = bettor.map_or(Leak::None, |b| r.seats[b].leak);
+                if let (true, Some(eq), Some(req)) = (leak != Leak::None, d.equity_vs_ranges, d.required_equity) {
+                    if matches!(a.action, Action::Call | Action::Fold) {
+                        let mut e = entry(&mut out, leak);
+                        let good = (a.action == Action::Call) == (eq >= req);
+                        e.1.decisions += 1;
+                        e.1.matched += u32::from(good);
+                        if !good && e.1.examples.len() < MAX_EXAMPLES {
+                            e.1.examples.push(Example {
+                                record: ri,
+                                hand_no: r.hand_no,
+                                street: "river".into(),
+                                text: format!(
+                                    "{} facing {}: needed {:.0}% equity, had {:.0}% vs its range",
+                                    if a.action == Action::Call { "called" } else { "folded" },
+                                    fmt_amount(d.to_call, r),
+                                    req * 100.0,
+                                    eq * 100.0
+                                ),
+                            });
+                        }
+                        out.insert(leak.label().into(), e);
+                    }
+                }
+            }
+            // Your bet: how did each leaky bot's range respond?
+            if is_aggressive(&a.action) {
+                for b in r.actions[ai + 1..].iter().take_while(|b| b.street == "river" && b.seat != hero) {
+                    let leak = r.seats[b.seat].leak;
+                    if let (true, Some(f), Some(be)) = (leak != Leak::None, b.fold_share, b.bluff_break_even) {
+                        let mut e = entry(&mut out, leak);
+                        e.1.bets += 1;
+                        e.1.bets_profitable_as_bluffs += u32::from(f >= be);
+                        e.2 += f;
+                        e.3 += be;
+                        out.insert(leak.label().into(), e);
+                    }
+                }
+            }
+        }
+    }
+    out.into_values()
+        .map(|(_, mut p, f, be)| {
+            if p.bets > 0 {
+                p.mean_fold_share = Some(f / f64::from(p.bets));
+                p.mean_break_even = Some(be / f64::from(p.bets));
+            }
+            p
+        })
+        .collect()
 }
 
 fn is_aggressive(a: &Action) -> bool {
@@ -293,6 +438,7 @@ pub fn build(records: &[HandRecord], tournament: bool) -> Report {
         }),
         all_in: (luck.hands > 0).then_some(luck),
         findings,
+        leak_practice: leak_practice(records),
         caveats,
     }
 }

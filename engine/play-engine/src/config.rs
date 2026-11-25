@@ -37,6 +37,35 @@ pub enum Difficulty {
     Hard,
 }
 
+/// A documented river leak a bot can be given, to practise exploiting it (docs/play.md). It
+/// changes only that bot's river rules; the range tracking follows it exactly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Leak {
+    #[default]
+    None,
+    /// River bets: three times the balanced number of bluffs.
+    OverbluffsRiver,
+    /// River bets: no bluffs at all.
+    NeverBluffsRiver,
+    /// Facing a river bet: continues with half the minimum defence share.
+    OverfoldsRiver,
+    /// Facing a river bet: continues with 1.6 times the minimum defence share.
+    CallsTooMuchRiver,
+}
+
+impl Leak {
+    pub fn label(self) -> &'static str {
+        match self {
+            Leak::None => "no leak",
+            Leak::OverbluffsRiver => "over-bluffs the river",
+            Leak::NeverBluffsRiver => "never bluffs the river",
+            Leak::OverfoldsRiver => "folds too much to river bets",
+            Leak::CallsTooMuchRiver => "calls too much on the river",
+        }
+    }
+}
+
 /// One blind level of a sit & go, in tournament chips.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -75,6 +104,9 @@ pub struct TableConfig {
     pub opponents: Vec<Difficulty>,
     /// Makes the deal and the bots' choices reproducible.
     pub seed: u64,
+    /// Optional river leak per opponent (empty: none; otherwise one per opponent).
+    #[serde(default)]
+    pub leaks: Vec<Leak>,
 }
 
 /// Prize-pool percentages used when a sit & go gives none: winner takes all with up to three
@@ -86,6 +118,11 @@ pub fn default_payouts(players: usize) -> Vec<u32> {
 impl TableConfig {
     pub fn seats(&self) -> usize {
         self.opponents.len() + 1
+    }
+
+    /// Opponent `i`'s leak (0-based among the opponents).
+    pub fn leak(&self, i: usize) -> Leak {
+        self.leaks.get(i).copied().unwrap_or_default()
     }
 
     /// The sit & go payouts in effect (`None` for cash tables).
@@ -101,6 +138,9 @@ impl TableConfig {
         let bad = |m: String| Err(PlayError::InvalidConfig(m));
         if !(1..=5).contains(&self.opponents.len()) {
             return bad(format!("1 to 5 opponents are supported, got {}", self.opponents.len()));
+        }
+        if !self.leaks.is_empty() && self.leaks.len() != self.opponents.len() {
+            return bad(format!("give one leak per opponent ({}), or none", self.opponents.len()));
         }
         match &self.format {
             Format::Cash { game, .. } | Format::FastFold { game } => {
@@ -167,6 +207,7 @@ mod tests {
             format: Format::Cash { game: GameConfig { players, ..GameConfig::default() }, auto_rebuy: true },
             opponents: vec![Difficulty::Hard; opponents],
             seed: 1,
+            leaks: vec![],
         };
         cash(6, 5).validate().unwrap();
         cash(2, 1).validate().unwrap();
@@ -176,6 +217,7 @@ mod tests {
             format: Format::SitAndGo { starting_chips: chips, levels, hands_per_level: 10, payouts: vec![] },
             opponents: vec![Difficulty::Easy; 2],
             seed: 1,
+            leaks: vec![],
         };
         let l = |s, b| Level { small_blind: s, big_blind: b, ante: 0 };
         sng(vec![l(10, 20), l(15, 30)], 1500).validate().unwrap();
@@ -186,6 +228,7 @@ mod tests {
             format: Format::SitAndGo { starting_chips: 1500, levels: vec![l(10, 20)], hands_per_level: 10, payouts },
             opponents: vec![Difficulty::Easy; 3],
             seed: 1,
+            leaks: vec![],
         };
         paid(vec![65, 35]).validate().unwrap();
         paid(vec![50, 30, 20]).validate().unwrap();

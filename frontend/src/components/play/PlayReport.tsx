@@ -144,6 +144,40 @@ export function ReportView({ report: r, sessionId }: { report: Report; sessionId
         )}
       </section>
 
+      {(r.leak_practice ?? []).map((l) => (
+        <section
+          key={l.leak}
+          className="flex flex-col gap-1 rounded-md border border-line px-3 py-2"
+          aria-label={`Against: ${l.label}`}
+        >
+          <h3 className="text-sm font-semibold text-fg">Practice leak: bots that {l.label}</h3>
+          <p className="text-xs text-muted">{l.best_response}</p>
+          <p className="text-sm text-fg">
+            River calls and folds facing its bet:{" "}
+            <span className="font-mono tabular">
+              {l.decisions === 0 ? "none yet" : `${l.matched} of ${l.decisions} matched the best response`}
+            </span>
+          </p>
+          <p className="text-xs text-subtle">
+            Best response for that decision: call exactly when your equity against the bot&apos;s actual range (Monte
+            Carlo estimate) is at least the price; your call ends the betting.
+          </p>
+          {l.examples.slice(0, 3).map((e, i) => (
+            <p key={i} className="font-mono text-[11px] text-muted">
+              Hand {e.hand_no}: {e.text}
+            </p>
+          ))}
+          <p className="text-sm text-fg">
+            Your river bets it faced:{" "}
+            <span className="font-mono tabular">
+              {l.bets === 0 || l.mean_fold_share === null || l.mean_break_even === null
+                ? "none yet"
+                : `${l.bets}; its range folded ${(l.mean_fold_share * 100).toFixed(0)}% on average, a pure bluff needed ${(l.mean_break_even * 100).toFixed(0)}% (${l.bets_profitable_as_bluffs} of ${l.bets} would have profited as pure bluffs)`}
+            </span>
+          </p>
+        </section>
+      ))}
+
       <section className="flex flex-col gap-2">
         <h3 className="text-sm font-semibold text-fg">By position</h3>
         <table className="w-full max-w-md text-sm">

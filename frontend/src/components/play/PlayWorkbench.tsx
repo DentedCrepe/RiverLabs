@@ -8,6 +8,7 @@ import {
   type PlayForm,
   type PlaySessionInfo,
   type PlayState,
+  LEAKS,
   amount,
   buildTableConfig,
 } from "@/lib/play";
@@ -109,6 +110,17 @@ function Setup({ onCreated }: { onCreated: (s: PlayState) => void }) {
               <option value="easy">Easy: calls too much, never bluffs</option>
               <option value="medium">Medium: small leaks</option>
               <option value="hard">Hard: follows its strategy</option>
+            </Select>
+          )}
+        </Field>
+        <Field label="River leak (every bot)" hint="Practise exploiting one documented leak; graded in the report.">
+          {(id) => (
+            <Select id={id} value={form.leak} onChange={(e) => set({ leak: e.target.value as PlayForm["leak"] })}>
+              {LEAKS.map((l) => (
+                <option key={l.value} value={l.value}>
+                  {l.label}
+                </option>
+              ))}
             </Select>
           )}
         </Field>

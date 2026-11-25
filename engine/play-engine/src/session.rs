@@ -1,7 +1,7 @@
 //! A play session: one human ("hero", always player 0) against bots, hand after hand.
 
 use crate::bot::{self, BotDecision, DecisionSource, Situation};
-use crate::config::{Difficulty, Format, Level, PlayError, Result, TableConfig};
+use crate::config::{Difficulty, Format, Leak, Level, PlayError, Result, TableConfig};
 use crate::model::{Model, ModelCache, ModelShape};
 use crate::record::{AllInSnapshot, HandRecord, HeroDecision, IcmCheck, ModelCheck, RecordAction, RecordSeat};
 use crate::strength::card_set;
@@ -19,6 +19,9 @@ pub struct Player {
     pub name: String,
     /// `None` for you.
     pub difficulty: Option<Difficulty>,
+    /// A river leak this bot was given (`None` for you and for most bots).
+    #[serde(skip_serializing_if = "is_no_leak")]
+    pub leak: Leak,
     /// Chips (mbb at cash tables, tournament chips in a sit & go).
     pub chips: u64,
     pub busted: bool,
@@ -108,12 +111,20 @@ impl Session {
     pub fn new(cfg: TableConfig) -> Result<Session> {
         cfg.validate()?;
         let chips = starting_chips(&cfg);
-        let mut players =
-            vec![Player { name: "You".into(), difficulty: None, chips, busted: false, finish: None, rebuys: 0 }];
+        let mut players = vec![Player {
+            name: "You".into(),
+            difficulty: None,
+            leak: Leak::None,
+            chips,
+            busted: false,
+            finish: None,
+            rebuys: 0,
+        }];
         for (i, d) in cfg.opponents.iter().enumerate() {
             players.push(Player {
-                name: format!("Bot {} ({})", i + 1, difficulty_name(*d)),
+                name: bot_name(&format!("Bot {}", i + 1), *d, cfg.leak(i)),
                 difficulty: Some(*d),
+                leak: cfg.leak(i),
                 chips,
                 busted: false,
                 finish: None,
@@ -205,12 +216,14 @@ impl Session {
         let start = starting_chips(&self.cfg);
         if let Format::FastFold { .. } = self.cfg.format {
             // A fresh table: new opponents (shuffled difficulties, starting stacks), random seat.
-            let mut diffs = self.cfg.opponents.clone();
+            let mut diffs: Vec<(Difficulty, Leak)> =
+                self.cfg.opponents.iter().enumerate().map(|(i, &d)| (d, self.cfg.leak(i))).collect();
             diffs.shuffle(&mut rng);
-            for (i, d) in diffs.into_iter().enumerate() {
+            for (i, (d, leak)) in diffs.into_iter().enumerate() {
                 let p = &mut self.players[i + 1];
                 p.difficulty = Some(d);
-                p.name = format!("Player {} ({})", (b'A' + i as u8) as char, difficulty_name(d));
+                p.leak = leak;
+                p.name = bot_name(&format!("Player {}", (b'A' + i as u8) as char), d, leak);
                 p.chips = start;
             }
             if self.players[0].chips < start {
@@ -293,6 +306,7 @@ impl Session {
                 .map(|(k, &p)| RecordSeat {
                     name: self.players[p].name.clone(),
                     difficulty: self.players[p].difficulty,
+                    leak: self.players[p].leak,
                     position: state.players()[k].position.short_name().into(),
                     starting_stack: stacks[k].mbb(),
                     hole_cards: hole[k].cards().iter().map(|c| c.to_string()).collect(),
@@ -386,8 +400,25 @@ impl Session {
                         self.status = SessionStatus::AwaitingHero;
                         return Ok(());
                     }
-                    let difficulty = self.players[hand.seat_player[to_act]].difficulty.unwrap_or(Difficulty::Hard);
-                    let d = bot_decide(hand, to_act, difficulty)?;
+                    let bot = &self.players[hand.seat_player[to_act]];
+                    let (difficulty, leak) = (bot.difficulty.unwrap_or(Difficulty::Hard), bot.leak);
+                    let d = bot_decide(hand, to_act, difficulty, leak)?;
+                    // Facing a bet: the share of the bot's range (as you can see it: no combos
+                    // with your cards) that would have folded, and what a pure bluff needed.
+                    let fold_share = d.fold_probability.as_ref().and_then(|fold| {
+                        let hero = hand.seat_player.iter().position(|&p| p == 0)?;
+                        let mine = hand.hole[hero].card_set().bits();
+                        let (mut all, mut folded) = (0.0, 0.0);
+                        for (i, (&w, &f)) in hand.ranges[to_act].iter().zip(fold).enumerate() {
+                            if Combo::from_index(i).expect("combo").card_set().bits() & mine == 0 {
+                                all += w;
+                                folded += w * f;
+                            }
+                        }
+                        let pot = hand.state.pot_total().mbb() as f64;
+                        let to_call = hand.state.legal_actions().ok()?.call?.mbb() as f64;
+                        (all > 0.0 && pot > 0.0).then(|| (folded / all, to_call / pot))
+                    });
                     let before = hand.state.clone();
                     if let Err(e) = hand.state.apply(d.action) {
                         return Err(PlayError::Engine(format!("bot chose an illegal action {:?}: {e}", d.action)));
@@ -410,6 +441,10 @@ impl Session {
                     ));
                     let model_action = if d.source == DecisionSource::PreflopModel { d.model_action } else { None };
                     after_action(hand, &before, to_act, d.action, model_action);
+                    if let (Some((fold, needed)), Some(last)) = (fold_share, hand.record.actions.last_mut()) {
+                        last.fold_share = Some(fold);
+                        last.bluff_break_even = Some(needed);
+                    }
                 }
                 Phase::AwaitingBoard { street } => {
                     if hand.record.all_in.is_none() && betting_closed(&hand.state) {
@@ -604,6 +639,17 @@ fn summary(
         .collect()
 }
 
+fn is_no_leak(l: &Leak) -> bool {
+    *l == Leak::None
+}
+
+fn bot_name(base: &str, d: Difficulty, leak: Leak) -> String {
+    match leak {
+        Leak::None => format!("{base} ({})", difficulty_name(d)),
+        _ => format!("{base} ({}, {})", difficulty_name(d), leak.label()),
+    }
+}
+
 pub fn difficulty_name(d: Difficulty) -> &'static str {
     match d {
         Difficulty::Easy => "easy",
@@ -627,7 +673,7 @@ fn betting_closed(state: &GameState) -> bool {
     live.len() >= 2 && live.iter().filter(|p| !p.all_in).count() <= 1
 }
 
-fn bot_decide(hand: &mut Hand, seat: usize, difficulty: Difficulty) -> Result<BotDecision> {
+fn bot_decide(hand: &mut Hand, seat: usize, difficulty: Difficulty, leak: Leak) -> Result<BotDecision> {
     hand.decisions += 1;
     let legal = hand.state.legal_actions()?;
     let p = &hand.state.players()[seat];
@@ -637,6 +683,7 @@ fn bot_decide(hand: &mut Hand, seat: usize, difficulty: Difficulty) -> Result<Bo
         board: &board,
         legal,
         difficulty,
+        leak,
         pot: hand.state.pot_total(),
         stack_to: p.stack + p.street_commit,
         current_bet: hand.state.current_bet(),
@@ -718,6 +765,8 @@ fn after_action(hand: &mut Hand, before: &GameState, seat: usize, action: Action
         added: rec.added.mbb(),
         street_commit: rec.street_commit.mbb(),
         all_in: rec.all_in,
+        fold_share: None,
+        bluff_break_even: None,
     });
 }
 

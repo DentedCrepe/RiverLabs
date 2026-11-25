@@ -17,6 +17,9 @@ pub struct RecordSeat {
     pub hole_cards: Vec<String>,
     pub shown: bool,
     pub is_hero: bool,
+    /// A river leak this bot was given (docs/play.md).
+    #[serde(default)]
+    pub leak: crate::config::Leak,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -28,6 +31,13 @@ pub struct RecordAction {
     pub added: u64,
     pub street_commit: u64,
     pub all_in: bool,
+    /// A bot facing a bet: the share of its range (excluding combos with your cards) that
+    /// would have folded, whatever it chose, and the fold share a pure bluff of that bet needed
+    /// (bet ÷ pot after the bet).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fold_share: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bluff_break_even: Option<f64>,
 }
 
 /// The preflop model's view of one of your decisions.

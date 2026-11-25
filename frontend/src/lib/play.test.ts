@@ -35,6 +35,9 @@ describe("play table config", () => {
     expect(r.ok && (r.config.format as { payouts: number[] }).payouts).toEqual([]);
     const paid = buildTableConfig({ ...DEFAULT_PLAY_FORM, format: "sit_and_go", payouts: "50/30/20" }, GAME, 1);
     expect(paid.ok && (paid.config.format as { payouts: number[] }).payouts).toEqual([50, 30, 20]);
+    const leaky = buildTableConfig({ ...DEFAULT_PLAY_FORM, seats: "3", leak: "overfolds_river" }, GAME, 1);
+    expect(leaky.ok && leaky.config.leaks).toEqual(["overfolds_river", "overfolds_river"]);
+    expect(r.ok && r.config.leaks).toEqual([]);
     const inexact = buildTableConfig({ ...DEFAULT_PLAY_FORM, format: "sit_and_go", payouts: "65.5/34.5" }, GAME, 1);
     expect(!inexact.ok && inexact.errors.payouts).toBeTruthy();
   });

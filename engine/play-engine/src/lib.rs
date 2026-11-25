@@ -23,7 +23,7 @@ pub mod spot;
 pub mod strength;
 pub mod view;
 
-pub use config::{Difficulty, Format, Level, PlayError, TableConfig};
+pub use config::{Difficulty, Format, Leak, Level, PlayError, TableConfig};
 pub use model::ModelCache;
 pub use record::HandRecord;
 pub use report::Report;

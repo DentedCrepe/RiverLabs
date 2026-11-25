@@ -11,7 +11,7 @@
 //! Every decision also returns the probability of the chosen action for **every combo**, so the
 //! session can track each bot's exact range (used to grade your calls and folds).
 
-use crate::config::Difficulty;
+use crate::config::{Difficulty, Leak};
 use crate::strength::{percentiles, preflop_class_strength, range_strengths, top_share_strength};
 use poker_core::game::{Action, LegalActions};
 use poker_core::{Card, Chips, HoleCards};
@@ -29,6 +29,9 @@ pub struct BotDecision {
     /// Index of the model action taken, when the decision came from the preflop model.
     pub model_action: Option<usize>,
     pub source: DecisionSource,
+    /// Facing a bet under the postflop rules: per combo, the probability of folding (so the
+    /// share of the range that would have folded is known whatever the bot chose).
+    pub fold_probability: Option<Vec<f64>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -46,6 +49,8 @@ pub struct Situation<'a> {
     pub board: &'a [Card],
     pub legal: LegalActions,
     pub difficulty: Difficulty,
+    /// A river leak this bot was given (docs/play.md).
+    pub leak: Leak,
     /// Pot including all bets so far.
     pub pot: Chips,
     /// The bot's chips behind plus what it has in on this street.
@@ -168,6 +173,7 @@ pub fn preflop_model(node: &PreflopNode, s: &Situation, rng: &mut ChaCha8Rng) ->
         combo_probability: probs,
         model_action: Some(a),
         source: DecisionSource::PreflopModel,
+        fold_probability: None,
     })
 }
 
@@ -262,7 +268,18 @@ pub fn rules(s: &Situation, rng_seed: u64) -> BotDecision {
     }
     // Bluffs balance the value bets at the bet size's ratio B/(P+2B) (river indifference).
     let ratio = par.bet_size / (1.0 + 2.0 * par.bet_size);
-    let bluff = if preflop { 0.0 } else { value * ratio / (1.0 - ratio) * par.bluff };
+    let mut bluff = if preflop { 0.0 } else { value * ratio / (1.0 - ratio) * par.bluff };
+    // River leaks (practice opponents): replace the difficulty's river behaviour.
+    if s.board.len() == 5 {
+        let balanced = value * ratio / (1.0 - ratio);
+        match s.leak {
+            Leak::None => {}
+            Leak::OverbluffsRiver => bluff = (3.0 * balanced).min(1.0 - value),
+            Leak::NeverBluffsRiver => bluff = 0.0,
+            Leak::OverfoldsRiver => defend = (mdf * 0.5).clamp(0.05, 1.0) * if multiway { 0.8 } else { 1.0 },
+            Leak::CallsTooMuchRiver => defend = (mdf * 1.6).clamp(0.05, 1.0) * if multiway { 0.8 } else { 1.0 },
+        }
+    }
 
     let probs_of = |choice: usize| -> Vec<f64> {
         (0..COMBO_COUNT)
@@ -288,6 +305,7 @@ pub fn rules(s: &Situation, rng_seed: u64) -> BotDecision {
     BotDecision {
         action,
         combo_probability: probs_of(choice),
+        fold_probability: facing.then(|| probs_of(0)),
         model_action: None,
         source: if preflop { DecisionSource::PreflopRules } else { DecisionSource::PostflopRules },
     }
@@ -315,10 +333,60 @@ mod tests {
     }
 
     #[test]
+    fn river_leaks_move_the_bot_the_documented_way() {
+        let board = Card::parse_many("Ks7d2c9h4s").unwrap();
+        let range = vec![1.0; COMBO_COUNT];
+        let live = |i: usize| {
+            let (a, b) = Combo::from_index(i).unwrap().cards();
+            !board.contains(&a) && !board.contains(&b)
+        };
+        let share = |leak: Leak, l: LegalActions, choice_of: fn(&BotDecision) -> Vec<f64>| -> f64 {
+            let s = Situation {
+                leak,
+                hole: hole("Ah5h"),
+                board: &board,
+                legal: l,
+                difficulty: Difficulty::Hard,
+                pot: Chips(10_000),
+                stack_to: Chips(90_000),
+                current_bet: Chips(l.call.map_or(0, |c| c.mbb())),
+                big_blind: Chips(1000),
+                live_players: 2,
+                range: &range,
+                seed: 7,
+            };
+            let d = rules(&s, 1);
+            let p = choice_of(&d);
+            let n = (0..COMBO_COUNT).filter(|&i| live(i)).count() as f64;
+            (0..COMBO_COUNT).filter(|&i| live(i)).map(|i| p[i]).sum::<f64>() / n
+        };
+        // Betting share of the whole range when checked to (A5 has no pair: its own choice is
+        // a check or a bluff; the betting share comes from the policy of the action it took).
+        let open = legal(None, Some((1000, 90_000)), None);
+        let bets = |leak| {
+            share(leak, open, |d| {
+                if matches!(d.action, Action::Bet { .. }) {
+                    d.combo_probability.clone()
+                } else {
+                    d.combo_probability.iter().map(|p| 1.0 - p).collect()
+                }
+            })
+        };
+        let (normal, over, never) = (bets(Leak::None), bets(Leak::OverbluffsRiver), bets(Leak::NeverBluffsRiver));
+        assert!(over > normal + 0.05 && never < normal - 0.02, "bet shares {never} < {normal} < {over}");
+        // Facing a pot-sized bet: fold shares.
+        let facing = legal(Some(5_000), None, Some((10_000, 90_000)));
+        let folds = |leak| share(leak, facing, |d| d.fold_probability.clone().expect("facing a bet"));
+        let (normal, more, less) = (folds(Leak::None), folds(Leak::OverfoldsRiver), folds(Leak::CallsTooMuchRiver));
+        assert!(more > normal + 0.1 && less < normal - 0.1, "fold shares {less} < {normal} < {more}");
+    }
+
+    #[test]
     fn rules_bet_strong_hands_and_defend_by_pot_odds() {
         let board = Card::parse_many("Ks7d2c").unwrap();
         let range = vec![1.0; COMBO_COUNT];
         let mk = |h: &str, l: LegalActions, d| Situation {
+            leak: Leak::None,
             hole: hole(h),
             board: &board,
             legal: l,

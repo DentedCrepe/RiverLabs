@@ -64,7 +64,36 @@ These parameters are design choices for practice opponents, not claims about how
 Every bot decision also yields the probability that each combo would have taken the same
 action, so the session tracks each bot's **exact range** as the hand goes on.
 
-## Report
+## Practice leaks
+
+Each bot can be given one documented river leak (`leaks` in the table config, one per
+opponent; the setup form applies one to every bot). It changes only that bot's river rules
+(board of five cards, `bot.rs`), on top of its difficulty; everything else stays as above. The
+bot's name says which leak it has: the point is to practise exploiting a known tendency, as a
+node lock does in the Solver.
+
+| Leak | River change |
+| --- | --- |
+| Over-bluffs the river | bluffs three times the balanced share, B/(P+2B) of the bets |
+| Never bluffs the river | no bluffs at all |
+| Folds too much to river bets | continues with half the minimum defence share |
+| Calls too much on the river | continues with 1.6 times the minimum defence share (at most all) |
+
+(Multiway, the continuing share is cut by 20% as for every bot.) The range tracking follows
+the leak exactly, because it uses the bot's own policy, so your equity against its range, and
+every pot-odds check, measures you against the leaky range as it really is.
+
+The report adds a section per leak:
+- **River calls and folds** facing that bot's bet heads-up: how many matched the best response
+  for the decision. Your call ends the betting, so calling is better than folding exactly when
+  your equity against the bot's actual range is at least the price; your equity is the same
+  Monte Carlo estimate as everywhere else, so very close cases can go either way. Raises are
+  left out.
+- **Your river bets** that bot faced: the share of its range (combos that do not share a card
+  with yours) that would have folded to each bet, recorded whatever it chose, against the fold
+  share a pure bluff of that bet needed (bet ÷ pot after the bet). It is a measure, not a
+  grade: whether a bet was right also depends on your hand.
+
 Statistics are counts from your hands:
 - VPIP, PFR, 3-bet, fold to 3-bet, c-bet, fold to c-bet;
 - went to / won at showdown;
