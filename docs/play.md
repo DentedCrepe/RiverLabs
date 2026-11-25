@@ -49,7 +49,7 @@ preflop.
 - **Facing a bet:** the bot continues with the top `defend` × minimum-defence share,
   P/(P+B). It raises (to 3× the bet) with the top `raise` share.
 - **Multiway:** in pots with three or more players the bot defends 20% less and value-bets
-  40% less.
+  40% less; its bluffs, set as a share of its value bets, fall by 40% with them.
 - **Preflop off the model tree:** continuing is capped at 20% / 30% / 45% of the range (hard /
   medium / easy), and there are no bluffs.
 

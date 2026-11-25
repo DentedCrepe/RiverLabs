@@ -115,7 +115,7 @@ prompt = "Two hypothetical players: one has put money in voluntarily on 250 of 1
 answer = 27.24
 tolerance = 0.01
 unit = "%"
-explanation = "About 27.2%. The first player's interval (250 of 1,000) reaches up to about 27.8%, so the two intervals still overlap slightly: even after 1,000 hands each, a 25% and a 30% player are not cleanly separated by this conservative check."
+explanation = "About 27.2%. The first player's interval (250 of 1,000) reaches up to about 27.8%, so the two intervals still overlap slightly: after 1,000 hands each, measured frequencies of 25% and 30% are not separated by this conservative check (a direct test of the difference is more sensitive)."
 concepts = ["population-tendencies"]
 compute = { kind = "sample_frequency", params = { successes = 300, trials = 1000 }, field = "low_95", scale = 100.0 }
 
@@ -126,7 +126,7 @@ prompt = "Two hypothetical players: one has put money in voluntarily on 500 of 2
 answer = 28.03
 tolerance = 0.01
 unit = "%"
-explanation = "About 28.0%. The first player's interval (500 of 2,000) reaches only about 26.9%, so with 2,000 hands each the intervals no longer overlap: the difference between 25% and 30% is now very unlikely to be sampling noise alone."
+explanation = "About 28.0%. The first player's interval (500 of 2,000) reaches only about 26.9%, so with 2,000 hands each the intervals no longer overlap: if the two players really had the same underlying frequency, a gap this large would very rarely come from sampling noise alone."
 concepts = ["population-tendencies"]
 compute = { kind = "sample_frequency", params = { successes = 600, trials = 2000 }, field = "low_95", scale = 100.0 }
 
@@ -144,7 +144,7 @@ compute = { kind = "sample_frequency", params = { successes = 6, trials = 10 }, 
 [[questions]]
 id = "over-adjust"
 type = "multiple_choice"
-prompt = "An opponent has folded to 6 of the 10 river bets they faced, and the price of a pure bluff says it needs folds more than half the time. What is the sound conclusion?"
+prompt = "An opponent has folded to 6 of the 10 pot-size river bets they faced. A pure pot-size bluff profits only if they fold more than half the time. Treating each bet as an independent trial with one fixed underlying fold frequency, what is the sound conclusion?"
 options = [
   "The sample cannot tell whether they fold more or less than half the time; a large adjustment on it risks exploiting noise",
   "They fold 60% of the time, so bluff every hand on the river against them",
@@ -163,10 +163,12 @@ they had the chance (its **opportunities**). RiverLab's Play report and Analytic
 statistics as a percentage with the count beside it, for example 10/40. They include:
 - **VPIP** (voluntarily put money in pot): hands where you called or raised preflop. Posting a
   blind, or checking in the big blind, does not count. Opportunities: every hand.
-- **PFR** (preflop raise): hands where you raised, or went all-in, preflop. Opportunities:
-  every hand.
+- **PFR** (preflop raise): hands where you raised preflop, all-in raises included (calling
+  all-in does not count). Opportunities: every hand.
 - **3-bet:** how often you re-raised when facing exactly one raise preflop, out of the times
   you had that chance.
+- **Fold to 3-bet:** after you opened with the first raise, how often you folded when a bot
+  re-raised.
 - **C-bet:** as the last preflop raiser, how often you bet the flop when nobody had bet before
   you.
 - **Fold to c-bet:** when the preflop raiser (a bot) bet the flop first, how often you folded.
@@ -190,8 +192,8 @@ the second tells you far more.
 ```
 
 ::: fact
-RiverLab measures **your** tendencies, from your own stored hands. It does not compute
-statistics on the bots: their play is a set of documented rules (`docs/play.md`), and it makes
+RiverLab measures **your** tendencies, from your own stored hands. It does not compute tendency
+statistics such as VPIP on the bots: their play is a set of documented rules (`docs/play.md`), and it makes
 no claims about how real players or player pools play. Every frequency in this lesson is a
 hypothetical input to the sample calculation, not a statement about any real population.
 :::
@@ -201,9 +203,11 @@ hypothetical input to the sample calculation, not a statement about any real pop
 ::: approximation
 **The model.** Treat each opportunity as an independent trial, and the player as having one
 fixed underlying frequency. The measured share then estimates that frequency, with a
-**standard error** of $\sqrt{p(1-p)/n}$ and a **95% interval**: the range of underlying
-frequencies the sample is consistent with. RiverLab uses the Wilson score interval, which
-behaves well for small samples and stays between 0% and 100%. Real players are not this
+**standard error** of $\sqrt{p(1-p)/n}$ and a **95% interval**: the underlying frequencies the
+sample does not rule out at the 5% level. Built this way from sample after sample, the interval
+contains the true frequency about 95% of the time; it is not a 95% chance for any one interval.
+RiverLab uses the Wilson score interval, which behaves well for small samples and stays between
+0% and 100%; its actual coverage is usually close to 95%, not exactly 95% (Brown, Cai and DasGupta 2001). Real players are not this
 simple: they play differently by position, stack depth and opponent, and change over time.
 :::
 
@@ -226,7 +230,7 @@ read a lot, and each later hundred narrows it less.
 :::
 
 ::: math
-With $p = \hat{p}$ measured over $n$ trials and $z = 1.96$, the Wilson interval is
+With $\hat{p}$ the share measured over $n$ trials and $z = 1.96$, the Wilson interval is
 
 $$ \frac{\hat{p} + \frac{z^2}{2n} \pm z\sqrt{\frac{\hat{p}(1-\hat{p})}{n} + \frac{z^2}{4n^2}}}{1 + \frac{z^2}{n}}. $$
 
@@ -253,9 +257,17 @@ both samples, not just the two percentages.
 ```
 
 ::: simple
-A 25% player and a 30% player look different on paper. With 100 hands each, their intervals
-(about 17.5–34.3% and 21.9–39.6%) overlap almost completely. Even at 1,000 hands each they
-still touch; at 2,000 they finally separate.
+Measured frequencies of 25% and 30% look different on paper. With 100 hands each, their
+intervals (about 17.5–34.3% and 21.9–39.6%) overlap heavily. At 1,000 hands each they still
+just touch; at 2,000 they separate. Overlap is a cautious check, so a difference can be real
+before the intervals separate.
+:::
+
+::: math
+A direct test compares the gap with its own standard error. For 250 of 1,000 against 300 of
+1,000, that standard error is $\sqrt{0.25 \times 0.75 / 1000 + 0.30 \times 0.70 / 1000} \approx 0.020$,
+so the 5-point gap is about 2.5 standard errors, beyond the 1.96 of a 5% test, although the
+two 95% intervals still overlap.
 :::
 
 ```riverlab:question
@@ -266,18 +278,20 @@ still touch; at 2,000 they finally separate.
 
 ::: fact
 Once you have a read you trust, **node locking** turns it into a strategy: in the Solver, fix
-the opponent's decision at the frequency you believe, solve again, and the result is the best
-response to that locked strategy, with what it gains (see the node-locking lesson). The
+the opponent's decision at the frequency you believe and solve again. Your strategy in the result
+answers that lock, with the locked player's other decisions re-solved around it (an exact best
+response when the locked decision is their only one), and its values can be compared with the
+unlocked solve's (see the node-locking lesson). The
 answer is only as good as the read you locked.
 :::
 
 ::: fact
 **Practice in Play.** Each bot can be given one documented river leak (over-bluffs, never
-bluffs, folds too much or calls too much on the river). With **Spot the leak** the leaks are
-drawn at random and hidden; at the end the report asks you to guess each bot's leak, then
-shows how often your river calls and folds against that bot matched the best response for its
-actual range, and whether you matched it more often in the second half of those decisions than
-in the first.
+bluffs, folds too much or calls too much on the river). With **Spot the leak** each bot draws
+one of the leaks, or none, at random, and its name does not say which. At the end the report
+asks you to guess each bot's leak, then, for each leak, shows how often your river calls and
+folds facing those bots' bets heads-up matched the best response against their actual range,
+and whether you matched it more often in the second half of those decisions than in the first.
 :::
 
 ::: heuristic
@@ -300,7 +314,7 @@ interval narrows; and prefer reads with many opportunities over rare ones.
 The same caution applies to your own statistics. When Analytics shows, say, a fold-to-c-bet
 count, put an interval around it before deciding you have a leak: the report's preflop and
 pot-odds findings compare each decision with a stated reference, but a frequency on its own,
-over a small number of opportunities, is mostly noise.
+over a small number of opportunities, says little.
 :::
 
 ```riverlab:question

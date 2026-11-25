@@ -10,7 +10,7 @@ export const GLOSSARY = {
   allInLuck:
     "For hands where the money went in before the river: your expected result is your exact equity at that moment times the pot (after rake), minus what you put in. Luck = actual result minus expected, summed over those hands. Positive means the cards ran better than average.",
   vpip: "Voluntarily Put money In Pot: the share of hands where you called or raised preflop. Posting a blind or checking the big blind doesn't count.",
-  pfr: "Preflop Raise: the share of hands where you raised (or went all-in) before the flop.",
+  pfr: "Preflop Raise: the share of hands where you raised before the flop, all-in raises included (calling an all-in does not count).",
   threeBet: "How often you re-raised when facing exactly one raise preflop, out of the times you had that chance.",
   foldToThreeBet: "After you opened with a raise and someone re-raised, how often you folded.",
   cbet: "Continuation bet: as the last preflop raiser, how often you bet the flop when no one had bet before you.",

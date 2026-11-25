@@ -9,9 +9,9 @@ summary = "With three or more players in the pot, every hand's equity shrinks, d
 estimated_minutes = 20
 objectives = [
   "Compute exact three-way equities and see how a hand's equity falls as players are added.",
-  "Explain why weaker made hands lose more equity than strong ones when opponents are added.",
+  "Explain why medium-strength made hands tend to lose more equity than strong ones when opponents are added.",
   "Work out, under a stated simplification, how the minimum defence against a bet is shared between two defenders.",
-  "State what game theory does and does not guarantee with three or more players, and what RiverLab's solver and bots do in multiway pots.",
+  "State what game theory does and does not guarantee with three or more players, and what RiverLab's solvers and bots do in multiway pots.",
 ]
 prerequisites = ["equity", "minimum-defence-frequency", "exploitability", "nash-equilibrium"]
 tags = ["multiway", "math", "game-theory"]
@@ -20,7 +20,7 @@ tags = ["multiway", "math", "game-theory"]
 status = "pending"
 reviewer = ""
 reviewed_on = ""
-notes = "Drafted with AI assistance. Every equity is an exact enumeration by RiverLab's equity engine and every defence figure comes from the engine's bet math (poker_theory), recomputed each time the content is synced; the independent-defenders figure (29.3%) is plain arithmetic shown in the text. No solver output is used: RiverLab's solver is heads-up only. Awaiting review by a person."
+notes = "Drafted with AI assistance. Every equity is an exact enumeration by RiverLab's equity engine and every defence figure comes from the engine's bet math (poker_theory), recomputed each time the content is synced; the independent-defenders figure (29.3%) is plain arithmetic shown in the text. No solver output is used: RiverLab's postflop solver is heads-up only, and its multi-player preflop solver is a modelled approximation that this lesson does not quote. Awaiting review by a person."
 
 [[tools]]
 href = "/postflop"
@@ -35,19 +35,19 @@ why = "Multiway pots against the bots, which follow simple documented multiway r
 [[tools]]
 href = "/solver"
 label = "Solver"
-why = "Heads-up postflop solves only: a multiway spot has to be reduced to two players before it can be solved."
+why = "Postflop solves are heads-up only: a multiway postflop spot has to be reduced to two players before it can be solved."
 
 [[reading]]
 title = "Non-Cooperative Games"
 authors = "John Nash"
 year = 1951
-note = "Annals of Mathematics. Proves that every finite game with any number of players has an equilibrium in mixed strategies."
+note = "Annals of Mathematics 54(2). Proves that every finite game with any number of players has an equilibrium in mixed strategies."
 
 [[reading]]
 title = "Superhuman AI for multiplayer poker"
 authors = "Noam Brown and Tuomas Sandholm"
 year = 2019
-note = "Science. A six-player no-limit hold'em program; the paper discusses why the guarantees of two-player zero-sum games do not carry over to six players."
+note = "Science 365(6456). Pluribus, a six-player no-limit hold'em program trained with a Monte Carlo CFR variant and evaluated in play against professionals; the paper discusses why the guarantees of two-player zero-sum games do not carry over to six players."
 
 [[questions]]
 id = "aks-vs-qq"
@@ -81,6 +81,28 @@ unit = "%"
 explanation = "About 39.6%, down from about 53.8% against A♠K♠ alone: Q♥Q♦ loses about 14.2 points while A♠K♠ loses about 8.4. Still the favourite, but now well under half the pot. With three players the even share is 33.3%."
 concepts = ["equity", "multiway-game-theory"]
 compute = { kind = "equity", params = { ranges = ["AsKs", "QhQd", "7c6c"], board = "" }, field = "equity.1", scale = 100.0 }
+
+[[questions]]
+id = "aces-one-random"
+type = "numeric"
+prompt = "The turn is K♣ 7♦ 2♠ 4♥ and you hold A♥A♦. One opponent holds a random hand (any two cards not on the board or in your hand, every combination equally likely), and the river is dealt with no more betting. What is your exact equity (in %)?"
+answer = 88.99
+tolerance = 0.01
+unit = "%"
+explanation = "About 89.0%: an exact enumeration of every hand the opponent can hold and every river, with ties split."
+concepts = ["equity", "multiway-game-theory"]
+compute = { kind = "equity", params = { ranges = ["AhAd", "22+,A2s+,K2s+,Q2s+,J2s+,T2s+,92s+,82s+,72s+,62s+,52s+,42s+,32s,A2o+,K2o+,Q2o+,J2o+,T2o+,92o+,82o+,72o+,62o+,52o+,42o+,32o"], board = "Kc7d2s4h" }, field = "equity.0", scale = 100.0 }
+
+[[questions]]
+id = "eights-one-random"
+type = "numeric"
+prompt = "The turn is K♣ 7♦ 2♠ 4♥ and you hold 8♥8♣. One opponent holds a random hand (any two cards not on the board or in your hand, every combination equally likely), and the river is dealt with no more betting. What is your exact equity (in %)?"
+answer = 73.69
+tolerance = 0.01
+unit = "%"
+explanation = "About 73.7%: an exact enumeration of every hand the opponent can hold and every river, with ties split. Well behind A♥A♦'s 89.0% on the same turn, but still a big favourite heads-up."
+concepts = ["equity", "multiway-game-theory"]
+compute = { kind = "equity", params = { ranges = ["8h8c", "22+,A2s+,K2s+,Q2s+,J2s+,T2s+,92s+,82s+,72s+,62s+,52s+,42s+,32s,A2o+,K2o+,Q2o+,J2o+,T2o+,92o+,82o+,72o+,62o+,52o+,42o+,32o"], board = "Kc7d2s4h" }, field = "equity.0", scale = 100.0 }
 
 [[questions]]
 id = "aces-two-random"
@@ -118,11 +140,11 @@ compute = { kind = "bet_math", params = { pot_mbb = 10000, bet_mbb = 10000 }, fi
 [[questions]]
 id = "split-defence"
 type = "numeric"
-prompt = "On the river a player bets 10bb into a 10bb pot and two opponents are left to act. Simplify: a bluff wins the pot only if both opponents fold and always loses when anyone calls, and the bluff cannot profit as long as someone continues at least 50% of the time. If the two opponents share that job equally and never both continue with the same deal, what is the least share of their range (in %) each must continue with?"
+prompt = "On the river a player bets 10bb into a 10bb pot and two opponents are left to act. Simplify: a bluff wins the pot only if both opponents fold and always loses when anyone calls, and the bluff cannot profit as long as someone continues at least 50% of the time. If the two opponents share that job equally and never both continue on the same deal, what is the least share of their range (in %) each must continue with?"
 answer = 25.0
 tolerance = 0.01
 unit = "%"
-explanation = "25% each: the single-defender minimum, 50%, divided between two defenders. If their continuing hands never coincide, someone continues 25% + 25% = 50% of the time. Any overlap (both holding a hand they continue with) means each needs more."
+explanation = "25% each: the single-defender minimum, 50%, divided between two defenders. If their continuing hands never coincide, someone continues 25% + 25% = 50% of the time. Any overlap (both holding a hand they continue with) means each needs more; if their hands are independent, each needs about 29.3%."
 concepts = ["minimum-defence-frequency", "multiway-game-theory"]
 compute = { kind = "bet_math", params = { pot_mbb = 10000, bet_mbb = 10000 }, field = "mdf", scale = 50.0 }
 
@@ -131,25 +153,25 @@ id = "no-guarantee"
 type = "multiple_choice"
 prompt = "In a poker game with three or more players, what does playing your part of a Nash equilibrium guarantee you?"
 options = [
-  "No minimum result: if the other players change their strategies, even without colluding, you can do worse than the equilibrium value",
+  "In general, not even the equilibrium value: if another player changes strategy, even without colluding, you can do worse than it",
   "At least the equilibrium value against any strategies the others play, as in a two-player zero-sum game",
   "The highest possible result against any opponents",
 ]
 answer = 0
-explanation = "Heads-up and zero-sum, an equilibrium strategy guarantees at least the game's value whatever the opponent does. With three or more players nothing like that holds: one opponent's change can move money from you to a third player, and different equilibria can give you different values."
+explanation = "Heads-up and zero-sum, an equilibrium strategy guarantees at least the game's value whatever the opponent does. With three or more players nothing like that holds in general: one opponent's change can move money from you to a third player, and different equilibria can give you different values."
 concepts = ["multiway-game-theory", "nash-equilibrium"]
 
 [[questions]]
 id = "riverlab-multiway"
 type = "multiple_choice"
-prompt = "You are reviewing a hand from Play in which three players saw the river. What can RiverLab's solver do with that river decision?"
+prompt = "You are reviewing a hand from Play in which three players saw the river. What can RiverLab's postflop solver do with your river decision?"
 options = [
   "Nothing directly: it solves heads-up postflop spots only, so a multiway street is marked not solvable",
   "Solve it three-way and show an approximate equilibrium with its exploitability",
   "Solve it three-way, but without an exploitability figure",
 ]
 answer = 0
-explanation = "RiverLab's solver is heads-up only. In the hand review, streets that began with more than two players are marked \"not solvable\"; only heads-up streets get a solve."
+explanation = "RiverLab's postflop solver is heads-up only. In the hand review, a street where more than two players were in the hand is marked \"not solvable\"; only heads-up streets get a solve. (The preflop solver does handle up to six players, but only as a modelled approximation.)"
 concepts = ["multiway-game-theory"]
 
 [[questions]]
@@ -157,12 +179,12 @@ id = "bot-multiway"
 type = "multiple_choice"
 prompt = "In RiverLab's Play mode, how do the bots change their postflop play in a pot with three or more players?"
 options = [
-  "By a fixed practice rule: they continue with 20% less of the share they would defend heads-up, and value-bet 40% less",
+  "By a fixed practice rule: they continue with 20% less of the share they would defend heads-up, and value-bet 40% less (bluffing less in proportion)",
   "They switch to a three-way solver strategy",
   "They play exactly as they would heads-up",
 ]
 answer = 0
-explanation = "The bots are practice opponents, not solvers. Their multiway adjustment is a simple documented rule (docs/play.md): the defending share is multiplied by 0.8 and the value-betting share by 0.6. It is a design choice, not a claim about correct multiway play."
+explanation = "The bots are practice opponents, not solvers. Their multiway adjustment is a simple documented rule (docs/play.md): the defending share is multiplied by 0.8 and the value-betting share by 0.6, and because bluffs are sized to the value bets, the bluffing share falls by the same 40%. It is a design choice, not a claim about correct multiway play."
 concepts = ["multiway-game-theory"]
 +++
 
@@ -220,9 +242,20 @@ hands; which hand loses more changes with the hands, so try others in the Equity
 ## Equity falls as players are added {#falling}
 
 ::: fact
-On the turn K♣ 7♦ 2♠ 4♥, against **random hands** (every two-card combination equally likely,
-with card removal), exact enumeration gives A♥A♦ about 89.0% against one opponent and 8♥8♣
-about 73.7%. With a second opponent:
+On the turn K♣ 7♦ 2♠ 4♥, take opponents holding **random hands** (every two-card combination
+equally likely, with card removal). Exact enumeration against one opponent:
+:::
+
+```riverlab:question
+{"id": "aces-one-random"}
+```
+
+```riverlab:question
+{"id": "eights-one-random"}
+```
+
+::: fact
+With a second opponent:
 :::
 
 ```riverlab:question
@@ -234,8 +267,8 @@ about 73.7%. With a second opponent:
 ```
 
 ::: approximation
-A quick estimate: if each opponent were an independent heads-up contest, your chance against
-two would be your heads-up chance squared. For A♥A♦, 0.890 × 0.890 ≈ 0.792, close to the exact
+A quick estimate: if each opponent were an independent heads-up contest, your equity against
+two would be about your heads-up equity squared. For A♥A♦, 0.890 × 0.890 ≈ 0.792, close to the exact
 79.0%; for 8♥8♣, 0.737 × 0.737 ≈ 0.543, close to 54.2%. It is only an estimate: the opponents'
 cards come from the same deck, ties are split three ways, and it says nothing about real ranges.
 :::
@@ -243,9 +276,11 @@ cards come from the same deck, ties are split three ways, and it says nothing ab
 ::: heuristic
 Random hands are a model, not real opponents. In a real multiway pot the players still in have
 chosen to continue, so their ranges are usually stronger than random and your equity lower
-still. The pattern the numbers show is the usual rule of thumb: **strong hands keep more of
-their equity multiway, and medium-strength made hands lose the most**, so medium hands are
-worth less, relative to heads-up, the more players there are.
+still. The pattern these two hands show is the usual rule of thumb for made hands after the
+flop: **strong made hands keep more of their equity multiway, and medium-strength made hands
+lose the most**, so medium hands are worth less, relative to heads-up, the more players there
+are. It is not a law: in the preflop example above, the stronger hand, Q♥Q♦, lost more than
+A♠K♠.
 :::
 
 ::: math
@@ -287,8 +322,9 @@ most $c_1 + c_2$ (equality when they never both continue), so the defence needs
 
 $$ c_1 + c_2 \ge \text{MDF}, \qquad \text{so with equal shares } c \ge \tfrac{\text{MDF}}{2}. $$
 
-If instead each defender's hand is independent of the other's and each folds with probability
-$f$, both fold with probability $f^2$, and the condition is $f^2 \le 1 - \text{MDF}$. For a pot-size
+Never continuing together is the defenders' best case, and players who each act on their own
+cards cannot arrange it. If instead each defender's decision is independent of the other's and
+each folds with the same probability $f$, both fold with probability $f^2$, and the condition is $f^2 \le 1 - \text{MDF}$. For a pot-size
 bet, $f \le \sqrt{0.5} \approx 0.707$, so each continues with at least about 29.3%. Either way,
 each defender needs well under the heads-up 50%.
 :::
@@ -307,15 +343,18 @@ the last to act) is not settled by this arithmetic.
 - **Equilibria exist.** Nash (1951) proved that every finite game, with any number of
   players, has at least one equilibrium in mixed strategies: a strategy for each player such
   that no single player can gain by changing only their own.
-- **Heads-up zero-sum is special.** With two players and zero sum (no rake), every equilibrium
-  gives each player the same value, and an equilibrium strategy guarantees at least that value
-  whatever the opponent does. That guarantee is what "exploitability" measures distance from.
-- **Three or more players lose that guarantee.** Different equilibria can give a player
+- **Heads-up zero-sum is special.** With two players and zero sum (no rake), all equilibria give
+  a player the same value (the game's value, by the minimax theorem), any player's equilibrium
+  strategy can be paired with any of the opponent's, and an equilibrium strategy guarantees at
+  least that value whatever the opponent does. That guarantee is what "exploitability" measures distance from.
+- **Three or more players lose that guarantee** in general. Different equilibria can give a player
   different values, mixing your part of one equilibrium with others' parts of another need not
   be an equilibrium, and even when you play your part, another player's change can move money
   from you to a third player without anyone colluding.
-- **Algorithms.** The convergence guarantees of CFR-style algorithms are proven for two-player
-  zero-sum games; with three or more players there is no such guarantee in general.
+- **Algorithms.** CFR's guarantee of converging to an equilibrium is proven for two-player
+  zero-sum games. With three or more players there is no such guarantee in general: regret
+  minimisation in self-play only approaches the weaker notion of a coarse correlated
+  equilibrium.
 :::
 
 ```riverlab:question
@@ -323,20 +362,27 @@ the last to act) is not settled by this arithmetic.
 ```
 
 ::: advanced
-Because no player can be guaranteed a value, "unexploitable" has no clean meaning multiway, and
-a three-way strategy cannot be scored by one exploitability number the way a heads-up solve is.
-Brown and Sandholm (2019) built a six-player program that beat strong human players; they judged
-it by results in play, not by distance from an equilibrium.
+Because no player can be guaranteed a value, "unexploitable" has no clean meaning multiway. You
+can still measure how far a strategy profile is from an equilibrium (add up what each player
+could gain by changing only their own strategy), but being close no longer protects you once
+the others change. Brown and Sandholm (2019) trained a six-player program with a variant of
+CFR anyway; it beat elite professionals, and they judged it by results in play, not by distance
+from an equilibrium.
 :::
 
 ## Multiway in RiverLab {#riverlab}
 
 ::: fact
-- **The solver is heads-up only.** It solves postflop spots between two players. In Play, a
-  street that began with three or more players is marked "not solvable" in the hand review.
+- **The postflop solver is heads-up only.** It solves postflop spots between two players. In
+  Play, a street with three or more players in the hand is marked "not solvable" in the hand
+  review.
+- **The preflop solver** (the Preflop page, and the bots' preflop model) handles up to six
+  players, but its results are a **modelled approximation**: RiverLab has validated it only for
+  heads-up push/fold without ante or rake, and the multi-player gaps it reports are measured
+  inside its model.
 - **The bots' multiway play is a simple practice rule.** In pots with three or more players a
   bot continues with 20% less of the share it would defend heads-up and value-bets 40% less
-  (`docs/play.md`). These are design choices for practice opponents, not solver output and not
+  (`docs/play.md`); its bluffs, sized to its value bets, fall by the same 40%. These are design choices for practice opponents, not solver output and not
   a claim about correct multiway play.
 - **The equity calculator handles up to six hands or ranges**, exactly or by Monte Carlo.
 :::
