@@ -206,7 +206,9 @@ A labelled callout.
   bookmarks, and keeping your place when you switch levels.
 - **Explanation levels:** a learner picks one of the four. A section shows its blocks for that
   level. If it has none, it shows the nearest lower level, else the nearest higher one, so no
-  section is ever empty. Untagged text and callouts always show. Not every section needs all
+  section is ever empty. Untagged text and callouts always show. The section's explanations at
+  the other levels sit under a collapsed "Also explained at" line, so a reader at any level can
+  still open them. Not every section needs all
   four levels; write the ones that add something.
 - **Maths** is KaTeX: `$inline$` and `$$display$$`.
 - **Components** must be listed in `components.json`. The frontend registry

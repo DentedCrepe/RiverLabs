@@ -12,6 +12,7 @@ import {
   LEVEL_LABEL,
   type Lesson,
   blocksForLevel,
+  otherLevels,
 } from "@/lib/academy";
 import { useApi } from "@/lib/useApi";
 import { Button } from "@/components/ui/Button";
@@ -27,6 +28,26 @@ const CALLOUT: Record<string, { label: string; className: string }> = {
   approximation: { label: "Approximation: know the limits", className: "border-warn/40 bg-warn-dim/30" },
   solver: { label: "Solver-specific result", className: "border-line-strong bg-surface-2" },
 };
+
+/** The same section explained at the other levels, collapsed, so nothing is out of reach. */
+function OtherLevels({ groups }: { groups: { level: (typeof LEVELS)[number]; blocks: Block[] }[] }) {
+  if (groups.length === 0) return null;
+  return (
+    <details className="mt-2 rounded-md border border-line px-3 py-2 text-sm">
+      <summary className="cursor-pointer text-xs text-accent">
+        Also explained at: {groups.map((g) => LEVEL_LABEL[g.level]).join(", ")}
+      </summary>
+      {groups.map((g) => (
+        <div key={g.level} className="mt-2" aria-label={`${LEVEL_LABEL[g.level]} explanation`}>
+          <p className="label-caps mb-1">{LEVEL_LABEL[g.level]}</p>
+          {g.blocks.map((b, i) => (
+            <BlockView key={i} block={b} />
+          ))}
+        </div>
+      ))}
+    </details>
+  );
+}
 
 function BlockView({ block }: { block: Block }) {
   if (block.type === "markdown") return <Markdown text={block.text} />;
@@ -250,6 +271,7 @@ export function LessonView({ slug }: { slug: string }) {
             {blocksForLevel(s, lvl).map((b, i) => (
               <BlockView key={i} block={b} />
             ))}
+            <OtherLevels groups={otherLevels(s, lvl)} />
           </section>
         ))}
 

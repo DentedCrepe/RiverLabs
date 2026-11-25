@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type Block, type ExplanationLevel, type Section, blocksForLevel } from "./academy";
+import { type Block, type ExplanationLevel, type Section, blocksForLevel, otherLevels } from "./academy";
 
 const md = (level: ExplanationLevel | null, text: string): Block => ({ type: "markdown", level, text });
 
@@ -28,5 +28,14 @@ describe("explanation levels", () => {
     expect(texts("math")).toEqual(["shared", "hard", "fact"]);
     const onlyMath: Section = { id: "m", title: "", blocks: [md("math", "proof")] };
     expect(blocksForLevel(onlyMath, "simple").map((b) => ("text" in b ? b.text : ""))).toEqual(["proof"]);
+  });
+
+  it("keeps the other levels' explanations reachable", () => {
+    const other = (level: ExplanationLevel) =>
+      otherLevels(SECTION, level).map((g) => [g.level, g.blocks.map((b) => ("text" in b ? b.text : ""))]);
+    expect(other("simple")).toEqual([["advanced", ["hard"]]]);
+    // Intermediate shows the simple text (closest lower), so only the advanced one is "other".
+    expect(other("intermediate")).toEqual([["advanced", ["hard"]]]);
+    expect(other("advanced")).toEqual([["simple", ["easy"]]]);
   });
 });

@@ -104,6 +104,15 @@ export function blocksForLevel(section: Section, level: ExplanationLevel): Block
   return section.blocks.filter((b) => b.type !== "markdown" || b.level === null || b.level === shown);
 }
 
+/** The section's explanations at the levels `blocksForLevel` does not show, in level order. */
+export function otherLevels(section: Section, level: ExplanationLevel): { level: ExplanationLevel; blocks: Block[] }[] {
+  const shown = new Set(blocksForLevel(section, level));
+  return LEVELS.map((l) => ({
+    level: l,
+    blocks: section.blocks.filter((b) => b.type === "markdown" && b.level === l && !shown.has(b)),
+  })).filter((g) => g.blocks.length > 0);
+}
+
 /** Readable concept name from a topic slug ("pot-odds" -> "pot odds"). */
 export const conceptName = (slug: string) => slug.replaceAll("-", " ");
 
