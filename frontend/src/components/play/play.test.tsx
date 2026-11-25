@@ -169,6 +169,18 @@ describe("play table", () => {
     await userEvent.click(screen.getByRole("button", { name: "Show all hands" }));
     expect(screen.getAllByRole("img").length).toBeGreaterThan(2);
   });
+
+  it("shows sit & go payouts and each seat's ICM share", () => {
+    // Shape-only fixture: shares are not engine output.
+    const sng = table({
+      units: "chips",
+      payouts: [65, 35],
+      seats: [seat("You", { icm_share: 0.5 }), seat("Bot 1 (hard)", { icm_share: 0.5 })],
+    });
+    render(<PlayTable state={sng} onChange={() => undefined} />);
+    expect(screen.getByText(/Pays 65\/35%/)).toBeInTheDocument();
+    expect(screen.getByLabelText("You ICM share")).toHaveTextContent("ICM 50.0%");
+  });
 });
 
 import { HandReview } from "./HandHistory";

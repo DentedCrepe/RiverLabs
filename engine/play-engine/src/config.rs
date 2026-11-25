@@ -56,7 +56,15 @@ pub enum Format {
     /// Your stack carries over (and is topped up to the starting stack when below it).
     FastFold { game: GameConfig },
     /// Freezeout: blinds rise every `hands_per_level` hands; the session ends when you bust or win.
-    SitAndGo { starting_chips: u64, levels: Vec<Level>, hands_per_level: u32 },
+    SitAndGo {
+        starting_chips: u64,
+        levels: Vec<Level>,
+        hands_per_level: u32,
+        /// Percent of the prize pool for 1st, 2nd, ... (whole numbers adding up to 100). Empty:
+        /// the default for the table size (`default_payouts`). Used for ICM grading.
+        #[serde(default)]
+        payouts: Vec<u32>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -69,9 +77,24 @@ pub struct TableConfig {
     pub seed: u64,
 }
 
+/// Prize-pool percentages used when a sit & go gives none: winner takes all with up to three
+/// players, 65/35 with four to six. A common structure for small sit & goes, not a rule.
+pub fn default_payouts(players: usize) -> Vec<u32> {
+    if players <= 3 { vec![100] } else { vec![65, 35] }
+}
+
 impl TableConfig {
     pub fn seats(&self) -> usize {
         self.opponents.len() + 1
+    }
+
+    /// The sit & go payouts in effect (`None` for cash tables).
+    pub fn payouts(&self) -> Option<Vec<u32>> {
+        match &self.format {
+            Format::SitAndGo { payouts, .. } if !payouts.is_empty() => Some(payouts.clone()),
+            Format::SitAndGo { .. } => Some(default_payouts(self.seats())),
+            _ => None,
+        }
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -93,7 +116,18 @@ impl TableConfig {
                     return bad("cash tables need a starting stack of at least 10bb".into());
                 }
             }
-            Format::SitAndGo { starting_chips, levels, hands_per_level } => {
+            Format::SitAndGo { starting_chips, levels, hands_per_level, payouts } => {
+                if !payouts.is_empty() {
+                    if payouts.len() > self.seats() {
+                        return bad(format!("{} paid places for {} players", payouts.len(), self.seats()));
+                    }
+                    if payouts.contains(&0) || payouts.windows(2).any(|w| w[1] > w[0]) {
+                        return bad("payouts must be positive and must not increase from 1st place down".into());
+                    }
+                    if payouts.iter().sum::<u32>() != 100 {
+                        return bad("payouts are percentages of the prize pool and must add up to 100".into());
+                    }
+                }
                 if levels.is_empty() || levels.len() > 50 {
                     return bad("give 1 to 50 blind levels".into());
                 }
@@ -139,7 +173,7 @@ mod tests {
         assert!(cash(6, 4).validate().is_err(), "seat count mismatch");
         assert!(cash(6, 0).validate().is_err());
         let sng = |levels: Vec<Level>, chips: u64| TableConfig {
-            format: Format::SitAndGo { starting_chips: chips, levels, hands_per_level: 10 },
+            format: Format::SitAndGo { starting_chips: chips, levels, hands_per_level: 10, payouts: vec![] },
             opponents: vec![Difficulty::Easy; 2],
             seed: 1,
         };
@@ -148,6 +182,18 @@ mod tests {
         assert!(sng(vec![l(10, 20), l(5, 10)], 1500).validate().is_err());
         assert!(sng(vec![l(10, 20)], 100).validate().is_err());
         assert!(sng(vec![l(30, 20)], 1500).validate().is_err());
+        let paid = |payouts: Vec<u32>| TableConfig {
+            format: Format::SitAndGo { starting_chips: 1500, levels: vec![l(10, 20)], hands_per_level: 10, payouts },
+            opponents: vec![Difficulty::Easy; 3],
+            seed: 1,
+        };
+        paid(vec![65, 35]).validate().unwrap();
+        paid(vec![50, 30, 20]).validate().unwrap();
+        assert!(paid(vec![60, 30]).validate().is_err(), "must add up to 100");
+        assert!(paid(vec![30, 70]).validate().is_err(), "must not increase");
+        assert!(paid(vec![40, 30, 20, 5, 5]).validate().is_err(), "more places than players");
+        assert_eq!(default_payouts(3), vec![100]);
+        assert_eq!(default_payouts(6), vec![65, 35]);
         let json = serde_json::to_value(cash(2, 1)).unwrap();
         assert_eq!(json["format"]["type"], "cash");
         assert_eq!(serde_json::from_value::<TableConfig>(json).unwrap(), cash(2, 1));

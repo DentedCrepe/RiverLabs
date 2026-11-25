@@ -11,8 +11,8 @@ topics = [
   { slug = "hand-rankings", title = "Hand rankings", lesson = "hand-rankings" },
   { slug = "positions", title = "Positions", lesson = "positions" },
   { slug = "preflop-fundamentals", title = "Preflop fundamentals", lesson = "preflop-fundamentals" },
-  { slug = "pot-odds", title = "Pot odds", lesson = "pot-odds" },
   { slug = "equity", title = "Equity", lesson = "equity" },
+  { slug = "pot-odds", title = "Pot odds", lesson = "pot-odds" },
   { slug = "outs-and-draws", title = "Outs and draws", lesson = "outs-and-draws" },
   { slug = "starting-hands", title = "Starting hand selection", lesson = "starting-hands" },
 ]
@@ -93,5 +93,5 @@ topics = [
   { slug = "population-tendencies", title = "Population tendencies" },
   { slug = "equilibrium-refinements", title = "Equilibrium refinements" },
   { slug = "advanced-range-construction", title = "Advanced range construction" },
-  { slug = "tournament-theory-icm", title = "Tournament theory and ICM (future)" },
+  { slug = "tournament-theory-icm", title = "Tournaments and ICM", lesson = "icm" },
 ]

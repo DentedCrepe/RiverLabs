@@ -64,6 +64,23 @@ pub struct HeroDecision {
     /// Heads-up after the flop: what "solve this spot" needs (see spot.rs).
     #[serde(default)]
     pub spot: Option<crate::spot::SpotInfo>,
+    /// Sit & go, heads-up, and calling ends the betting (someone is all-in): the call valued
+    /// with ICM for the tournament's payouts (see docs/play.md).
+    #[serde(default)]
+    pub icm: Option<IcmCheck>,
+}
+
+/// An all-in call in a sit & go valued with ICM (Malmuth–Harville): your share of the
+/// remaining prize money if you fold, call and win, or call and lose.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IcmCheck {
+    /// Percent of the prize pool for 1st, 2nd, ...
+    pub payouts: Vec<u32>,
+    pub fold: f64,
+    pub win: f64,
+    pub lose: f64,
+    /// (fold − lose) / (win − lose): the equity a call needs under ICM.
+    pub required_equity: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

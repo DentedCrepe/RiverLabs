@@ -128,7 +128,10 @@ bet and any assumption (no more betting, who folded) in the prompt itself.
 
 **`compute`** recomputes a numeric answer. `kind` is one of:
 - a `/theory` calculation: `pot_odds`, `bet_math`, `ev_call`, `ev_bluff`, `outs`,
-  `regret_matching`, `implied_odds`, `semi_bluff`, `zero_sum_2x2`;
+  `regret_matching`, `implied_odds`, `semi_bluff`, `zero_sum_2x2`, `icm` (`stacks`, `prizes`:
+  each stack's value under the Malmuth–Harville model, `values.N`, and place probabilities,
+  `places.N.K`) and `icm_call` (`stacks`, `hero`, `villain`, `pot`, `to_call`, `prizes`: the
+  fold/win/lose values as shares of the prizes and `required_equity` for an all-in call);
 - `range`, which uses the range engine with `notation` and `dead`;
 - `equity`, an exact enumeration by the equity engine with `ranges` (a list of hands or ranges)
   and `board`. Monte Carlo is never used for an answer key;

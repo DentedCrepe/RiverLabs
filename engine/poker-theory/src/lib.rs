@@ -4,6 +4,8 @@
 //! single bet on the river with no further action), not equilibria of full poker. Amounts are
 //! integer milli-big-blinds; results are `f64` ratios or mbb.
 
+pub mod icm;
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 

@@ -13,6 +13,8 @@ pub const MARGIN_STRICT: f64 = 0.05;
 /// …and flop / turn, where later betting matters and only large gaps are flagged.
 pub const MARGIN_LOOSE: f64 = 0.15;
 
+pub const ICM_REFERENCE: &str = "ICM (Malmuth–Harville model) for this sit & go's payouts vs your equity against the bots' actual ranges (all-in: no later betting; ties count as half a win)";
+
 pub const MODEL_REFERENCE: &str = "GTOpen's preflop model for this table (an approximate model)";
 
 /// One check a decision was eligible for.
@@ -127,6 +129,39 @@ pub fn judge(d: &HeroDecision, position: &str, amount: impl Fn(u64) -> String) -
     // Preflop calls are judged against the model above; pot odds alone ignore position and
     // the play after the flop, so they only grade preflop calls that are all-in.
     let graded = d.street != "preflop" || d.all_in_call;
+    if let (Some(icm), Some(eq), Some(chip)) = (&d.icm, d.equity_vs_ranges, d.required_equity) {
+        // Sit & go all-in: prize money, not chips, is what is at stake.
+        let req = icm.required_equity;
+        let text = format!(
+            "{} facing {} into {} (all-in): ICM needed {:.0}% equity (chips alone {:.0}%), had {:.0}% vs the range",
+            d.street,
+            amount(d.to_call),
+            amount(d.pot),
+            req * 100.0,
+            chip * 100.0,
+            eq * 100.0,
+        );
+        match d.action {
+            Action::Fold => j.checks.push(Check {
+                key: "icm_folded_with_equity",
+                title: "Folded with enough equity under ICM (sit & go all-in)",
+                detail: "Your equity against the range you faced was above what ICM required for the payouts.",
+                reference: ICM_REFERENCE,
+                hit: eq >= req + MARGIN_STRICT,
+                text,
+            }),
+            Action::Call => j.checks.push(Check {
+                key: "icm_called_without_equity",
+                title: "Called without enough equity under ICM (sit & go all-in)",
+                detail: "Your equity against the range you faced was below what ICM required for the payouts.",
+                reference: ICM_REFERENCE,
+                hit: eq <= req - MARGIN_STRICT,
+                text,
+            }),
+            _ => {}
+        }
+        return j;
+    }
     if let (true, Some(req), Some(eq)) = (graded, d.required_equity, d.equity_vs_ranges) {
         let strict = d.all_in_call || d.street == "river";
         let margin = if strict { MARGIN_STRICT } else { MARGIN_LOOSE };
@@ -212,7 +247,8 @@ pub fn feedback(d: &HeroDecision, j: &Judgement) -> Feedback {
     if let Some(c) = odds {
         return Feedback {
             verdict: "ok".into(),
-            headline: "Consistent with the pot odds".into(),
+            headline: if c.reference == ICM_REFERENCE { "Consistent with ICM" } else { "Consistent with the pot odds" }
+                .into(),
             detail: format!("{}.", c.text),
             reference: Some(c.reference.into()),
         };
@@ -258,11 +294,41 @@ mod tests {
             all_in_call: false,
             feedback: None,
             spot: None,
+            icm: None,
         }
     }
 
     fn verdict(d: &HeroDecision) -> String {
         feedback(d, &judge(d, "BB", |x| x.to_string())).verdict
+    }
+
+    #[test]
+    fn sit_and_go_all_ins_are_judged_with_icm_instead_of_chips() {
+        let icm = |req: f64| crate::record::IcmCheck {
+            payouts: vec![50, 30, 20],
+            fold: 0.2,
+            win: 0.4,
+            lose: 0.1,
+            required_equity: req,
+        };
+        // 40% equity: enough for chip pot odds (25%), not for ICM (50%).
+        let mut call = decision(Action::Call, 0.5, "flop");
+        call.icm = Some(icm(0.50));
+        let j = judge(&call, "BB", |x| x.to_string());
+        assert_eq!(j.checks.len(), 1, "ICM replaces the chip pot-odds check");
+        assert_eq!(j.checks[0].key, "icm_called_without_equity");
+        assert!(j.checks[0].hit);
+        assert_eq!(verdict(&call), "mistake");
+        // The same fold is fine under ICM, though chips alone would flag it.
+        let mut fold = decision(Action::Fold, 0.5, "river");
+        fold.icm = Some(icm(0.50));
+        assert_eq!(verdict(&fold), "ok");
+        fold.icm = None;
+        assert_eq!(verdict(&fold), "mistake");
+        let mut ok = decision(Action::Call, 0.5, "river");
+        ok.icm = Some(icm(0.30));
+        let f = feedback(&ok, &judge(&ok, "BB", |x| x.to_string()));
+        assert_eq!(f.headline, "Consistent with ICM");
     }
 
     #[test]

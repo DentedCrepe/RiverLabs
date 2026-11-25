@@ -37,6 +37,8 @@ WEAKNESS_STUDY: dict[str, tuple[str, str]] = {
     "called_without_odds_early": ("/academy/implied-odds", "Implied and reverse implied odds"),
     "folded_with_odds": ("/academy/pot-odds", "Pot odds and break-even equity"),
     "folded_with_odds_early": ("/academy/equity", "Equity against a range"),
+    "icm_called_without_equity": ("/academy/icm", "Tournaments and ICM"),
+    "icm_folded_with_equity": ("/academy/icm", "Tournaments and ICM"),
 }
 
 

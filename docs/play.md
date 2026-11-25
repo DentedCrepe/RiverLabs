@@ -90,8 +90,32 @@ used.
    - **Flop and turn:** flagged only beyond 15 points, labelled as ignoring later betting.
    - **Preflop:** only all-in calls are graded this way.
 
+3. **ICM in sit & goes.** A sit & go pays places, not chips, so an all-in call is judged by
+   prize money. When you face a bet heads-up (everyone else has folded) and calling ends the
+   betting (you or your opponent is all-in), the decision records your ICM value, as a share of
+   the remaining prize pool, if you fold, call and win, or call and lose
+   (`poker_theory::icm::icm_call`). The equity a call needs is then
+   (fold − lose) ÷ (win − lose), and it replaces the chip break-even for that decision, with the
+   same 5-point margin (keys `icm_called_without_equity`, `icm_folded_with_equity`).
+   - **The model:** Malmuth–Harville. Your chance of finishing first is your share of the
+     chips; each lower place is drawn the same way from the stacks that are left. It ignores
+     skill, position, the blinds and how many hands remain, so it is a model, not a solution of
+     the tournament. Computed exactly over every finishing order; players with no chips take
+     the bottom places.
+   - **Payouts:** set per sit & go as percentages for 1st, 2nd, ... (whole numbers adding up
+     to 100, never increasing). Left empty, the default is winner takes all with up to three
+     players and 65/35 with four to six, a common small sit & go structure, not a rule. Only the
+     places still to be paid count: with n players left, prizes for places 1 to n.
+   - **Ties** count as half a win (your equity), not modelled separately.
+   - **Not ICM:** multiway pots and calls after which betting could continue keep the chip
+     comparison. With winner takes all, or two players left, ICM is linear in chips, so it
+     agrees with chip pot odds; the heads-up push/fold trainer is therefore unaffected.
+   - **At the table:** each seat shows its ICM share of the prize pool from the stacks at the
+     start of the hand (a busted player's share is the prize for their place), and the header
+     shows the payouts.
+
 Not graded: your bets and raises after the flop (that needs a solver for the exact spot), and
-sit & go decisions beyond chip equity (no ICM yet).
+your own all-in shoves in a sit & go (they need an ICM model of the callers' ranges).
 
 ## Instant feedback and practice aids
 - **Feedback after every decision.** Straight after you act, the table shows how the decision
@@ -149,7 +173,8 @@ for your hand class, with your action marked.
 
 What the export contains (`engine/play-engine/src/spot.rs`), recorded at the decision:
 - **Root:** the start of the decision's street: the board, the pot then, and the smaller of the
-  two stacks then. Tournament chips are converted to big blinds (chip EV, no ICM).
+  two stacks then. Tournament chips are converted to big blinds (chip EV, no ICM: the solver
+  works in chips).
 - **Rake:** the table's rake (none for sit & go).
 - **Bot's range:** the range its rules actually played this way, tracked exactly from the
   probabilities of every decision it made, as it was when the street was dealt (the solve starts

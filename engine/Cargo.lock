@@ -300,6 +300,7 @@ dependencies = [
  "equity-engine",
  "hand-evaluator",
  "poker-core",
+ "poker-theory",
  "rand",
  "rand_chacha",
  "range-engine",
@@ -327,6 +328,7 @@ dependencies = [
 name = "poker-theory"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "serde",
  "serde_json",
  "thiserror",

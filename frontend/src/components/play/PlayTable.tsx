@@ -232,6 +232,11 @@ export function PlayTable({ state, onChange }: { state: PlayState; onChange: (s:
           {t.ante > 0 && `, ante ${amount(t.ante, t.units)}`}
           {t.level !== null && ` · level ${t.level}`}
         </span>
+        {t.payouts && t.payouts.length > 0 && (
+          <span>
+            Pays {t.payouts.join("/")}%<InfoTip label="ICM">{GLOSSARY.icm}</InfoTip>
+          </span>
+        )}
         <span className={cn("font-mono tabular", t.hero_total_net >= 0 ? "text-accent-strong" : "text-danger")}>
           Session {t.hero_total_net >= 0 ? "+" : "−"}
           {amount(Math.abs(t.hero_total_net), t.units)}

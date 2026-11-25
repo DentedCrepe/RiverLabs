@@ -273,7 +273,7 @@ pub fn build(records: &[HandRecord], tournament: bool) -> Report {
     }
     if tournament {
         caveats.push(
-            "Sit & go results are in chips; findings use chip equity, not ICM (tournament payout equity).".into(),
+            "Sit & go results are in chips. Heads-up all-in calls and folds are graded with ICM (the Malmuth–Harville model) for the payouts; every other finding uses chip equity.".into(),
         );
     }
     Report {

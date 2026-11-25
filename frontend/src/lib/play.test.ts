@@ -32,6 +32,11 @@ describe("play table config", () => {
     expect(r.ok && (r.config.format as { type: string }).type).toBe("sit_and_go");
     const bad = buildTableConfig({ ...DEFAULT_PLAY_FORM, format: "sit_and_go", levels: "x" }, GAME, 1);
     expect(bad.ok).toBe(false);
+    expect(r.ok && (r.config.format as { payouts: number[] }).payouts).toEqual([]);
+    const paid = buildTableConfig({ ...DEFAULT_PLAY_FORM, format: "sit_and_go", payouts: "50/30/20" }, GAME, 1);
+    expect(paid.ok && (paid.config.format as { payouts: number[] }).payouts).toEqual([50, 30, 20]);
+    const inexact = buildTableConfig({ ...DEFAULT_PLAY_FORM, format: "sit_and_go", payouts: "65.5/34.5" }, GAME, 1);
+    expect(!inexact.ok && inexact.errors.payouts).toBeTruthy();
   });
 
   it("formats and parses amounts in table units without rounding", () => {

@@ -116,6 +116,11 @@ function Setup({ onCreated }: { onCreated: (s: PlayState) => void }) {
           <>
             {text("Starting chips", "startingChips")}
             {text("Hands per level", "handsPerLevel")}
+            {text(
+              "Payouts (% per place)",
+              "payouts",
+              "e.g. 65/35 or 50/30/20; empty: winner takes all up to 3 players, 65/35 for 4–6. Used for ICM grading.",
+            )}
             <div className="sm:col-span-3">
               {text("Blind levels (small/big/ante)", "levels", "Comma-separated, e.g. 10/20, 15/30, 25/50/5")}
             </div>

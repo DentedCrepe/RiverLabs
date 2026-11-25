@@ -19,6 +19,8 @@ Kind = Literal[
     "implied_odds",
     "semi_bluff",
     "zero_sum_2x2",
+    "icm",
+    "icm_call",
 ]
 
 

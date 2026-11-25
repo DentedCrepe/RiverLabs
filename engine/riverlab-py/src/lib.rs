@@ -808,6 +808,28 @@ fn theory(kind: &str, params_json: &str) -> PyResult<String> {
             let plus = p.get("plus").and_then(serde_json::Value::as_bool).unwrap_or(false);
             serde_json::to_value(t::regret_matching_rps(small("iterations")?, start, plus).map_err(err)?)
         }
+        "icm" | "icm_call" => {
+            let list = |k: &str| p.get(k).and_then(|v| v.as_array()).ok_or_else(|| err(format!("missing list '{k}'")));
+            let stacks: Vec<u64> = list("stacks")?
+                .iter()
+                .map(|v| v.as_u64().ok_or_else(|| err("stacks must be whole numbers of chips")))
+                .collect::<PyResult<_>>()?;
+            let prizes: Vec<f64> = list("prizes")?
+                .iter()
+                .map(|v| v.as_f64().ok_or_else(|| err("prizes must be numbers")))
+                .collect::<PyResult<_>>()?;
+            if kind == "icm" {
+                serde_json::to_value(t::icm::icm(&stacks, &prizes).map_err(err)?)
+            } else {
+                let i = |k: &str| -> PyResult<usize> {
+                    usize::try_from(u(k)?).map_err(|_| err(format!("'{k}' is too large")))
+                };
+                serde_json::to_value(
+                    t::icm::icm_call(&stacks, i("hero")?, i("villain")?, u("pot")?, u("to_call")?, &prizes)
+                        .map_err(err)?,
+                )
+            }
+        }
         other => return Err(err(format!("unknown theory calculation '{other}'"))),
     };
     to_json(&out.map_err(err)?)

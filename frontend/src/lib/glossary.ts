@@ -25,6 +25,7 @@ export const GLOSSARY = {
     "Each decision is compared with the same references as the session report: the bots' preflop model (approximate) for preflop choices, and pot odds against the bots' actual ranges for calls and folds. Bets and raises after the flop aren't graded.",
   heroEquity:
     "Your share of the pot if all remaining cards were dealt with no more betting, against the hands the bots could still have given how they've played (their tracked ranges). Monte Carlo estimate. Facing a bet, the price shows the equity a call needs to break even when no more money goes in.",
+  icm: "ICM (the Independent Chip Model, Malmuth–Harville) turns tournament stacks into shares of the prize pool: your chance of finishing first is your share of the chips, and lower places follow the same way. It is a model: it ignores skill, position and the blinds. Heads-up all-in calls and folds in a sit & go are graded against the equity ICM requires, not chip pot odds. Shown under each seat.",
   reveal:
     "Practice mode: shows the bots' cards during hands. It makes decisions easier, so hands played with it on are flagged in the report.",
   exploitability:

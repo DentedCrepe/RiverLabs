@@ -37,6 +37,10 @@ in the page; every graded answer is also stored for Analytics (`docs/analytics.m
 EV loss is measured against an opponent who plays the equilibrium. Against a different opponent
 another action can be better; that is exploitation, which these drills do not grade.
 
+**Tournaments and ICM.** The drill is heads-up. With two players left, ICM (docs/play.md) is
+linear in chips (your value is the 2nd prize plus your chip share of the difference), so the
+chip-EV equilibrium is also the ICM one. The drill does not model three or more players left.
+
 ## The equity table
 Grading needs a 7 MB table of every hand-against-hand all-in equity. It is stored as
 `<RIVERLAB_RESULT_STORAGE_DIR>/hu_combo_equity.bin` and loaded the first time the Trainer page is

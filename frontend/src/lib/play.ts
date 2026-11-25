@@ -25,6 +25,8 @@ export type SeatView = {
   in_hand: boolean;
   last_action: string | null;
   hidden_cards: string[] | null;
+  /** Sit & go: share of the prize pool by ICM (Malmuth–Harville), from the stacks at the start of the hand. */
+  icm_share?: number | null;
 };
 export type Feedback = {
   verdict: "mistake" | "rare" | "ok" | "not_graded";
@@ -60,6 +62,8 @@ export type TableView = {
   reveal: boolean;
   feedback: { street: string; action: string; feedback: Feedback }[];
   summary: string[];
+  /** Sit & go: percent of the prize pool for 1st, 2nd, ... */
+  payouts?: number[] | null;
   hero_equity: number | null;
   required_equity: number | null;
 };
@@ -205,6 +209,8 @@ export interface PlayForm {
   /** "10/20, 15/30, 25/50/5": small/big[/ante] per level. */
   levels: string;
   handsPerLevel: string;
+  /** "65/35": percent of the prize pool per place; empty for the default for the table size. */
+  payouts: string;
 }
 
 export const DEFAULT_PLAY_FORM: PlayForm = {
@@ -216,6 +222,7 @@ export const DEFAULT_PLAY_FORM: PlayForm = {
   startingChips: "1500",
   levels: "10/20, 15/30, 25/50, 50/100, 75/150, 100/200, 150/300, 200/400, 300/600, 400/800",
   handsPerLevel: "10",
+  payouts: "",
 };
 
 export type BuildResult = { ok: true; config: Record<string, unknown> } | { ok: false; errors: Record<string, string> };
@@ -252,7 +259,9 @@ export function buildTableConfig(form: PlayForm, game: GameConfig, seed: number)
     if (!levels) errors.levels = "e.g. 10/20, 15/30, 25/50/5 (small/big/ante)";
     const hands = parseScaled(form.handsPerLevel, 0);
     if (hands === null || hands === 0) errors.handsPerLevel = "A whole number of hands";
-    format = { type: "sit_and_go", starting_chips: chips, levels, hands_per_level: hands };
+    const payouts = form.payouts.trim() ? form.payouts.split(/[/,]/).map((x) => parseScaled(x.trim(), 0)) : [];
+    if (payouts.some((p) => p === null || p === 0)) errors.payouts = "Whole percentages, e.g. 65/35";
+    format = { type: "sit_and_go", starting_chips: chips, levels, hands_per_level: hands, payouts };
   } else {
     const stack = bbToMbb(form.stackBb);
     if (stack === null || stack === 0) errors.stackBb = "Stack in bb (up to 3 decimals)";

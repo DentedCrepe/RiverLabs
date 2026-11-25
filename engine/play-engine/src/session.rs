@@ -3,7 +3,7 @@
 use crate::bot::{self, BotDecision, DecisionSource, Situation};
 use crate::config::{Difficulty, Format, Level, PlayError, Result, TableConfig};
 use crate::model::{Model, ModelCache, ModelShape};
-use crate::record::{AllInSnapshot, HandRecord, HeroDecision, ModelCheck, RecordAction, RecordSeat};
+use crate::record::{AllInSnapshot, HandRecord, HeroDecision, IcmCheck, ModelCheck, RecordAction, RecordSeat};
 use crate::strength::card_set;
 use poker_core::game::{Action, GameState, Phase};
 use poker_core::{Card, Chips, GameConfig, HoleCards, Street};
@@ -341,7 +341,12 @@ impl Session {
         let Phase::Betting { to_act } = hand.state.phase() else {
             return Err(PlayError::State("no betting in progress".into()));
         };
-        let mut decision = hero_decision(hand, to_act, action);
+        // Prizes still to be won: the top places, one per player left in the tournament.
+        let prizes: Option<Vec<f64>> = self.cfg.payouts().map(|p| {
+            let left = hand.state.players().len();
+            p.iter().take(left).map(|&x| f64::from(x)).collect()
+        });
+        let mut decision = hero_decision(hand, to_act, action, prizes.as_deref());
         let before = hand.state.clone();
         hand.state.apply(action).map_err(|e| PlayError::IllegalAction(e.to_string()))?;
         let tournament = hand.record.tournament;
@@ -714,7 +719,7 @@ fn after_action(hand: &mut Hand, before: &GameState, seat: usize, action: Action
 
 /// Records what you faced before your action: pot odds, your equity against the bots' tracked
 /// ranges, and (preflop) the model's frequencies for your hand.
-fn hero_decision(hand: &mut Hand, seat: usize, action: Action) -> HeroDecision {
+fn hero_decision(hand: &mut Hand, seat: usize, action: Action, prizes: Option<&[f64]>) -> HeroDecision {
     let state = &hand.state;
     let legal = state.legal_actions().ok();
     let to_call = legal.and_then(|l| l.call).map_or(0, |c| c.mbb());
@@ -756,9 +761,31 @@ fn hero_decision(hand: &mut Hand, seat: usize, action: Action) -> HeroDecision {
         opponents: opponents.len(),
         model: model_check,
         all_in_call: legal.and_then(|l| l.call).is_some_and(|c| c == state.players()[seat].stack),
+        icm: prizes.and_then(|p| icm_check(state, seat, &opponents, p)),
         feedback: None,
         spot: crate::spot::capture(state, seat, action, |k| hand.street_ranges[k].clone(), hand.hero_range.clone()),
     }
+}
+
+/// A sit & go call that ends the betting heads-up, valued with ICM (`None` otherwise: more than
+/// one opponent, or betting could continue, so a single all-in comparison does not describe it).
+fn icm_check(state: &GameState, seat: usize, opponents: &[usize], prizes: &[f64]) -> Option<IcmCheck> {
+    let &[villain] = opponents else { return None };
+    let players = state.players();
+    let (me, them) = (&players[seat], &players[villain]);
+    let to_call = them.street_commit.mbb().checked_sub(me.street_commit.mbb()).filter(|&c| c > 0)?;
+    if to_call < me.stack.mbb() && them.stack.mbb() > 0 {
+        return None;
+    }
+    let stacks: Vec<u64> = players.iter().map(|p| p.stack.mbb()).collect();
+    let c = poker_theory::icm::icm_call(&stacks, seat, villain, state.pot_total().mbb(), to_call, prizes).ok()?;
+    Some(IcmCheck {
+        payouts: prizes.iter().map(|&p| p as u32).collect(),
+        fold: c.fold,
+        win: c.win,
+        lose: c.lose,
+        required_equity: c.required_equity,
+    })
 }
 
 /// Your range when the flop is dealt, from the preflop model's node (`None` off the model tree).

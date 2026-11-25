@@ -90,6 +90,7 @@ fn sit_and_go_ends_with_places() {
             starting_chips: 600,
             levels: vec![lv(10, 20), lv(15, 30), lv(25, 50), lv(50, 100), lv(100, 200)],
             hands_per_level: 5,
+            payouts: vec![],
         },
         opponents: vec![Difficulty::Hard, Difficulty::Easy],
         seed: 3,
@@ -103,6 +104,50 @@ fn sit_and_go_ends_with_places() {
     assert!(places.contains(&1) || s.players[0].busted);
     let report = play_engine::report::build(s.records(), true);
     assert!(report.caveats.iter().any(|c| c.contains("ICM")));
+}
+
+#[test]
+fn sit_and_go_all_ins_are_valued_with_icm() {
+    let lv = |s, b| Level { small_blind: s, big_blind: b, ante: 0 };
+    let mut seen = 0;
+    for seed in 0..6 {
+        let cfg = TableConfig {
+            format: Format::SitAndGo {
+                starting_chips: 500,
+                levels: vec![lv(10, 20), lv(25, 50), lv(50, 100), lv(100, 200)],
+                hands_per_level: 4,
+                payouts: vec![50, 30, 20],
+            },
+            opponents: vec![Difficulty::Easy, Difficulty::Hard, Difficulty::Easy],
+            seed,
+        };
+        let s = play(cfg, 200);
+        let shares: f64 = s.view().seats.iter().map(|seat| seat.icm_share.expect("sit & go seats have ICM")).sum();
+        assert!((shares - 1.0).abs() < 1e-9, "the prize pool is shared out exactly: {shares}");
+        for r in s.records() {
+            for d in &r.hero_decisions {
+                let Some(icm) = &d.icm else { continue };
+                seen += 1;
+                assert_eq!(d.opponents, 1, "ICM is used heads-up only");
+                assert!(d.to_call > 0);
+                assert!(icm.lose < icm.win && (0.0..=1.0).contains(&icm.required_equity), "{icm:?}");
+                assert!(icm.lose <= icm.fold + 1e-12 && icm.fold <= icm.win + 1e-12, "{icm:?}");
+                // Only the places still to be paid are used.
+                assert!(icm.payouts.len() <= r.seats.len());
+                assert!(d.feedback.is_some());
+                if d.equity_vs_ranges.is_some() && matches!(d.action, Action::Call | Action::Fold) {
+                    let j = play_engine::judge::judge(d, "BB", |x| x.to_string());
+                    assert!(
+                        j.checks.iter().any(|c| c.reference == play_engine::judge::ICM_REFERENCE),
+                        "graded against ICM: {:?}",
+                        j.checks
+                    );
+                    assert!(j.checks.iter().all(|c| !c.key.contains("odds")), "ICM replaces chip pot odds");
+                }
+            }
+        }
+    }
+    assert!(seen > 0, "short-stacked sit & goes produce heads-up all-ins");
 }
 
 #[test]

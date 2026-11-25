@@ -25,6 +25,10 @@ pub struct SeatView {
     pub last_action: Option<String>,
     /// After a hand: cards of players who didn't show them, for an optional "show all hands".
     pub hidden_cards: Option<Vec<String>>,
+    /// Sit & go: this player's share of the prize pool by ICM (Malmuth–Harville) from the stacks
+    /// at the start of the hand; a busted player's prize is fixed by their place.
+    #[serde(default)]
+    pub icm_share: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -83,6 +87,9 @@ pub struct TableView {
     pub feedback: Vec<DecisionFeedback>,
     /// Result lines of the finished hand.
     pub summary: Vec<String>,
+    /// Sit & go: percent of the prize pool for 1st, 2nd, ...
+    #[serde(default)]
+    pub payouts: Option<Vec<u32>>,
 }
 
 #[derive(Debug)]
@@ -153,8 +160,23 @@ pub fn build(s: &Session, hand: Option<HandRef>, notes: &[String]) -> TableView 
             in_hand: false,
             last_action: None,
             hidden_cards: None,
+            icm_share: None,
         })
         .collect();
+    if let Some(payouts) = s.config().payouts() {
+        let alive: Vec<usize> = (0..s.players.len()).filter(|&i| !s.players[i].busted).collect();
+        let prizes: Vec<f64> = payouts.iter().take(alive.len()).map(|&p| f64::from(p) / 100.0).collect();
+        let stacks: Vec<u64> = alive.iter().map(|&i| s.players[i].chips).collect();
+        if let Ok(icm) = poker_theory::icm::icm(&stacks, &prizes) {
+            for (k, &i) in alive.iter().enumerate() {
+                seats[i].icm_share = Some(icm.values[k]);
+            }
+        }
+        for (i, p) in s.players.iter().enumerate().filter(|(_, p)| p.busted) {
+            let prize = p.finish.and_then(|f| payouts.get(usize::from(f).wrapping_sub(1)));
+            seats[i].icm_share = Some(prize.map_or(0.0, |&x| f64::from(x) / 100.0));
+        }
+    }
     let mut view = TableView {
         status: s.status(),
         format: format.into(),
@@ -179,6 +201,7 @@ pub fn build(s: &Session, hand: Option<HandRef>, notes: &[String]) -> TableView 
         required_equity: None,
         feedback: vec![],
         summary: vec![],
+        payouts: s.config().payouts(),
     };
     let feedback_of = |r: &crate::record::HandRecord| -> Vec<DecisionFeedback> {
         r.hero_decisions

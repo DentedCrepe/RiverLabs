@@ -99,6 +99,15 @@ function SeatPod({
             <span>{seat.busted ? `out${seat.finish ? ` (${seat.finish})` : ""}` : amount(seat.stack, units)}</span>
           )}
         </p>
+        {seat.icm_share != null && (
+          <p
+            className="font-mono text-[10px] text-white/60 tabular"
+            title="Share of the prize pool by ICM (Malmuth–Harville model), from the stacks at the start of the hand"
+            aria-label={`${seat.name} ICM share`}
+          >
+            ICM {(seat.icm_share * 100).toFixed(1)}%
+          </p>
+        )}
       </div>
       <p
         className="min-h-4 max-w-full truncate text-center text-[11px] text-white/85"
