@@ -15,8 +15,8 @@ use hand_evaluator::evaluate_mask;
 use poker_core::{Board, CardSet};
 use rand::{RngExt, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use rayon::prelude::*;
 use range_engine::{Combo, Range};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 

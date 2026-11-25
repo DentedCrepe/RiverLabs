@@ -95,10 +95,41 @@ struct Solved {
     eval: PushFoldEvaluation,
 }
 
-/// Exact solutions per stack depth, computed on first use and kept in memory.
+/// Exact solutions per stack depth, computed on first use and kept in memory. Dealing a drill
+/// starts its stack's solution in the background (about 2 s on 4 cores), so it is usually ready
+/// by the time the answer is graded.
 pub struct PushFoldTrainer {
+    inner: Arc<Inner>,
+}
+
+struct Inner {
     eq: Arc<ComboEquities>,
     solved: Mutex<HashMap<u64, Arc<Solved>>>,
+    /// One lock per stack depth, held while it is solved, so no depth is solved twice at once.
+    solving: Mutex<HashMap<u64, Arc<Mutex<()>>>>,
+}
+
+impl Inner {
+    fn solution(&self, stack_mbb: u64) -> Result<Arc<Solved>> {
+        check_stack(stack_mbb)?;
+        let lock =
+            |m: &Mutex<HashMap<u64, Arc<Solved>>>| m.lock().unwrap_or_else(|e| e.into_inner()).get(&stack_mbb).cloned();
+        if let Some(s) = lock(&self.solved) {
+            return Ok(s);
+        }
+        let gate = self.solving.lock().unwrap_or_else(|e| e.into_inner()).entry(stack_mbb).or_default().clone();
+        let _solving = gate.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(s) = lock(&self.solved) {
+            return Ok(s); // solved by someone else while this waited
+        }
+        let stack = stack_mbb as f64 / 1000.0;
+        let profile = solve(&self.eq, stack, ITERATIONS);
+        let eval = evaluate(&self.eq, stack, &profile);
+        let evs = combo_evs(&self.eq, stack, &profile);
+        let s = Arc::new(Solved { profile, evs, eval });
+        self.solved.lock().unwrap_or_else(|e| e.into_inner()).insert(stack_mbb, s.clone());
+        Ok(s)
+    }
 }
 
 impl std::fmt::Debug for PushFoldTrainer {
@@ -151,21 +182,24 @@ fn by_class(freq: &[f64]) -> (Vec<ClassStrategy>, f64) {
 
 impl PushFoldTrainer {
     pub fn new(eq: Arc<ComboEquities>) -> PushFoldTrainer {
-        PushFoldTrainer { eq, solved: Mutex::new(HashMap::new()) }
+        PushFoldTrainer {
+            inner: Arc::new(Inner { eq, solved: Mutex::new(HashMap::new()), solving: Mutex::new(HashMap::new()) }),
+        }
     }
 
     fn solution(&self, stack_mbb: u64) -> Result<Arc<Solved>> {
-        check_stack(stack_mbb)?;
-        if let Some(s) = self.solved.lock().unwrap_or_else(|e| e.into_inner()).get(&stack_mbb) {
-            return Ok(s.clone());
+        self.inner.solution(stack_mbb)
+    }
+
+    /// Starts solving `stack_mbb` on a background thread (no-op if it is solved or in progress).
+    pub fn prepare_in_background(&self, stack_mbb: u64) {
+        if self.inner.solved.lock().unwrap_or_else(|e| e.into_inner()).contains_key(&stack_mbb) {
+            return;
         }
-        let stack = stack_mbb as f64 / 1000.0;
-        let profile = solve(&self.eq, stack, ITERATIONS);
-        let eval = evaluate(&self.eq, stack, &profile);
-        let evs = combo_evs(&self.eq, stack, &profile);
-        let s = Arc::new(Solved { profile, evs, eval });
-        self.solved.lock().unwrap_or_else(|e| e.into_inner()).insert(stack_mbb, s.clone());
-        Ok(s)
+        let inner = self.inner.clone();
+        std::thread::spawn(move || {
+            let _ = inner.solution(stack_mbb);
+        });
     }
 
     /// Deals a drill: a stack depth in [min, max] (in steps), a seat (random if `None`) and a hand.
@@ -181,6 +215,8 @@ impl PushFoldTrainer {
         let seat = seat.unwrap_or(if rng.random::<bool>() { Seat::Sb } else { Seat::Bb });
         let combo = Combo::all().nth(rng.random_range(0..COMBO_COUNT)).expect("index in range");
         let (a, b) = combo.cards();
+        // Solve this depth while the player thinks, so grading rarely waits.
+        self.prepare_in_background(stack_mbb);
         Ok(Drill {
             stack_mbb,
             seat,

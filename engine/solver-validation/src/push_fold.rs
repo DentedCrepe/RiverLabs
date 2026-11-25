@@ -284,8 +284,10 @@ impl Game<'_> {
     fn bb_values(&self, j: usize, jam: &[f64]) -> (f64, f64, f64) {
         let s = self.stack;
         let (mut call, mut fold, mut no_jam) = (0.0, 0.0, 0.0);
-        for i in (0..COMBO_COUNT).filter(|&i| self.compatible(i, j)) {
-            call += jam[i] * (2.0 * s * (1.0 - self.eq.get(i, j) as f64) - s);
+        // Row `j` holds the big blind's own equities (stored, like every entry, from the exact f64
+        // value), so the table is read contiguously instead of down a column.
+        for i in (0..COMBO_COUNT).filter(|&i| self.compatible(j, i)) {
+            call += jam[i] * (2.0 * s * self.eq.get(j, i) as f64 - s);
             fold -= jam[i];
             no_jam += (1.0 - jam[i]) * 0.5;
         }
