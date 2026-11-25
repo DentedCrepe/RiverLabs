@@ -29,7 +29,7 @@ topics = [
   { slug = "reverse-implied-odds", title = "Reverse implied odds", lesson = "implied-odds" },
   { slug = "combinatorics", title = "Combinatorics", lesson = "combinatorics" },
   { slug = "blockers", title = "Blockers", lesson = "blockers" },
-  { slug = "range-construction", title = "Range construction" },
+  { slug = "range-construction", title = "Range construction", lesson = "range-construction" },
 ]
 
 [[levels]]
@@ -61,7 +61,7 @@ topics = [
   { slug = "bet-sizing-theory", title = "Bet sizing theory", lesson = "polarised-ranges" },
   { slug = "overbets", title = "Overbets", lesson = "polarised-ranges" },
   { slug = "check-raises", title = "Check-raises", lesson = "check-raises" },
-  { slug = "turn-and-river-strategy", title = "Turn and river strategy" },
+  { slug = "turn-and-river-strategy", title = "Turn and river strategy", lesson = "turn-and-river-strategy" },
 ]
 
 [[levels]]
