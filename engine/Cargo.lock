@@ -152,6 +152,7 @@ dependencies = [
  "rand",
  "rand_chacha",
  "range-engine",
+ "rayon",
  "serde",
  "thiserror",
 ]

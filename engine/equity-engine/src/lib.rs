@@ -15,6 +15,7 @@ use hand_evaluator::evaluate_mask;
 use poker_core::{Board, CardSet};
 use rand::{RngExt, SeedableRng};
 use rand_chacha::ChaCha8Rng;
+use rayon::prelude::*;
 use range_engine::{Combo, Range};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -176,6 +177,14 @@ impl Acc {
         }
         self.total += w;
     }
+    fn merge(&mut self, other: &Acc) {
+        for (a, b) in [(&mut self.equity, &other.equity), (&mut self.win, &other.win), (&mut self.tie, &other.tie)] {
+            for (x, y) in a.iter_mut().zip(b) {
+                *x += y;
+            }
+        }
+        self.total += other.total;
+    }
     fn normalise(mut self) -> Acc {
         for v in [&mut self.equity, &mut self.win, &mut self.tie] {
             for x in v.iter_mut() {
@@ -235,7 +244,7 @@ pub fn exact(ranges: &[Range], board: &Board, dead: CardSet, budget: u64) -> Res
     if estimated > budget {
         return Err(EquityError::TooLarge { estimated, budget });
     }
-    let mut e = Enumerator {
+    let enumerator = || Enumerator {
         p: &p,
         strengths: p.combos.iter().map(|c| vec![0; c.len()]).collect(),
         s: vec![0u32; n],
@@ -243,8 +252,29 @@ pub fn exact(ranges: &[Range], board: &Board, dead: CardSet, budget: u64) -> Res
         acc: Acc::new(n),
         samples: 0,
     };
-    for_each_subset(&p.deck, p.need, &mut |runout| e.runout(runout));
-    let Enumerator { acc, samples, .. } = e;
+    // Runouts are split by their lowest card and enumerated in parallel; the parts are added up
+    // in that fixed order, so the result does not depend on the number of threads.
+    let parts: Vec<(Acc, u64)> = if p.need == 0 {
+        let mut e = enumerator();
+        e.runout(0);
+        vec![(e.acc, e.samples)]
+    } else {
+        (0..=p.deck.len() - p.need)
+            .into_par_iter()
+            .map(|first| {
+                let mut e = enumerator();
+                let lowest = 1u64 << p.deck[first];
+                for_each_subset(&p.deck[first + 1..], p.need - 1, &mut |rest| e.runout(lowest | rest));
+                (e.acc, e.samples)
+            })
+            .collect()
+    };
+    let mut acc = Acc::new(n);
+    let mut samples = 0;
+    for (part, k) in parts {
+        acc.merge(&part);
+        samples += k;
+    }
     if acc.total == 0.0 {
         return Err(EquityError::NoValidDeal);
     }
