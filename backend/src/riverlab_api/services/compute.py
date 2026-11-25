@@ -23,7 +23,10 @@ from riverlab_api.services import engine
 # Legal status transitions. Terminal states have no outgoing transitions.
 TRANSITIONS: dict[JobStatus, frozenset[JobStatus]] = {
     JobStatus.QUEUED: frozenset({JobStatus.RUNNING, JobStatus.CANCELLED, JobStatus.FAILED}),
-    JobStatus.RUNNING: frozenset({JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED}),
+    # RUNNING -> QUEUED: the worker running it stopped (restart, crash); it will run again.
+    JobStatus.RUNNING: frozenset(
+        {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.QUEUED}
+    ),
     JobStatus.SUCCEEDED: frozenset(),
     JobStatus.FAILED: frozenset(),
     JobStatus.CANCELLED: frozenset(),
@@ -36,8 +39,13 @@ class ComputeBackend(Protocol):
     name: str
 
     def can_run(self, spec: dict[str, Any]) -> bool: ...
-    def submit(self, job_id: uuid.UUID, spec: dict[str, Any], kind: str) -> None: ...
-    def request_cancel(self, job_id: uuid.UUID) -> None: ...
+    def submit(self, job_id: uuid.UUID, spec: dict[str, Any], kind: str) -> None:
+        """Called after the job is committed as queued (the queue is the database)."""
+        ...
+
+    def request_cancel(self, job_id: uuid.UUID) -> None:
+        """A fast path: the database flag `cancel_requested` is what every worker obeys."""
+        ...
 
 
 @dataclass
@@ -164,6 +172,18 @@ class JobService:
         job = self.get(job_id)
         self._transition(job, status, error=error)
         return job
+
+    def requeue(self, job: SolverJob) -> None:
+        """Puts a running job whose worker stopped back in the queue, from the start."""
+        if job.status != JobStatus.RUNNING:
+            raise ConflictError(f"Only a running job can be requeued, not a {job.status.value} one")
+        job.status = JobStatus.QUEUED
+        job.started_at = None
+        job.worker_id = None
+        job.heartbeat_at = None
+        job.iterations = 0
+        job.progress = {}
+        self.db.commit()
 
     def _transition(self, job: SolverJob, to: JobStatus, error: tuple[str, str] | None = None) -> None:
         if to not in TRANSITIONS[job.status]:

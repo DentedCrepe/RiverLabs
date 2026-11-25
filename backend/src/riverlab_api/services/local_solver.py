@@ -1,17 +1,24 @@
-"""The `local` compute backend: GTOpen solves in a background thread of the API process.
+"""The `local` compute backend: GTOpen solves run by RiverLab's own workers.
 
-One solve runs at a time (a single worker thread); further jobs wait in the executor's FIFO
-queue. Jobs are tracked in the database through JobService, so status, progress, cancellation
-and failures follow the documented lifecycle. A job interrupted by a server restart cannot
-resume; `fail_interrupted_jobs` marks it failed on startup.
+The queue is the `solver_jobs` table (ADR-0007). A worker claims the oldest queued job with
+`SELECT ... FOR UPDATE SKIP LOCKED`, marks it running under its worker id, and while it solves a
+heartbeat thread records that it is alive and checks the job's `cancel_requested` flag, so a
+cancel from any process stops the solve. A running job whose heartbeat goes stale (its worker
+was restarted or crashed) goes back in the queue and runs again from the start, up to
+`MAX_ATTEMPTS` times.
+
+Workers run inside the API process (the default, `RIVERLAB_WORKER_MODE=embedded`) or as separate
+processes (`python -m riverlab_api.worker`, with the API set to `external`). Each worker runs
+one solve at a time; the solve itself uses many threads.
 """
 
 import logging
 import os
+import socket
 import threading
 import uuid
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +33,56 @@ SessionFactory = Callable[[], Session]
 
 BACKEND_NAME = "local"
 STREET = {3: "flop", 4: "turn", 5: "river"}
+# A running job's worker writes a heartbeat this often…
+HEARTBEAT_SECONDS = 2.0
+# …and a heartbeat older than this means the worker is gone.
+STALE_SECONDS = 30.0
+# Starts before a job that keeps losing its worker is failed instead of retried.
+MAX_ATTEMPTS = 3
+# How often an idle worker looks for work and for stale jobs (submissions wake it at once).
+POLL_SECONDS = 2.0
+
+
+def new_worker_id() -> str:
+    return f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
+
+
+def recover_stale_jobs(session: Session, stale_after: float = STALE_SECONDS) -> dict[str, int]:
+    """Running jobs whose worker stopped reporting: requeued, cancelled (if a cancel was asked
+    for) or failed after `MAX_ATTEMPTS` starts. Safe to call from any number of workers."""
+    from riverlab_api.services.compute import BackendRegistry, JobService
+
+    svc = JobService(session, BackendRegistry())
+    cutoff = datetime.now(UTC) - timedelta(seconds=stale_after)
+    counts = {"requeued": 0, "failed": 0, "cancelled": 0}
+    jobs = session.scalars(
+        select(SolverJob)
+        .where(
+            SolverJob.backend == BACKEND_NAME,
+            SolverJob.status == JobStatus.RUNNING,
+            (SolverJob.heartbeat_at < cutoff) | (SolverJob.heartbeat_at.is_(None)),
+        )
+        .with_for_update(skip_locked=True)
+    ).all()
+    for job in jobs:
+        if job.cancel_requested:
+            svc.mark_finished(job.id, JobStatus.CANCELLED)
+            counts["cancelled"] += 1
+        elif job.attempts >= MAX_ATTEMPTS:
+            svc.mark_finished(
+                job.id,
+                JobStatus.FAILED,
+                error=(
+                    "interrupted",
+                    f"The solve was interrupted {job.attempts} times (server restarts or crashes)",
+                ),
+            )
+            counts["failed"] += 1
+        else:
+            svc.requeue(job)
+            counts["requeued"] += 1
+    session.commit()
+    return counts
 
 
 class LocalSolverBackend:
@@ -38,6 +95,10 @@ class LocalSolverBackend:
         threads: int,
         storage_dir: str | None = None,
         equity_cache_dir: str | None = None,
+        run_worker: bool = True,
+        heartbeat_seconds: float = HEARTBEAT_SECONDS,
+        stale_seconds: float = STALE_SECONDS,
+        poll_seconds: float = POLL_SECONDS,
     ) -> None:
         self._sessions = session_factory
         self._storage = Path(storage_dir).resolve() if storage_dir else None
@@ -47,9 +108,18 @@ class LocalSolverBackend:
         self._equity_cache = Path(equity_cache_dir).resolve() if equity_cache_dir else self._storage
         self._max_bytes = max_memory_mb * 1024 * 1024
         self._threads = threads or (os.cpu_count() or 1)
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="riverlab-solver")
+        self._heartbeat = heartbeat_seconds
+        self._stale = stale_seconds
+        self._poll = poll_seconds
+        self.worker_id = new_worker_id()
         self._tokens: dict[uuid.UUID, Any] = {}
         self._lock = threading.Lock()
+        self._wake = threading.Event()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        if run_worker:
+            self._thread = threading.Thread(target=self._loop, name="riverlab-solver", daemon=True)
+            self._thread.start()
 
     def can_run(self, spec: dict[str, Any]) -> bool:
         return True
@@ -59,15 +129,8 @@ class LocalSolverBackend:
         return self._equity_cache
 
     def submit(self, job_id: uuid.UUID, spec: dict[str, Any], kind: str = "postflop") -> None:
-        with self._lock:
-            self._tokens[job_id] = engine.CancelToken()
-        # Busy from queueing until the job ends: keeps the device awake and RiverLab running.
-        activity.begin()
-        try:
-            self._executor.submit(self._run_guarded, job_id, spec, kind)
-        except BaseException:
-            activity.end()
-            raise
+        # The job is already committed as queued; wake this process's worker (if any) at once.
+        self._wake.set()
 
     def request_cancel(self, job_id: uuid.UUID) -> None:
         with self._lock:
@@ -76,22 +139,98 @@ class LocalSolverBackend:
             token.cancel()
 
     def shutdown(self) -> None:
+        """Stops the worker. A solve in progress is cancelled locally but stays `running` in the
+        database, so after a restart it is requeued rather than lost."""
+        self._stop.set()
+        self._wake.set()
         with self._lock:
             for token in self._tokens.values():
                 token.cancel()
-        self._executor.shutdown(wait=True, cancel_futures=True)
+        if self._thread is not None:
+            self._thread.join(timeout=60)
+
+    def run_forever(self) -> None:
+        """The worker loop in the calling thread (for `python -m riverlab_api.worker`)."""
+        self._loop()
 
     # ---- worker ----
 
+    def _loop(self) -> None:
+        logger.info("solver worker %s started", self.worker_id)
+        while not self._stop.is_set():
+            try:
+                with self._sessions() as session:
+                    counts = recover_stale_jobs(session, self._stale)
+                if any(counts.values()):
+                    logger.warning("stale solver jobs: %s", counts)
+                claimed = self._claim()
+            except Exception:
+                logger.exception("solver worker %s could not reach the database", self.worker_id)
+                claimed = None
+            if claimed is None:
+                self._wake.wait(self._poll)
+                self._wake.clear()
+                continue
+            self._run_guarded(*claimed)
+        logger.info("solver worker %s stopped", self.worker_id)
+
+    def _claim(self) -> tuple[uuid.UUID, dict[str, Any], str] | None:
+        """Takes the oldest queued job, so no two workers ever run the same one."""
+        with self._sessions() as session:
+            job = session.scalars(
+                select(SolverJob)
+                .where(SolverJob.backend == BACKEND_NAME, SolverJob.status == JobStatus.QUEUED)
+                .order_by(SolverJob.created_at, SolverJob.id)
+                .limit(1)
+                .with_for_update(skip_locked=True)
+            ).first()
+            if job is None:
+                return None
+            now = datetime.now(UTC)
+            job.status = JobStatus.RUNNING
+            job.started_at = now
+            job.heartbeat_at = now
+            job.worker_id = self.worker_id
+            job.attempts += 1
+            session.commit()
+            return job.id, dict(job.spec), job.kind
+
+    def _beat(self, job_id: uuid.UUID, token: Any, done: threading.Event) -> None:
+        """While the solve runs: record that this worker is alive, and stop the solve when a
+        cancel is requested (from any process) or the job was taken away from this worker."""
+        while not done.wait(self._heartbeat):
+            try:
+                with self._sessions() as session:
+                    job = session.get(SolverJob, job_id)
+                    if job is None or job.status != JobStatus.RUNNING or job.worker_id != self.worker_id:
+                        token.cancel()
+                        return
+                    if job.cancel_requested:
+                        token.cancel()
+                    job.heartbeat_at = datetime.now(UTC)
+                    session.commit()
+            except Exception:
+                logger.exception("heartbeat for solver job %s failed", job_id)
+
     def _run_guarded(self, job_id: uuid.UUID, spec: dict[str, Any], kind: str) -> None:
+        token = engine.CancelToken()
+        with self._lock:
+            self._tokens[job_id] = token
+        done = threading.Event()
+        beat = threading.Thread(target=self._beat, args=(job_id, token, done), daemon=True)
+        # Busy while solving: keeps the device awake and RiverLab running.
+        activity.begin()
+        beat.start()
         try:
-            self._run(job_id, spec, kind)
+            self._run(job_id, spec, kind, token)
         except Exception:  # pragma: no cover - last-resort reporting, never silent
             logger.exception("solver job %s crashed", job_id)
             self._finish(
                 job_id, JobStatus.FAILED, ("internal_error", "The solver worker crashed; see server logs")
             )
         finally:
+            done.set()
+            beat.join(timeout=10)
             with self._lock:
                 self._tokens.pop(job_id, None)
             activity.end()
@@ -101,19 +240,24 @@ class LocalSolverBackend:
 
         return JobService(session, BackendRegistry())
 
-    def _run(self, job_id: uuid.UUID, spec: dict[str, Any], kind: str) -> None:
+    def _still_mine(self, session: Session, job_id: uuid.UUID) -> SolverJob | None:
+        job = session.get(SolverJob, job_id)
+        if job is None or job.status != JobStatus.RUNNING or job.worker_id != self.worker_id:
+            return None
+        return job
+
+    def _run(self, job_id: uuid.UUID, spec: dict[str, Any], kind: str, token: Any) -> None:
         with self._sessions() as session:
-            job = session.get(SolverJob, job_id)
-            if job is None or job.status != JobStatus.QUEUED:
-                return  # cancelled while queued, or gone
-            self._service(session).mark_running(job_id)
-        with self._lock:
-            token = self._tokens[job_id]
+            job = self._still_mine(session, job_id)
+            if job is None:
+                return
+            if job.cancel_requested:
+                self._service(session).mark_finished(job_id, JobStatus.CANCELLED)
+                return
 
         def on_progress(p: dict[str, Any]) -> None:
             with self._sessions() as s:
-                current = s.get(SolverJob, job_id)
-                if current is not None and current.status == JobStatus.RUNNING:
+                if self._still_mine(s, job_id) is not None:
                     self._service(s).report_progress(job_id, int(p["iterations"]), p)
 
         suffix = "gtp" if kind == "preflop" else "gto"
@@ -141,9 +285,14 @@ class LocalSolverBackend:
             return
         stop_reason = outcome["outcome"]["stop_reason"] if kind == "preflop" else outcome["stop_reason"]
         if stop_reason == "cancelled":
+            if self._stop.is_set():
+                # Shutting down, not cancelled by anyone: leave it running for the next worker.
+                return
             self._finish(job_id, JobStatus.CANCELLED)
             return
         with self._sessions() as session:
+            if self._still_mine(session, job_id) is None:
+                return  # requeued or finished elsewhere meanwhile; never store a second result
             if kind == "preflop":
                 self._store_preflop_result(session, job_id, spec, outcome, save_path)
             else:
@@ -152,8 +301,7 @@ class LocalSolverBackend:
 
     def _finish(self, job_id: uuid.UUID, status: JobStatus, error: tuple[str, str] | None = None) -> None:
         with self._sessions() as session:
-            job = session.get(SolverJob, job_id)
-            if job is None or job.status.is_terminal:
+            if self._still_mine(session, job_id) is None:
                 return
             self._service(session).mark_finished(job_id, status, error=error)
 
@@ -260,21 +408,3 @@ class LocalSolverBackend:
             )
         )
         session.commit()
-
-
-def fail_interrupted_jobs(session: Session) -> int:
-    """Local jobs cannot survive a restart: mark queued/running ones failed."""
-    from riverlab_api.services.compute import BackendRegistry, JobService
-
-    svc = JobService(session, BackendRegistry())
-    jobs = session.scalars(
-        select(SolverJob).where(
-            SolverJob.backend == BACKEND_NAME,
-            SolverJob.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
-        )
-    ).all()
-    for job in jobs:
-        svc.mark_finished(
-            job.id, JobStatus.FAILED, error=("interrupted", "The server restarted before the solve finished")
-        )
-    return len(jobs)

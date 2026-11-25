@@ -37,6 +37,8 @@ def _out(job: SolverJob) -> SolverJobOut:
         iterations=job.iterations,
         progress=job.progress,
         cancel_requested=job.cancel_requested,
+        attempts=job.attempts,
+        worker_id=job.worker_id,
         error_code=job.error_code,
         error_message=job.error_message,
         created_at=job.created_at,

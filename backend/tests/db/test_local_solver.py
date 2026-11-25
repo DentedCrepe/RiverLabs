@@ -3,6 +3,7 @@ database state (the worker thread uses its own sessions)."""
 
 import time
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +16,7 @@ from riverlab_api.db.models import JobStatus, SolverJob
 from riverlab_api.db.session import get_db
 from riverlab_api.main import create_app
 from riverlab_api.services import compute, engine
-from riverlab_api.services.local_solver import LocalSolverBackend, fail_interrupted_jobs
+from riverlab_api.services.local_solver import LocalSolverBackend, recover_stale_jobs
 
 pytestmark = pytest.mark.db
 
@@ -194,29 +195,136 @@ def test_oversized_spots_fail_with_a_clear_reason(db_engine: Engine) -> None:
         _clean(db_engine)
 
 
-def test_interrupted_jobs_are_failed_on_startup(db_engine: Engine) -> None:
+def test_stale_running_jobs_are_requeued_cancelled_or_failed(db_engine: Engine) -> None:
     _clean(db_engine)
     factory = sessionmaker(bind=db_engine, expire_on_commit=False)
+    old = datetime.now(UTC) - timedelta(minutes=5)
+    fresh = datetime.now(UTC)
     try:
         with factory() as s:
+            running = {"status": JobStatus.RUNNING, "started_at": old, "spec": {}}
             s.add_all(
                 [
-                    SolverJob(spec={}, backend="local", status=JobStatus.QUEUED),
-                    SolverJob(spec={}, backend="local", status=JobStatus.RUNNING),
-                    SolverJob(spec={}, backend="elsewhere", status=JobStatus.QUEUED),
+                    SolverJob(backend="local", attempts=1, heartbeat_at=old, worker_id="gone", **running),
+                    SolverJob(backend="local", attempts=3, heartbeat_at=old, worker_id="gone", **running),
+                    SolverJob(
+                        backend="local", attempts=1, heartbeat_at=old, cancel_requested=True, **running
+                    ),
+                    SolverJob(backend="local", attempts=1, heartbeat_at=fresh, worker_id="alive", **running),
+                    SolverJob(backend="elsewhere", attempts=1, heartbeat_at=old, **running),
+                    SolverJob(backend="local", status=JobStatus.QUEUED, spec={}),
                 ]
             )
             s.commit()
         with factory() as s:
-            assert fail_interrupted_jobs(s) == 2
+            assert recover_stale_jobs(s, stale_after=30) == {"requeued": 1, "failed": 1, "cancelled": 1}
         with factory() as s:
-            statuses = sorted((j.backend, j.status.value, j.error_code) for j in s.query(SolverJob))
-        assert statuses == [
-            ("elsewhere", "queued", None),
-            ("local", "failed", "interrupted"),
-            ("local", "failed", "interrupted"),
+            rows = sorted(
+                (j.backend, j.attempts, j.status.value, j.error_code or "", j.worker_id or "")
+                for j in s.query(SolverJob)
+            )
+        assert rows == [
+            ("elsewhere", 1, "running", "", ""),
+            ("local", 0, "queued", "", ""),
+            ("local", 1, "cancelled", "", ""),
+            ("local", 1, "queued", "", ""),
+            ("local", 1, "running", "", "alive"),
+            ("local", 3, "failed", "interrupted", "gone"),
         ]
     finally:
+        _clean(db_engine)
+
+
+def _api(db_engine: Engine, worker: bool, storage: Path) -> tuple[TestClient, LocalSolverBackend]:
+    """An API process whose own worker is on or off (`external` mode)."""
+    factory = sessionmaker(bind=db_engine, expire_on_commit=False)
+    app = create_app()
+
+    def real_db() -> Iterator[Session]:
+        with factory() as s:
+            yield s
+
+    app.dependency_overrides[get_db] = real_db
+    backend = LocalSolverBackend(
+        factory,
+        512,
+        2,
+        str(storage),
+        str(EQUITY_CACHE),
+        run_worker=worker,
+        heartbeat_seconds=0.2,
+        stale_seconds=1,
+    )
+    compute.registry.register(backend)
+    return TestClient(app), backend
+
+
+def _worker(db_engine: Engine, storage: Path) -> LocalSolverBackend:
+    """A separate worker (as `python -m riverlab_api.worker` would run), with quick heartbeats."""
+    factory = sessionmaker(bind=db_engine, expire_on_commit=False)
+    return LocalSolverBackend(
+        factory,
+        512,
+        2,
+        str(storage),
+        str(EQUITY_CACHE),
+        heartbeat_seconds=0.2,
+        stale_seconds=1,
+        poll_seconds=0.2,
+    )
+
+
+def test_a_job_survives_its_worker_stopping(db_engine: Engine, tmp_path: Path) -> None:
+    _clean(db_engine)
+    client, api = _api(db_engine, worker=False, storage=tmp_path)
+    first = _worker(db_engine, tmp_path)
+    second: LocalSolverBackend | None = None
+    try:
+        job = client.post("/api/v1/solver/jobs", json={"spec": wide_turn_spec(1_000_000)}).json()
+        wait(client, job["id"], {"running"})
+        first.shutdown()  # a restart: the solve stops, the job stays "running" in the database
+        assert client.get(f"/api/v1/solver/jobs/{job['id']}").json()["status"] == "running"
+        quick = client.post("/api/v1/solver/jobs", json={"spec": toy_spec()}).json()
+        second = _worker(db_engine, tmp_path)
+        # The new worker requeues the stale job and runs it again; cancel that rerun once it
+        # starts (the wide spot would take minutes), then the quick job behind it completes.
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            j = client.get(f"/api/v1/solver/jobs/{job['id']}").json()
+            if j["status"] == "running" and j["attempts"] == 2:
+                break
+            time.sleep(0.1)
+        else:
+            pytest.fail(f"the interrupted job was not restarted: {j}")
+        assert j["worker_id"] != first.worker_id
+        client.post(f"/api/v1/solver/jobs/{job['id']}/cancel")
+        assert wait(client, job["id"], {"cancelled", "failed", "succeeded"})["status"] == "cancelled"
+        done = wait(client, quick["id"], {"succeeded", "failed", "cancelled"})
+        assert done["status"] == "succeeded"
+        assert done["attempts"] == 1
+    finally:
+        compute.registry.backends.remove(api)
+        first.shutdown()
+        if second is not None:
+            second.shutdown()
+        _clean(db_engine)
+
+
+def test_two_workers_never_run_the_same_job(db_engine: Engine, tmp_path: Path) -> None:
+    _clean(db_engine)
+    client, api = _api(db_engine, worker=False, storage=tmp_path)
+    workers = [_worker(db_engine, tmp_path), _worker(db_engine, tmp_path)]
+    try:
+        ids = [
+            client.post("/api/v1/solver/jobs", json={"spec": toy_spec(500)}).json()["id"] for _ in range(6)
+        ]
+        done = [wait(client, i, {"succeeded", "failed", "cancelled"}) for i in ids]
+        assert all(d["status"] == "succeeded" and d["attempts"] == 1 for d in done), done
+        assert {d["worker_id"] for d in done} <= {w.worker_id for w in workers}
+    finally:
+        compute.registry.backends.remove(api)
+        for w in workers:
+            w.shutdown()
         _clean(db_engine)
 
 

@@ -111,8 +111,10 @@ riverlab_api/
 - `services/compute.py` defines the `ComputeBackend` protocol (submit / status / cancel /
   progress / result). `services/local_solver.py` registers the `local` backend at startup:
   GTOpen solves via `riverlab_engine.solve_postflop` / `solve_preflop` (GIL released; jobs
-  have a `kind`) in a single worker thread,
-  progress and results written to PostgreSQL, interrupted jobs failed on restart. With
+  have a `kind`). The queue is the `solver_jobs` table (ADR-0007). Workers, inside the API or
+  run separately with `python -m riverlab_api.worker`, claim jobs with `FOR UPDATE SKIP LOCKED`
+  and write heartbeats; a job whose worker stops is requeued (up to 3 starts), and a cancel
+  reaches whichever worker runs it. Unfinished hand reviews resume on startup. With
   `RIVERLAB_SOLVER_ENABLED=false` the registry is empty and job creation returns
   `503 solver_unavailable`. Local (in-process) and cloud (queued worker) backends will implement
   the same protocol; the job record stores which backend ran it, never exposed as a UI concern.
@@ -151,11 +153,12 @@ tables, while remaining independently versioned and independently selectable.
 | Equity (exact enumeration)             | engine, in-process    | Implemented (bounded) |
 | Training grading                       | engine, in-process    | Planned            |
 | Postflop solves (heads-up)             | ComputeBackend `local`: GTOpen in a worker thread of the API | Implemented; cloud workers planned |
-| Batch / high-iteration jobs            | cloud workers + Redis queue | Planned       |
+| Batch / high-iteration jobs            | separate workers on the database queue | Implemented (local/LAN workers); cloud workers planned |
 
-Job lifecycle (designed, not active): `queued → running → (succeeded | failed | cancelled)`,
-progress as `{iterations, exploitability_mbb_per_hand?, elapsed_ms}`, cancellation by
-cooperative flag, results persisted with full assumptions.
+Job lifecycle: `queued → running → (succeeded | failed | cancelled)`, and `running → queued`
+when a worker's heartbeat goes stale (ADR-0007). Progress is
+`{iterations, exploitability_mbb_per_hand?, elapsed_ms}`; cancellation is a cooperative
+database flag; results are persisted with full assumptions.
 
 ## 9. Configuration
 All runtime configuration is environment-based (`.env`, see `.env.example`). No credentials

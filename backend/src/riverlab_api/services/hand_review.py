@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from riverlab_api.db.models import HandReview, PlayHand, PlaySession, SolverJob, SolverResult
@@ -95,6 +95,24 @@ class HandReviewer:
             else:
                 self._queue.append(review_id)
             self._wake.notify()
+
+    def resume_unfinished(self) -> int:
+        """After a restart: queues every review that was queued or running, oldest first. Their
+        solves are in the durable job queue, so finished streets are kept and a street whose
+        solve was in progress waits for that same solve."""
+        with self._sessions() as db:
+            rows = db.scalars(
+                select(HandReview)
+                .where(HandReview.status.in_(["queued", "running"]))
+                .order_by(HandReview.created_at)
+            ).all()
+            ids = [r.id for r in rows]
+            for r in rows:
+                r.status = "queued"
+            db.commit()
+        for review_id in ids:
+            self._enqueue(review_id, front=False)
+        return len(ids)
 
     def get(self, db: Session, session_id: uuid.UUID, hand_no: int) -> HandReview | None:
         return db.scalar(
@@ -220,10 +238,18 @@ class HandReviewer:
             if not st["solvable"]:
                 carried = None  # the chain breaks; the next solvable street starts afresh
                 continue
+            if st.get("status") == "done":
+                # Resumed after a restart: this street is finished; carry its ranges on.
+                carried = (st.get("review") or {}).get("next_ranges")
+                continue
             spec = engine.review_street_spec(record, st["street"], config, self._max_bytes, carried)
-            with self._sessions() as db:
-                job = compute.JobService(db).submit(spec["spec"])
-                job_id = job.id
+            if st.get("status") == "solving" and st.get("job_id"):
+                # Resumed: the solve is still in the durable queue (or finished meanwhile).
+                job_id = uuid.UUID(st["job_id"])
+            else:
+                with self._sessions() as db:
+                    job = compute.JobService(db).submit(spec["spec"])
+                    job_id = job.id
             st.update(
                 status="solving",
                 job_id=str(job_id),
@@ -263,17 +289,6 @@ class HandReviewer:
                     return job.status.value, path, job.spec
             time.sleep(POLL_SECONDS)
         return "cancelled", None, {}
-
-
-def fail_interrupted_reviews(db: Session) -> int:
-    """Reviews cannot survive a restart (their solves are failed too): mark unfinished ones."""
-    result = db.execute(
-        update(HandReview)
-        .where(HandReview.status.in_(["queued", "running"]))
-        .values(status="interrupted", finished_at=datetime.now(UTC))
-    )
-    db.commit()
-    return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
 
 # Set at startup (main.py) when the solver is enabled.

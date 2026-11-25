@@ -104,6 +104,7 @@ def test_a_hand_is_reviewed_street_by_street(live: TestClient) -> None:
 
     url = f"/api/v1/play/sessions/{sid}/hands/{hand_no}/review"
     assert client.get(url).status_code == 404
+    _check_resume_after_restart(client, url)
     r = client.post(url)
     assert r.status_code == 202, r.json()
     review: dict[str, Any] = r.json()
@@ -163,3 +164,24 @@ def test_a_hand_is_reviewed_street_by_street(live: TestClient) -> None:
     ).json()
     assert dealt["hand"]["hand_no"] == hand_no
     assert dealt["hand"]["record"]["board"] == dealt["drill"]["board"]
+
+
+def _check_resume_after_restart(client: TestClient, url: str) -> None:
+    """A review queued before a restart picks up where it was: the reviewer of the new process
+    resumes it from the database (its solves are in the durable job queue)."""
+    assert hand_review.reviewer is not None
+    old = hand_review.reviewer
+    old.shutdown()  # the old process's reviewer is gone: nothing runs the review
+    r = client.post(url)
+    assert r.status_code == 202, r.json()
+    time.sleep(1)
+    assert client.get(url).json()["status"] == "queued", "nobody is working on it"
+    hand_review.reviewer = hand_review.HandReviewer(old._sessions, old._max_bytes)
+    assert hand_review.reviewer.resume_unfinished() == 1
+    deadline = time.monotonic() + 600
+    review: dict[str, Any] = client.get(url).json()
+    while review["status"] in ("queued", "running"):
+        assert time.monotonic() < deadline, review
+        time.sleep(0.5)
+        review = client.get(url).json()
+    assert review["status"] == "done", review

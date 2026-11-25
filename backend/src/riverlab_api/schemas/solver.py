@@ -36,6 +36,9 @@ class SolverJobOut(StrictModel):
     iterations: int
     progress: dict[str, Any]
     cancel_requested: bool
+    # Times a worker has started the job (more than 1: it was restarted after an interruption).
+    attempts: int = 0
+    worker_id: str | None = None
     error_code: str | None
     error_message: str | None
     created_at: datetime

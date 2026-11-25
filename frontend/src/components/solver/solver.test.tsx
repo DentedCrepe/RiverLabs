@@ -47,7 +47,7 @@ describe("JobList", () => {
     const onChanged = vi.fn();
     render(
       <JobList
-        jobs={[job({}), job({ id: "j2", status: "failed", error_message: "spot too large" })]}
+        jobs={[job({ attempts: 2 }), job({ id: "j2", status: "failed", error_message: "spot too large" })]}
         error={null}
         loading={false}
         selected={null}
@@ -57,6 +57,7 @@ describe("JobList", () => {
     );
     expect(screen.getAllByText(/1\.235% pot/).length).toBeGreaterThan(0);
     expect(screen.getByText("spot too large")).toBeInTheDocument();
+    expect(screen.getByText("restarted (attempt 2)")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /cancel/i }));
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/backend/api/v1/solver/jobs/j1/cancel",

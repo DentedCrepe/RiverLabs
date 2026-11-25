@@ -103,6 +103,8 @@ export type SolverJob = {
     elapsed_ms?: number;
   };
   cancel_requested: boolean;
+  /** Times a worker started the job: above 1, it was restarted after an interruption. */
+  attempts?: number;
   error_code: string | null;
   error_message: string | null;
   created_at: string;

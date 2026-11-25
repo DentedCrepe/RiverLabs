@@ -82,6 +82,12 @@ class SolverJob(UUIDPk, Timestamps, Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The durable queue (services/worker.py): how many times a worker has started this job, which
+    # worker holds it, and when that worker last reported it alive. A running job whose heartbeat
+    # goes stale is put back in the queue (or failed after too many attempts).
+    attempts: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
+    worker_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Deleting a job deletes its result (and the result's strategy nodes) in the database.
     result: Mapped["SolverResult | None"] = relationship(
@@ -96,6 +102,7 @@ class SolverJob(UUIDPk, Timestamps, Base):
         ),
         CheckConstraint("status <> 'failed' OR error_code IS NOT NULL", name="failed_has_error"),
         CheckConstraint("iterations >= 0", name="iterations_non_negative"),
+        CheckConstraint("attempts >= 0", name="attempts_non_negative"),
         CheckConstraint("kind IN ('postflop', 'preflop')", name="job_kind"),
     )
 

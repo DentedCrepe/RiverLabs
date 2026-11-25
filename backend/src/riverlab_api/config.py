@@ -20,8 +20,11 @@ class Settings(BaseSettings):
     # Upper bound on exact-equity work per request (tuple x runout evaluations).
     equity_exact_budget: int = Field(default=50_000_000, ge=1)
     equity_max_iterations: int = Field(default=2_000_000, ge=1)
-    # In-process GTOpen solver (one solve at a time; others queue).
+    # GTOpen solves, queued in the database (ADR-0007): one solve at a time per worker.
     solver_enabled: bool = True
+    # "embedded": a worker runs inside the API process; "external": run workers separately with
+    # `python -m riverlab_api.worker` (as many as you like, on this or other machines).
+    worker_mode: Literal["embedded", "external"] = "embedded"
     solver_max_memory_mb: int = Field(default=2048, ge=16)
     # 0 = use every CPU core.
     solver_threads: int = Field(default=0, ge=0, le=256)

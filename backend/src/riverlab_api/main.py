@@ -12,7 +12,7 @@ from riverlab_api.api.v1 import router as v1_router
 from riverlab_api.config import get_settings
 from riverlab_api.errors import install_error_handlers
 from riverlab_api.services import activity, compute, hand_review, play
-from riverlab_api.services.local_solver import BACKEND_NAME, LocalSolverBackend, fail_interrupted_jobs
+from riverlab_api.services.local_solver import BACKEND_NAME, LocalSolverBackend
 
 logger = logging.getLogger(__name__)
 
@@ -46,15 +46,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from riverlab_api.db.session import get_sessionmaker
 
         factory = get_sessionmaker()
-        try:
-            with factory() as session:
-                n = fail_interrupted_jobs(session)
-            if n:
-                logger.warning("marked %d interrupted solver job(s) as failed", n)
-        except Exception:
-            logger.exception("could not check for interrupted solver jobs (database unavailable?)")
+        # Queued and interrupted solves stay in the database queue: a worker picks them up (an
+        # interrupted one once its heartbeat is stale), so restarts lose nothing.
         backend = LocalSolverBackend(
-            factory, settings.solver_max_memory_mb, settings.solver_threads, settings.result_storage_dir
+            factory,
+            settings.solver_max_memory_mb,
+            settings.solver_threads,
+            settings.result_storage_dir,
+            run_worker=settings.worker_mode == "embedded",
         )
         compute.registry.register(backend)
         try:
@@ -67,14 +66,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         play.manager = play.PlayManager(
             factory, settings.result_storage_dir, settings.solver_max_memory_mb, settings.solver_threads
         )
-        try:
-            with factory() as session:
-                n = hand_review.fail_interrupted_reviews(session)
-            if n:
-                logger.warning("marked %d unfinished hand review(s) as interrupted", n)
-        except Exception:
-            logger.exception("could not check for interrupted hand reviews (database unavailable?)")
         hand_review.reviewer = hand_review.HandReviewer(factory, settings.solver_max_memory_mb * 1024 * 1024)
+        try:
+            n = hand_review.reviewer.resume_unfinished()
+            if n:
+                logger.info("resumed %d unfinished hand review(s)", n)
+        except Exception:
+            logger.exception("could not resume unfinished hand reviews (database unavailable?)")
     try:
         yield
     finally:

@@ -14,5 +14,9 @@ say "Applying migrations"
 say "Starting API on http://localhost:${BACKEND_PORT:-8000} and web app on http://localhost:${FRONTEND_PORT:-3000}"
 trap 'kill 0' EXIT INT TERM
 (cd "$ROOT/backend" && uv run uvicorn riverlab_api.main:app --reload --port "${BACKEND_PORT:-8000}") &
+if [[ "${RIVERLAB_WORKER_MODE:-embedded}" == "external" ]]; then
+  say "Starting a separate solver worker (RIVERLAB_WORKER_MODE=external)"
+  (cd "$ROOT/backend" && uv run python -m riverlab_api.worker) &
+fi
 (cd "$ROOT/frontend" && RIVERLAB_API_URL="http://localhost:${BACKEND_PORT:-8000}" npx next dev -p "${FRONTEND_PORT:-3000}") &
 wait

@@ -74,6 +74,14 @@ export function JobList({
               {gap !== undefined && ` · model gap ${gap.toFixed(1)} mbb`}
             </span>
             {j.cancel_requested && j.status === "running" && <span className="text-xs text-warn">cancelling…</span>}
+            {(j.attempts ?? 0) > 1 && j.status !== "succeeded" && j.status !== "cancelled" && (
+              <span
+                className="text-xs text-muted"
+                title="RiverLab restarted while this solve was running, so it started again from the beginning"
+              >
+                restarted (attempt {j.attempts})
+              </span>
+            )}
             {j.error_message && <span className="w-full text-xs text-danger">{j.error_message}</span>}
             <span className="ml-auto flex gap-1">
               {j.status === "succeeded" && (
