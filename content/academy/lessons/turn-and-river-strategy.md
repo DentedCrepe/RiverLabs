@@ -5,13 +5,13 @@ level = 4
 order = 10
 version = 1
 status = "published"
-summary = "Three solves of one turn spot with different turn cards: a card that helps the bettor's range makes it bet more, a card that helps the caller makes it bet less and lets the caller bet. Then the river after a turn bet and call, where the bettor's strategy splits into strong hands and bluffs that bet, and middle hands that check."
+summary = "Three solves of one turn spot with different turn cards: in these solves, the card that helps the bettor's range makes it bet more, and the card that helps the caller makes it bet less and lets the caller bet. Then the river after a turn bet and call, where the bettor's strategy splits into strong hands and bluffs that bet, and middle hands that check."
 estimated_minutes = 25
 objectives = [
   "Explain, from solved strategies, how the turn card changes how often the turn bettor bets.",
   "See which parts of a range bet the turn and which check.",
   "Recognise a polarised river strategy: strong hands and bluffs bet, middle-strength hands check.",
-  "Compare a solved river bluff share with the single-bet model, and say why they need not match.",
+  "Compare a solved river bluff share with the single-bet model, and see how the caller's own cards account for the difference.",
 ]
 prerequisites = ["polarised-ranges", "range-checking", "check-raises"]
 tags = ["strategy", "solver", "turn", "river"]
@@ -20,7 +20,7 @@ tags = ["strategy", "solver", "turn", "river"]
 status = "pending"
 reviewer = ""
 reviewed_on = ""
-notes = "Drafted with AI assistance. Every frequency comes from three turn solves run by RiverLab's solver each time the content is synced (each within 0.05% of the pot of an equilibrium of its tree; measured about 0.002–0.006% at 1000 iterations), equities from exact enumeration, hand strengths checked with the hand evaluator. The ranges are illustrations, not recommended ranges. Interpretations are labelled heuristic. Awaiting review by a person."
+notes = "Drafted with AI assistance. Every frequency comes from three turn solves run by RiverLab's solver each time the content is synced (the sync refuses any solve further than 0.05% of the pot from an equilibrium of its tree), equities from exact enumeration, hand strengths checked with the hand evaluator. The ranges are illustrations, not recommended ranges. Interpretations are labelled heuristic. Awaiting review by a person."
 
 [[tools]]
 href = "/solver"
@@ -82,7 +82,7 @@ prompt = "Turn K♥ 9♦ 4♣ 2♠, pot 10bb, 30bb behind, no rake. Your opponen
 answer = 67.36
 tolerance = 0.1
 unit = "%"
-explanation = "About two thirds. All of AA and AK bet; most of the hands without a pair (AQ suited, AJ suited, A5 suited, 76 suited) bet too; the middle hands (QQ, JJ, TT, and part of KQ and KJ) check more often. 75% of the pot is the only bet size in this tree."
+explanation = "About two thirds. All of AA and AK bet; most of the hands without a pair (AQ suited, AJ suited, A5 suited, 76 suited) bet too; the rest mix: QQ always checks, and JJ, TT, KQ and KJ suited bet part of the time. 75% of the pot is the only bet size in this tree."
 concepts = ["turn-and-river-strategy", "range-advantage"]
 compute = { kind = "solve", params = { solve = "blank", path = [{ type = "action", value = 0 }], max_exploitability_pct = 0.05 }, field = "share.bet", scale = 100.0 }
 
@@ -190,25 +190,25 @@ compute = { kind = "solve", params = { solve = "blank", path = [{ type = "action
 [[questions]]
 id = "river-bluff-share"
 type = "numeric"
-prompt = "River K♥ 9♦ 4♣ 2♠ 6♥, pot 25bb, 22.5bb behind, no rake. On the turn (pot 10bb) your opponent checked, you bet 7.5bb and they called; they now check again. They started the turn with KT, QJ suited, QT suited, JT suited, T9 suited, 98 suited, 87 suited or 44; you with AA, AK, KQ, KJ suited, QQ, JJ, TT, AQ suited, AJ suited, A5 suited or 76 suited. On each street either player may check or bet 75% of the pot (here 18.75bb), and after a bet the other may fold, call or raise all-in once. In RiverLab's solve of this tree, what share (in %) of your 18.75bb bets are AQ suited, AJ suited, A5 suited and 76 suited (ace high or a pair of sixes, which lose to every hand your opponent still holds)?"
+prompt = "River K♥ 9♦ 4♣ 2♠ 6♥, pot 25bb, 22.5bb behind, no rake. On the turn (pot 10bb) your opponent checked, you bet 7.5bb and they called; they now check again. They started the turn with KT, QJ suited, QT suited, JT suited, T9 suited, 98 suited, 87 suited or 44; you with AA, AK, KQ, KJ suited, QQ, JJ, TT, AQ suited, AJ suited, A5 suited or 76 suited. On each street either player may check or bet 75% of the pot (here 18.75bb), and after a bet the other may fold, call or raise all-in once. In RiverLab's solve of this tree, In the solve your opponent reaches this river only with KT, 98 suited and 44 (the rest of their range folds to the turn bet). What share (in %) of your 18.75bb bets are AQ suited, AJ suited, A5 suited and 76 suited (ace high or a pair of sixes, which lose to KT, 98 suited and 44)?"
 answer = 24.19
 tolerance = 0.1
 unit = "%"
-explanation = "About 24%: the rest of the bets are AA, AK, KQ and KJ suited. The single-bet model's bluff share for this size is 18.75 / (25 + 2 × 18.75) = 30%; the solve's tree is not that model (the caller can raise all-in, and holds 44, which beats every hand that bets), so the two need not agree."
+explanation = "About 24%: the rest of the bets are AA, AK, KQ and KJ suited. The single-bet model's bluff share for this size is 18.75 / (25 + 2 × 18.75) = 30%. The 24% counts all of the bettor's combinations, but the hand that decides whether to call, KT, holds a king: it removes some of AK, KQ and KJ from the bettor's range and none of the bluffs, so the bluffs are a larger share of the bets KT can actually face. The solve's tree is also not that model (the caller can raise all-in, and holds 44, which beats every hand that bets)."
 concepts = ["turn-and-river-strategy", "bluff-to-value-ratios"]
 compute = { kind = "solve", params = { solve = "blank", path = [{ type = "action", value = 0 }, { type = "action", value = 1 }, { type = "action", value = 1 }, { type = "card", value = "6h" }, { type = "action", value = 0 }], subset = ["AQs", "AJs", "A5s", "76s"], max_exploitability_pct = 0.05 }, field = "subset_of_action.bet", scale = 100.0 }
 
 [[questions]]
 id = "why-middle-checks"
 type = "multiple_choice"
-prompt = "River K♥ 9♦ 4♣ 2♠ 6♥ after a turn bet and call. The caller holds KT, 98 suited or 44; in RiverLab's solve, facing an 18.75bb bet into 25bb they fold all of 98 suited, call or fold KT about half of the time each (raising it rarely), and raise all-in with 44. Why does the solved strategy check JJ and TT rather than bet them?"
+prompt = "River K♥ 9♦ 4♣ 2♠ 6♥ after a turn bet and call; the caller checks to the in-position player. The caller holds KT, 98 suited or 44; in RiverLab's solve, facing an 18.75bb bet into 25bb they fold all of 98 suited, call or fold KT about half of the time each (raising it rarely), and raise all-in with 44. The in-position player bets its bluffs (AQ, AJ and A5 suited, and 76 suited, which lose to all three) part of the time. Why does its solved strategy check JJ and TT rather than bet them?"
 options = [
   "A bet with JJ or TT is called or raised only by hands that beat it (KT, 44), while the one hand it beats (98 suited) folds",
   "JJ and TT are the strongest hands in the bettor's range",
   "Pocket pairs should never be bet on the river",
 ]
 answer = 0
-explanation = "Betting a middle hand gains only if worse hands call or better hands fold. Here every worse hand folds and every better hand continues, so the bet gains nothing that checking does not, and loses more when it meets KT or 44. Checking keeps the showdown win against 98 suited. (This is a heuristic reading of the solved strategy for this spot; in other spots middle hands may bet for thin value or to deny equity.)"
+explanation = "Against KT and 44 a bet with JJ or TT does just what a bluff does: KT folds or continues with a better hand, and 44 raises, which the jacks must fold to. The difference is 98 suited: it folds to a bet, which wins a bluff the pot but wins JJ nothing, because JJ beats 98 suited at showdown anyway. The bluffs mix betting and checking, which in an approximate equilibrium means betting gains them about nothing over checking; JJ and TT gain less than a bluff, so betting would cost them. (This is a heuristic reading of the solved strategy for this spot that ignores small card-removal differences; in other spots middle hands may bet for thin value or to deny equity.)"
 concepts = ["turn-and-river-strategy", "polarised-ranges"]
 +++
 
@@ -228,9 +228,10 @@ sizes only**.
 
 ::: heuristic
 The ranges are an illustration of a common shape, not ranges anyone should play: the in-position
-player has the strongest hands (AA, AK) and some hands with nothing, as a flop bettor might; the
-out-of-position player has a king with a weak kicker, draws and middle pairs, as a flop caller
-might.
+player has most of the strong hands (AA, AK, KQ) and some hands with nothing, as a flop bettor
+might; the out-of-position player has a king with a weak kicker (KT), gutshot straight draws (QJ,
+QT and JT suited), pairs of nines (T9 and 98 suited), 87 suited and one hand stronger than
+anything the in-position player holds (44, a set), as a flop caller might.
 :::
 
 ::: simple
@@ -255,10 +256,11 @@ and what its river bets look like after the turn bet is called.
 
 ::: intermediate
 On the 2♠ the bettor's range splits three ways. AA and AK bet every time; the hands without a pair
-(AQ, AJ and A5 suited, and 76 suited) mostly bet; the middle hands (QQ, JJ, TT and some of KQ and KJ) check
-more often. As a heuristic reading: the strongest hands want to build the pot, the weakest can
-win it only if the opponent folds, and the middle hands do well enough at showdown without a
-bet.
+(AQ, AJ and A5 suited, and 76 suited) mostly bet; the other pairs mix: QQ always checks, and JJ,
+TT, KQ and KJ suited bet part of the time. As a heuristic reading: the strongest hands want to
+build the pot, the weakest can win it only if the opponent folds, and the hands in between can
+often win at showdown without a bet. The solve does not say why each class mixes as it does (QQ,
+for example, never bets while TT bets more often than not).
 :::
 
 ## A turn card that helps one range {#turn-card}
@@ -330,8 +332,8 @@ its range is capped: its best hand is a set of fours.
 ```
 
 ::: intermediate
-On the turn, JJ and TT bet part of the time. On this river they never do, while the kings bet
-almost always and the hands with no showdown value bet part of the time. The river bet is
+On the turn, JJ and TT bet part of the time. On this river they never do, while AA and the kings
+bet almost always and the hands with no showdown value bet part of the time. The river bet is
 **polarised**: strong hands and bluffs, with the middle checking. On the river no card is left
 to come, so a hand's value at showdown is fixed and a bet only gains from what the opponent does
 next.
@@ -339,11 +341,15 @@ next.
 
 ::: advanced
 The solve's bluff share (about 24% of the 18.75bb bets) is not the single-bet model's 30%
-(18.75 / (25 + 37.5)). That model assumes the bettor's value hands beat every hand that calls
-and the caller cannot raise. Here the caller can raise all-in, and its 44 beats every hand the
-bettor bets with, so the conditions of the model do not hold and the solve need not match it.
-Which of these differences moves the number, and by how much, would take further solves to
-show.
+(18.75 / (25 + 37.5)). The tree is not that model: the caller can raise all-in, and its 44
+beats every hand the bettor bets with. But the share that matters to the caller is seen from its
+own cards. KT mixes calling and folding, so in an equilibrium both are worth the same to it; KT
+beats every bluff and loses to every value bet, and a call ends the hand, so that requires the
+bluffs to be 30% of the bets **that remain once KT's own cards are removed**. KT holds a king,
+which removes some of AK, KQ and KJ but none of the bluffs, so the share counted over all of
+the bettor's combinations is lower. This is the blocker effect: card removal, not a failure of
+the indifference arithmetic. The solve is an approximate equilibrium, so the indifference is
+approximate too.
 :::
 
 ::: approximation

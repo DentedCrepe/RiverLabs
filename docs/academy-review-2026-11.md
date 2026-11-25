@@ -60,6 +60,27 @@ engine: check that the *wording* around it is fair.
 - **equity-realisation** (new): the definition (EV ÷ (equity × pot), counting later bets), and
   that the causal explanations are labelled as interpretations.
 
+## Lessons added after the review pass
+Each was drafted with AI assistance and then reviewed by a second, independent AI pass. They
+need a person's review like the others.
+- **range-construction:** that the example range is clearly an illustration, and the common
+  advice "bluff with hands that block calls" (labelled heuristic).
+- **turn-and-river-strategy:** the explanation of why the solve's river bluff share (about 24%)
+  is below the single-bet model's 30%. The explanation is card removal: the calling king blocks
+  value hands, not bluffs. The reviewer checked it with an equity calculation outside the
+  lesson. Also the reasoning for why middle pairs check the river, and that the solve does
+  not explain every hand's mix (QQ never bets the blank turn while TT bets about 62%).
+- **multiway:** the multiplayer game-theory statements. These cover:
+  - non-unique values and non-interchangeable equilibria;
+  - regret minimisation approaching only a coarse correlated equilibrium;
+  - the defence arithmetic "under a stated simplification".
+- **population-tendencies:** the explanation of what a 95% interval means, and the claim that a
+  direct test separates 25% from 30% after 1,000 hands sooner than non-overlap suggests. Also
+  confirm the Wilson (1927) and Brown, Cai and DasGupta (2001) citations.
+- Some figures in these lessons appear only in explanations, as arithmetic from computed
+  answers, and are not re-checked at sync. A person can decide whether to back them with
+  questions.
+
 ## What the content check now enforces
 - Prerequisites must be taught earlier in the curriculum. This catches loops like the one found
   between the MDF and polarised-ranges lessons.

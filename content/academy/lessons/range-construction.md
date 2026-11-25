@@ -144,7 +144,7 @@ prompt = "River board Q♠ 8♦ 3♣ 7♥ 2♠. You hold 9♥ 9♣. Your opponen
 answer = 33.33
 tolerance = 0.05
 unit = "%"
-explanation = "You win against exactly the bluffs: 14 of the 42 weighted combinations, 1/3. Your nines remove none of these combinations, so the count is the same as without your hand. Against a pot-sized bet you need 1/3 equity to call, so this range leaves the nines indifferent, as the single-bet model predicts."
+explanation = "You win against exactly the bluffs: 14 of the 42 weighted combinations, 1/3. Your nines remove none of these combinations, so the count is the same as without your hand. If the bet is pot-sized and ends the betting, you need 1/3 equity to call, so this range leaves the nines indifferent, as the single-bet model predicts."
 concepts = ["range-construction", "equity", "bluff-to-value-ratios"]
 compute = { kind = "equity", params = { ranges = ["9h9c", "QQ,88,77,Q8s,87s,AQs,AQo,KQs,JTs,KJs,65s,A4s:0.5"], board = "Qs8d3c7h2s" }, field = "equity.0", scale = 100.0 }
 
@@ -215,9 +215,10 @@ them is a recommended range for any position or spot.
 ::: fact
 A card on the board cannot be in anyone's hand, so every combination that uses it is gone (card
 removal, from the combinatorics and blockers lessons). The **live combinations** are those
-still possible. Classes that share a rank with the board lose the most: a pair whose rank is on
-the board keeps 3 of its 6 combinations, and a suited hand one of whose cards is on the board
-keeps 3 of its 4.
+still possible. Classes that share a rank with the board lose the most: when one card of a rank
+is on the board, a pair of that rank keeps 3 of its 6 combinations, a suited hand with that rank
+keeps 3 of its 4 and an offsuit one 9 of its 12. A suited hand with both of its ranks on the board
+in different suits keeps 2 of its 4.
 :::
 
 ```riverlab:question
@@ -233,9 +234,10 @@ keeps 3 of its 4.
 ```
 
 ::: intermediate
-This is why the same range can look very different on different boards. The hands that
-connect with the board (sets, two pairs, top pairs) are exactly the ones whose cards the board
-uses, so they lose combinations, while hands that missed keep all of theirs.
+This is why the same range can look very different on different boards. A pair, two pair or
+set made with the board uses one of the board's ranks, so those classes lose combinations, while
+classes that share no rank with the board keep all of theirs. (Straights and flushes connect
+without sharing a rank; on this lesson's board none is possible.)
 :::
 
 ::: advanced
